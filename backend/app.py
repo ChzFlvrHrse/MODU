@@ -26,7 +26,6 @@ image = (
 def quart_asgi_app():
     return quart_app
 
-
 @app.local_entrypoint()
 def serve():
     quart_app.run()
