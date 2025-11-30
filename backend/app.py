@@ -3,6 +3,9 @@ from modal import App, Image, Secret, asgi_app
 from quart import Quart, request, jsonify
 from quart_cors import cors
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 quart_app = Quart(__name__)
 quart_app = cors(
     quart_app,
