@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Node.js / Frontend
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+.next/
+.nuxt/
+dist/
+out/
+build/
+
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+*.secret
+secrets/
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Modal
+.modal/
+*.modal.toml
+
+# OS
+.DS_Store
+Thumbs.db
+*.log
+
+# Misc
+*.bak
+*.tmp
+.cache/
