@@ -1,5 +1,5 @@
 import os, logging, re
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 from pypdf import PdfReader
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
@@ -13,7 +13,6 @@ logger = logging.getLogger(__name__)
 
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-SECTION_HEADER_PATTERN = r"(SECTION\s+)?0*{sec}"
 
 class SectionLocatorResult(BaseModel):
     contains_section_start: bool = Field(description="True if this chunk contains the start of the section.")
@@ -21,44 +20,129 @@ class SectionLocatorResult(BaseModel):
     confidence: float = Field(description="Model confidence from 0 to 1 in the detection.")
     notes: Optional[str] = Field(default=None, description="Any extra comments or uncertainty.")
 
-def find_section_page_range_regex(
+def find_page_range_by_section_number(pdf_path: str, section_number: str) -> set[str]:
+    reader = PdfReader(pdf_path)
+    num_pages = len(reader.pages)
+    pattern = re.compile(rf"\b{re.escape(section_number)}\b")
+
+    page_set = set[str]()
+
+    for i in range(num_pages):
+        text = reader.pages[i].extract_text() or ""
+        if pattern.search(text):
+            page_set.add(str(i))
+
+    if not page_set:
+        return None
+
+    return page_set
+
+def locate_section_in_chunk(
+    chunk_text: str,
+    section_number: str,
+    section_title: str
+) -> SectionLocatorResult:
+    completion = client.beta.chat.completions.parse(
+        model="gpt-4.1",
+        response_format=SectionLocatorResult,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are helping locate CSI spec sections in a construction project manual. "
+                    "You are given the text from a range of pages. "
+                    "Your job is ONLY to determine whether this chunk contains the *start* of a specific section.\n\n"
+                    "The target section is:\n"
+                    f"  Section Number: {section_number}\n"
+                    f"  Section Title: {section_title}\n\n"
+                    "Look for typical CSI-style headings such as:\n"
+                    "- 'SECTION 042000 UNIT MASONRY'\n"
+                    "- '042000 UNIT MASONRY'\n"
+                    "- Or visually similar variants.\n\n"
+                    "If you believe the start of the section is present, set contains_section_start to true and "
+                    "estimate the 0-based page offset within this chunk where that start appears "
+                    "(0 for first page of chunk, 1 for second, etc.). "
+                    "Otherwise, set contains_section_start to false and estimated_start_page_offset to null."
+                ),
+            },
+            {
+                "role": "user",
+                "content": chunk_text,
+            },
+        ],
+        temperature=0.0,
+    )
+    return completion.choices[0].message.parsed
+
+def find_section_page_range_ai(
     pdf_path: str,
     section_number: str,
-    section_name: Optional[str] = None,
-    search_start_page: int = 0
+    section_title: str,
+    chunk_size: int = 15,
 ) -> Optional[Tuple[int, int]]:
 
     reader = PdfReader(pdf_path)
     num_pages = len(reader.pages)
 
-    # Base pattern on section number
-    sec = re.escape(section_number)
-    pattern = SECTION_HEADER_PATTERN.format(sec=sec)
+    start_page_global = None
 
-    # Optionally bias by section_name (but don’t require it)
-    if section_name:
-        name = re.escape(section_name)
-        pattern = pattern + r".{0,80}" + name  # name within ~80 chars
+    # 1) Find start using chunk-level scanning
+    for chunk_start in range(0, num_pages, chunk_size):
+        chunk_end = min(chunk_start + chunk_size - 1, num_pages - 1)
 
-    regex = re.compile(pattern, re.IGNORECASE | re.VERBOSE)
+        # Build chunk text
+        parts = []
+        for i in range(chunk_start, chunk_end + 1):
+            text = reader.pages[i].extract_text() or ""
+            parts.append(f"\n\n--- PAGE {i+1} ---\n{text}")
+        chunk_text = "\n".join(parts)
 
-    start_page = None
-    for i in range(search_start_page, num_pages):
-        text = reader.pages[i].extract_text() or ""
-        if regex.search(text):
-            start_page = i
+        result = locate_section_in_chunk(
+            chunk_text=chunk_text,
+            section_number=section_number,
+            section_title=section_title,
+        )
+
+        if result.contains_section_start and result.estimated_start_page_offset is not None:
+            start_page_global = chunk_start + result.estimated_start_page_offset
             break
 
-    if start_page is None:
+    if start_page_global is None:
         return None
 
-    # Heuristic for end: look for next 'SECTION xxxxx' after start_page
+    # 2) Heuristic for end: use same logic as regex (next SECTION xxxx)
     next_section_regex = re.compile(r"SECTION\s+0?\d{5}", re.IGNORECASE)
     end_page = num_pages - 1
-    for j in range(start_page + 1, num_pages):
+    for j in range(start_page_global + 1, num_pages):
         text = reader.pages[j].extract_text() or ""
         if next_section_regex.search(text):
             end_page = j - 1
             break
 
-    return (start_page, end_page)
+    return (start_page_global, end_page)
+
+def robust_find_section_page_range(
+    pdf_path: str,
+    section_number: str,
+    section_title: str
+) -> Optional[Tuple[int, int]]:
+
+    # First try regex
+    regex_result = find_page_range_by_section_number(
+        pdf_path=pdf_path,
+        section_number=section_number,
+    )
+    if regex_result is not None:
+        return regex_result
+
+    # Fallback: AI
+    ai_result = find_section_page_range_ai(
+        pdf_path=pdf_path,
+        section_number=section_number,
+        section_title=section_title,
+        chunk_size=15,  # tune as needed
+    )
+    return ai_result
+
+# pages = find_page_range_by_section_number(pdf_path="example_spec.pdf", section_number="260519")
+# print(pages)
