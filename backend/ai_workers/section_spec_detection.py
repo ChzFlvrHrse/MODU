@@ -25,7 +25,6 @@ def find_page_range_by_section_number(pdf_path: str, section_number: str) -> set
     # pattern = re.compile(rf"\b{re.escape(section_number)}\b")
     pattern = re.compile(rf"\b{re.escape(section_number)}\s*-\s*\d+\b")
 
-
     page_set = set[str]()
 
     for i in range(num_pages):
@@ -36,7 +35,8 @@ def find_page_range_by_section_number(pdf_path: str, section_number: str) -> set
     if not page_set:
         return None
 
-    return sorted([int(page) for page in page_set])
+    sorted_pages = sorted([int(page) for page in page_set])
+    return sorted_pages
 
 def locate_section_in_chunk(
     chunk_text: str,
@@ -226,8 +226,21 @@ async def analyze_section(pdf_path: str, section_number: str, section_title: str
 
     return summary
 
-section_number = "260519"
-section_title = "LOW-VOLTAGE ELECTRICAL POWER CONDUCTORS AND CABLES"
+async def analyze_all_sections(pdf_path: str, sections: list[dict]) -> dict:
+
+    results = {}
+    for section in sections:
+        summary = await analyze_section(
+            pdf_path,
+            section["section_number"],
+            section["section_title"]
+        )
+        results[section["section_number"]] = summary
+
+    return results
+
+section_number = "003132"
+section_title = "GEOTECHNICAL DATA"
 pdf_path = "example_spec.pdf"
 
 # result = asyncio.run(analyze_section(pdf_path, section_number, section_title))

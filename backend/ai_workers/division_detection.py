@@ -1,4 +1,4 @@
-import os, json, logging
+import os, json, logging, asyncio
 from openai import AsyncOpenAI
 from pypdf import PdfReader
 from dotenv import load_dotenv
@@ -20,13 +20,13 @@ class DivisionSectionNumbers(BaseModel):
     title: str = Field(description="Section names for the section number (e.g, 'GENERAL CONDITIONS AIA A201')", default="")
 
 class Division(BaseModel):
-    # sources: DivisionSource = Field(description="A source for this division", default=None)
+    sources: DivisionSource = Field(description="A source for this division", default=None)
     division_code: str = Field(description="CSI division code (e.g., '03')")
-    division_name: str = Field(description="Name of the division (e.g., 'Concrete')")
-    # page_range: list[int] = Field(description="start page and end page numbers", default=[])
+    division_title: str = Field(description="Name of the division (e.g., 'Concrete')")
+    page_range: list[int] = Field(description="start page and end page numbers", default=[])
     section: list[DivisionSectionNumbers] = Field(description="Section numbers for this division", default=[])
-    # scope_summary: str = Field(description="Summary of the scope for this division", default="")
-    # assumptions_or_risks: list[str] = Field(description="List of assumptions or risks identified", default=[])
+    scope_summary: str = Field(description="Summary of the scope for this division", default="")
+    assumptions_or_risks: list[str] = Field(description="List of assumptions or risks identified", default=[])
     keywords_found: list[str] = Field(description="Relevant keywords found in the spec", default=[])
 
 class DivisionBreakdown(BaseModel):
@@ -51,7 +51,7 @@ async def division_detection(spec_text: str, start_page: int, end_page: int, cha
                 "content": spec_text
             }
         ],
-        response_format=DivisionBreakdown,
+        response_format=DivisionBreakdown
     )
 
     # Convert DivisionBreakdown to JSON dict
@@ -78,7 +78,7 @@ async def extract_pages(path: str, start_page: int, end_page: int) -> str:
     return "\n".join(chunks)
 
 
-async def test_division_detection(start_page: int, end_page: int):
+async def all_divisions(start_page: int, end_page: int):
     pdf_path = os.path.join(
         os.path.dirname(__file__),
         "example_spec.pdf",
@@ -95,5 +95,5 @@ async def test_division_detection(start_page: int, end_page: int):
     # result is a Pydantic model; dump it as pretty JSON
     return result
 
-# result = asyncio.run(test_division_detection(start_page=0, end_page=15))
+# result = asyncio.run(division_detection_wrapper(start_page=0, end_page=15))
 # print(result)
