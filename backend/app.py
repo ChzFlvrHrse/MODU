@@ -1,7 +1,8 @@
 import os, logging, asyncio
-from modal import App, Image, Secret, asgi_app
-from quart import Quart, request, jsonify
 from quart_cors import cors
+from pypdf import PdfReader
+from quart import Quart, request, jsonify
+from modal import App, Image, Secret, asgi_app
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

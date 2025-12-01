@@ -1,5 +1,6 @@
 modal==1.2.4
 openai==2.8.1
 pydantic==2.12.5
+pypdf==6.4.0
 quart==0.20.0
 quart_cors==0.8.0

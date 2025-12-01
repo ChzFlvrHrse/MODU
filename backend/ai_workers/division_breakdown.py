@@ -65,23 +65,24 @@ async def extract_pages(path: str, start_page: int, end_page: int) -> str:
     return "\n".join(chunks)
 
 
-async def test_division_breakdown():
+async def test_division_breakdown(start_page: int, end_page: int):
     pdf_path = os.path.join(
         os.path.dirname(__file__),
         "example_spec.pdf",
     )
 
     # 🔹 Start small: first 3–5 pages so you don't blow the context window
-    spec_text = await extract_pages(pdf_path, start_page=0, end_page=8)
+    spec_text = await extract_pages(pdf_path, start_page=start_page, end_page=end_page)
 
-    logger.info(f"Extracted characters: {len(spec_text)}")
+    logger.info(f"Pages: {start_page} to {end_page}, Extracted characters: {len(spec_text)}")
     # print(spec_text[:1000])  # uncomment if you want to sanity-check the raw text
 
-    result = await division_breakdown(spec_text)
+    # result = await division_breakdown(spec_text)
 
     # result is a Pydantic model; dump it as pretty JSON
-    logger.info(json.dumps(result.model_dump(), indent=2))
-    return result
+    # logger.info(json.dumps(result.model_dump(), indent=2))
+    # return result
+    return None
 
-result = asyncio.run(test_division_breakdown())
+result = asyncio.run(test_division_breakdown(start_page=0, end_page=25))
 print(result)
