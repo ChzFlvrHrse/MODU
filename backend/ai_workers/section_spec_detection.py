@@ -1,4 +1,4 @@
-import os, logging, re
+import os, logging, re, asyncio, json
 from typing import Optional, Tuple
 from pypdf import PdfReader
 from openai import AsyncOpenAI
@@ -145,12 +145,6 @@ def robust_find_section_page_range(
     )
     return ai_result
 
-# pages = find_page_range_by_section_number(pdf_path="example_spec.pdf", section_number="260519")
-pages = find_page_range_by_section_number(pdf_path="example_spec.pdf", section_number="260523")
-print(pages)
-
-# pages_found = [905, 906, 907, 908, 909, 910, 911, 912]
-
 def extract_pages_text(pdf_path: str, pages: list[int]) -> str:
     reader = PdfReader(pdf_path)
     parts = []
@@ -166,7 +160,6 @@ class SpecRequirement(BaseModel):
     requirement_type: str = Field(description="Category such as 'materials', 'installation', 'testing', 'submittals', 'warranty'")
     critical: bool = Field(description="True if non-compliance would be a major risk or code/contract violation")
 
-
 class SectionSpecSummary(BaseModel):
     section_number: str
     section_title: str
@@ -174,3 +167,68 @@ class SectionSpecSummary(BaseModel):
     referenced_sections: list[str] = Field(description="Other section numbers explicitly referenced", default=[])
     risks_or_gotchas: list[str] = Field(default=[])
     open_questions: list[str] = Field(default=[])
+
+async def extract_section_requirements(
+    section_text: str,
+    section_number: str,
+    section_title: str = ""
+) -> SectionSpecSummary:
+    response = await client.beta.chat.completions.parse(
+        model="gpt-4.1",
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are an expert construction specification analyst. "
+                    "Your job is to extract and categorize all key requirements from a CSI specification section.\n\n"
+                    "For each requirement, identify:\n"
+                    "- The clause ID (e.g., '1.3.A', 'PART 2 - 2.1.B', '3.4')\n"
+                    "- The actual requirement in clear language\n"
+                    "- The type (materials, installation, testing, submittals, warranty, quality control, etc.)\n"
+                    "- Whether it's critical (code requirement, safety issue, major cost/schedule impact)\n\n"
+                    "Also extract:\n"
+                    "- Any references to other specification sections\n"
+                    "- Potential risks or 'gotchas' (ambiguities, strict timelines, special conditions)\n"
+                    "- Any questions or uncertainties you notice\n\n"
+                    "Focus on actionable requirements that a contractor would need to comply with."
+                )
+            },
+            {
+                "role": "user",
+                "content": f"Section {section_number}: {section_title}\n\n{section_text}"
+            }
+        ],
+        response_format=SectionSpecSummary,
+    )
+
+    return response.choices[0].message.parsed
+
+
+async def analyze_section(pdf_path: str, section_number: str, section_title: str = "") -> Optional[SectionSpecSummary]:
+    # Step 1: Find the pages containing this section
+    pages = find_page_range_by_section_number(pdf_path, section_number)
+
+    if not pages or len(pages) == 0:
+        logger.warning(f"No pages found for section {section_number}")
+        return None
+
+    logger.info(f"Found section {section_number} on {len(pages)} pages: {pages}")
+
+    # Step 2: Extract text from those pages
+    section_text = extract_pages_text(pdf_path, pages)
+
+    logger.info(f"Extracted {len(section_text)} characters from section {section_number}")
+
+    # Step 3: Use AI to extract requirements
+    summary = await extract_section_requirements(section_text, section_number, section_title)
+
+    logger.info(f"Extracted {len(summary.key_requirements)} requirements from section {section_number}")
+
+    return summary
+
+section_number = "260519"
+section_title = "LOW-VOLTAGE ELECTRICAL POWER CONDUCTORS AND CABLES"
+pdf_path = "example_spec.pdf"
+
+# result = asyncio.run(analyze_section(pdf_path, section_number, section_title))
+# print(result)
