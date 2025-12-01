@@ -1,5 +1,5 @@
 import os, logging, re
-from typing import Any, Optional, Tuple
+from typing import Optional, Tuple
 from pypdf import PdfReader
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
@@ -13,7 +13,6 @@ logger = logging.getLogger(__name__)
 
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-
 class SectionLocatorResult(BaseModel):
     contains_section_start: bool = Field(description="True if this chunk contains the start of the section.")
     estimated_start_page_offset: Optional[int] = Field(default=None, description="0-based page offset within this chunk where the section appears to start.")
@@ -23,7 +22,9 @@ class SectionLocatorResult(BaseModel):
 def find_page_range_by_section_number(pdf_path: str, section_number: str) -> set[str]:
     reader = PdfReader(pdf_path)
     num_pages = len(reader.pages)
-    pattern = re.compile(rf"\b{re.escape(section_number)}\b")
+    # pattern = re.compile(rf"\b{re.escape(section_number)}\b")
+    pattern = re.compile(rf"\b{re.escape(section_number)}\s*-\s*\d+\b")
+
 
     page_set = set[str]()
 
@@ -35,7 +36,7 @@ def find_page_range_by_section_number(pdf_path: str, section_number: str) -> set
     if not page_set:
         return None
 
-    return page_set
+    return sorted([int(page) for page in page_set])
 
 def locate_section_in_chunk(
     chunk_text: str,
@@ -145,4 +146,31 @@ def robust_find_section_page_range(
     return ai_result
 
 # pages = find_page_range_by_section_number(pdf_path="example_spec.pdf", section_number="260519")
-# print(pages)
+pages = find_page_range_by_section_number(pdf_path="example_spec.pdf", section_number="260523")
+print(pages)
+
+# pages_found = [905, 906, 907, 908, 909, 910, 911, 912]
+
+def extract_pages_text(pdf_path: str, pages: list[int]) -> str:
+    reader = PdfReader(pdf_path)
+    parts = []
+    for i in sorted(set(pages)):
+        page = reader.pages[i]
+        text = page.extract_text() or ""
+        parts.append(f"\n==== PAGE {i} ====\n{text}")
+    return "\n".join(parts)
+
+class SpecRequirement(BaseModel):
+    clause_id: str = Field(description="Short label like '3.6.B' or 'PART 2 - MATERIALS - A'")
+    requirement: str = Field(description="Plain-language requirement text")
+    requirement_type: str = Field(description="Category such as 'materials', 'installation', 'testing', 'submittals', 'warranty'")
+    critical: bool = Field(description="True if non-compliance would be a major risk or code/contract violation")
+
+
+class SectionSpecSummary(BaseModel):
+    section_number: str
+    section_title: str
+    key_requirements: list[SpecRequirement]
+    referenced_sections: list[str] = Field(description="Other section numbers explicitly referenced", default=[])
+    risks_or_gotchas: list[str] = Field(default=[])
+    open_questions: list[str] = Field(default=[])
