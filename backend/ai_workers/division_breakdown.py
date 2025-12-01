@@ -11,10 +11,15 @@ logger = logging.getLogger(__name__)
 
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+class DivisionBreakdownSource(BaseModel):
+    page_range: str = Field(description="Start and end page numbers in the format 'page X to page Y'", default="")
+    character_count: str = Field(description="Number of characters in the page range in the format 'X'", default="")
+
 class Division(BaseModel):
+    sources: DivisionBreakdownSource = Field(description="A source for this division", default=None)
     division_code: str = Field(description="CSI division code (e.g., '03')")
     division_name: str = Field(description="Name of the division (e.g., 'Concrete')")
-    page_range: list[int] = Field(description="Start and end page numbers", default=[])
+    page_range: list[int] = Field(description="start page and end page numbers", default=[])
     scope_summary: str = Field(description="Summary of the scope for this division", default="")
     assumptions_or_risks: list[str] = Field(description="List of assumptions or risks identified", default=[])
     keywords_found: list[str] = Field(description="Relevant keywords found in the spec", default=[])
@@ -23,7 +28,7 @@ class DivisionBreakdown(BaseModel):
     divisions_detected: list[Division] = Field(description="A list of detected divisions", default=[])
     notes: str = Field(description="Any uncertainty or questions", default="")
 
-async def division_breakdown(spec_text: str) -> DivisionBreakdown:
+async def division_breakdown(spec_text: str, start_page: int, end_page: int, character_count: int) -> DivisionBreakdown:
     response = await client.beta.chat.completions.parse(
         model="gpt-4o",
         messages=[
@@ -39,12 +44,17 @@ async def division_breakdown(spec_text: str) -> DivisionBreakdown:
             {
                 "role": "user",
                 "content": spec_text
-            },
+            }
         ],
         response_format=DivisionBreakdown,
     )
 
-    return response.choices[0].message.parsed
+    # Convert DivisionBreakdown to dict
+    res = {**response.choices[0].message.parsed.model_dump()}
+
+    res['source'] = {"page_range": f"page {start_page} to page {end_page}", "character_count": character_count}
+
+    return res
 
 async def extract_pages(path: str, start_page: int, end_page: int) -> str:
     """
@@ -77,12 +87,11 @@ async def test_division_breakdown(start_page: int, end_page: int):
     logger.info(f"Pages: {start_page} to {end_page}, Extracted characters: {len(spec_text)}")
     # print(spec_text[:1000])  # uncomment if you want to sanity-check the raw text
 
-    # result = await division_breakdown(spec_text)
+    result = await division_breakdown(spec_text, start_page=start_page, end_page=end_page, character_count=len(spec_text))
 
     # result is a Pydantic model; dump it as pretty JSON
-    # logger.info(json.dumps(result.model_dump(), indent=2))
-    # return result
-    return None
+    return result
+    # return None
 
-result = asyncio.run(test_division_breakdown(start_page=0, end_page=25))
-print(result)
+result = asyncio.run(test_division_breakdown(start_page=0, end_page=15))
+logger.info(result)
