@@ -293,8 +293,7 @@ async def section_spec_detection_ai(rasterized_pages: list[dict[int, bytes]], se
             {
                 "role": "system",
                 "content": (
-                    "Your job is to detect ALL pages that contain the section number and/or section title."
-                    "and the section number and/or section title."
+                    "Your job is to detect ALL pages (based on PAGE_INDEX) that contain the section number and/or section title. Return every page where the section number and/or section title is present."
                 ),
             },
             {
@@ -317,6 +316,7 @@ async def all_pages_of_section_specs(rasterized_pages: list[dict[int, bytes]], s
 section_number = "013113"
 section_title = "COORDINATION DRAWINGS"
 pdf_path = "example_spec.pdf"
-# rasterized_pages = asyncio.run(rasterize_pdf(pdf_path, dpi=200, start_page=0, end_page=None))
+rasterized_pages = rasterize_pdf(pdf_path, dpi=200, start_page=88, end_page=103)
+print(rasterized_pages)
 # section_specs = asyncio.run(section_spec_detection_ai(rasterized_pages, section_number=section_number, section_title=section_title))
 # print(section_specs)
