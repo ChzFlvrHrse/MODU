@@ -13,12 +13,6 @@ logger = logging.getLogger(__name__)
 
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-class SectionLocatorResult(BaseModel):
-    contains_section_start: bool = Field(description="True if this chunk contains the start of the section.")
-    estimated_start_page_offset: Optional[int] = Field(default=None, description="0-based page offset within this chunk where the section appears to start.")
-    confidence: float = Field(description="Model confidence from 0 to 1 in the detection.")
-    notes: Optional[str] = Field(default=None, description="Any extra comments or uncertainty.")
-
 def find_page_range_by_section_number(pdf_path: str, section_number: str) -> set[str]:
     reader = PdfReader(pdf_path)
     num_pages = len(reader.pages)
@@ -37,6 +31,12 @@ def find_page_range_by_section_number(pdf_path: str, section_number: str) -> set
 
     sorted_pages = sorted([int(page) for page in page_set])
     return sorted_pages
+
+class SectionLocatorResult(BaseModel):
+    contains_section_start: bool = Field(description="True if this chunk contains the start of the section.")
+    estimated_start_page_offset: Optional[int] = Field(default=None, description="0-based page offset within this chunk where the section appears to start.")
+    confidence: float = Field(description="Model confidence from 0 to 1 in the detection.")
+    notes: Optional[str] = Field(default=None, description="Any extra comments or uncertainty.")
 
 def locate_section_in_chunk(
     chunk_text: str,
@@ -79,7 +79,7 @@ def find_section_page_range_ai(
     pdf_path: str,
     section_number: str,
     section_title: str,
-    chunk_size: int = 15,
+    chunk_size: int = 15
 ) -> Optional[Tuple[int, int]]:
 
     reader = PdfReader(pdf_path)
@@ -239,9 +239,9 @@ async def analyze_all_sections(pdf_path: str, sections: list[dict]) -> dict:
 
     return results
 
-section_number = "003132"
-section_title = "GEOTECHNICAL DATA"
+section_number = "042000"
+section_title = "UNIT MASONRY"
 pdf_path = "example_spec.pdf"
 
-# result = asyncio.run(analyze_section(pdf_path, section_number, section_title))
-# print(result)
+result = asyncio.run(analyze_section(pdf_path, section_number, section_title))
+print(result)
