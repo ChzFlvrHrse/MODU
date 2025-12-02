@@ -1,4 +1,7 @@
-import fitz
+import fitz, logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def rasterize_page(doc: fitz.Document, page_index: int, dpi: int = 200) -> bytes:
     page = doc.load_page(page_index)
@@ -17,6 +20,7 @@ async def rasterize_pdf(pdf_path: str, dpi: int = 200, start_page: int = 0, end_
     else:
         pages = range(start_page, end_page + 1)
     for page_index in pages:
+        logger.info(f"Rasterizing page {page_index}")
         results.append({"page_index": page_index, "bytes": rasterize_page(doc, page_index, dpi)})
     doc.close()
     return results
