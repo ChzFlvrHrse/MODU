@@ -1,6 +1,8 @@
-modal==1.2.4
+fitz==0.0.1.dev2
+modal==1.1.3
 openai==2.8.1
 pydantic==2.12.5
 pypdf==6.4.0
+python-dotenv==1.2.1
 quart==0.20.0
 quart_cors==0.8.0
