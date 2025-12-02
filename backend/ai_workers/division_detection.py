@@ -36,7 +36,7 @@ class DivisionBreakdown(BaseModel):
     divisions_detected: list[Division] = Field(description="A list of detected divisions", default=[])
     notes: str = Field(description="Any uncertainty or questions", default="")
 
-async def division_detection(spec_pages: list[dict[int, bytes]], start_page: int, end_page: int) -> DivisionBreakdown:
+async def division_detection_ai(spec_pages: list[dict[int, bytes]], start_page: int, end_page: int) -> DivisionBreakdown:
     response = await client.beta.chat.completions.parse(
         model="gpt-4.1",
         messages=[
@@ -72,7 +72,7 @@ async def all_divisions(pdf_path: str, start_page: int, end_page: int) -> Divisi
     logger.info(f"Pages: {start_page} to {end_page}")
     # print(spec_text[:1000])  # uncomment if you want to sanity-check the raw text
 
-    result = await division_detection(spec_pages, start_page=start_page, end_page=end_page)
+    result = await division_detection_ai(spec_pages, start_page=start_page, end_page=end_page)
 
     # result is a Pydantic model; dump it as pretty JSON
     return result

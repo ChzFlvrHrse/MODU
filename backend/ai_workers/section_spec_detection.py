@@ -3,8 +3,8 @@ from pypdf import PdfReader
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from typing import Optional, Tuple
-import os, logging, re, asyncio, sys
 from pydantic import BaseModel, Field
+import os, logging, re, asyncio, sys, base64
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from helper_functions.rasterization import rasterize_pdf
@@ -16,24 +16,24 @@ logger = logging.getLogger(__name__)
 
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-def find_page_range_by_section_number(pdf_path: str, section_number: str) -> set[str]:
-    reader = PdfReader(pdf_path)
-    num_pages = len(reader.pages)
-    # pattern = re.compile(rf"\b{re.escape(section_number)}\b")
-    pattern = re.compile(rf"\b{re.escape(section_number)}\s*-\s*\d+\b")
+# def find_page_range_by_section_number(pdf_path: str, section_number: str) -> set[str]:
+#     reader = PdfReader(pdf_path)
+#     num_pages = len(reader.pages)
+#     # pattern = re.compile(rf"\b{re.escape(section_number)}\b")
+#     pattern = re.compile(rf"\b{re.escape(section_number)}\s*-\s*\d+\b")
 
-    page_set = set[str]()
+#     page_set = set[str]()
 
-    for i in range(num_pages):
-        text = reader.pages[i].extract_text() or ""
-        if pattern.search(text):
-            page_set.add(str(i))
+#     for i in range(num_pages):
+#         text = reader.pages[i].extract_text() or ""
+#         if pattern.search(text):
+#             page_set.add(str(i))
 
-    if not page_set:
-        return None
+#     if not page_set:
+#         return None
 
-    sorted_pages = sorted([int(page) for page in page_set])
-    return sorted_pages
+#     sorted_pages = sorted([int(page) for page in page_set])
+#     return sorted_pages
 
 class SectionLocatorResult(BaseModel):
     contains_section_start: bool = Field(description="True if this chunk contains the start of the section.")
@@ -41,12 +41,12 @@ class SectionLocatorResult(BaseModel):
     confidence: float = Field(description="Model confidence from 0 to 1 in the detection.")
     notes: Optional[str] = Field(default=None, description="Any extra comments or uncertainty.")
 
-def locate_section_in_chunk(
-    chunk_text: str,
+async def locate_section_in_chunk_ai(
+    chunk_pages: list[dict[int, bytes]],
     section_number: str,
     section_title: str
 ) -> SectionLocatorResult:
-    completion = client.beta.chat.completions.parse(
+    completion = await client.beta.chat.completions.parse(
         model="gpt-4.1",
         response_format=SectionLocatorResult,
         messages=[
@@ -71,14 +71,17 @@ def locate_section_in_chunk(
             },
             {
                 "role": "user",
-                "content": chunk_text,
+                "content": [
+                    {"type": "text", "text": "Analyze the following pages of a spec sheet and determine if they contain the start of the section."},
+                    *[{"type": "image_url", "image_url": {"url": f"data:image/png;base64,{base64.b64encode(page['bytes']).decode('utf-8')}"}} for page in chunk_pages]
+                ],
             },
         ],
         temperature=0.0,
     )
     return completion.choices[0].message.parsed
 
-def find_section_page_range_ai(
+async def find_section_page_range_ai(
     pdf_path: str,
     section_number: str,
     section_title: str,
@@ -101,7 +104,7 @@ def find_section_page_range_ai(
             parts.append(f"\n\n--- PAGE {i+1} ---\n{text}")
         chunk_text = "\n".join(parts)
 
-        result = locate_section_in_chunk(
+        result = await locate_section_in_chunk_ai(
             chunk_text=chunk_text,
             section_number=section_number,
             section_title=section_title,
