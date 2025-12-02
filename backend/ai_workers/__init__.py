@@ -7,7 +7,7 @@ load_dotenv()
 
 __all__ = ["all_divisions", "analyze_section", "analyze_all_sections"]
 
-# divisions = asyncio.run(all_divisions(start_page=0, end_page=15))
+# divisions = asyncio.run(all_divisions(pdf_path="example_spec.pdf", start_page=0, end_page=15))
 # print(divisions)
 
 # analyzed_section = asyncio.run(analyze_section(pdf_path="example_spec.pdf", section_number=divisions["divisions_detected"][0]["section"][1]["section_number"], section_title=divisions["divisions_detected"][0]["section"][1]["title"]))

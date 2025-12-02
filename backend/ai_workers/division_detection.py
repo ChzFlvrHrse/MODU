@@ -1,8 +1,11 @@
-import os, json, logging, asyncio
-from openai import AsyncOpenAI
-from pypdf import PdfReader
+from pathlib import Path
 from dotenv import load_dotenv
+from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
+import os, json, logging, sys, base64, asyncio
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from helper_functions.rasterization import rasterize_pdf
 
 load_dotenv()
 
@@ -33,7 +36,7 @@ class DivisionBreakdown(BaseModel):
     divisions_detected: list[Division] = Field(description="A list of detected divisions", default=[])
     notes: str = Field(description="Any uncertainty or questions", default="")
 
-async def division_detection(spec_text: str, start_page: int, end_page: int, character_count: int) -> DivisionBreakdown:
+async def division_detection(spec_pages: list[dict[int, bytes]], start_page: int, end_page: int) -> DivisionBreakdown:
     response = await client.beta.chat.completions.parse(
         model="gpt-4.1",
         messages=[
@@ -48,7 +51,10 @@ async def division_detection(spec_text: str, start_page: int, end_page: int, cha
             },
             {
                 "role": "user",
-                "content": spec_text
+                "content": [
+                    {"type": "text", "text": "Analyze the following pages of a spec sheet and detect which CSI divisions are present."},
+                    *[{"type": "image_url", "image_url": {"url": f"data:image/png;base64,{base64.b64encode(page['bytes']).decode('utf-8')}"}} for page in spec_pages]
+                ]
             }
         ],
         response_format=DivisionBreakdown
@@ -57,43 +63,19 @@ async def division_detection(spec_text: str, start_page: int, end_page: int, cha
     # Convert DivisionBreakdown to JSON dict
     res = json.loads(json.dumps({**response.choices[0].message.parsed.model_dump()}))
 
-    return {"source": {"page_range": f"page {start_page} to page {end_page}", "character_count": character_count}, **res}
+    return {"source": {"page_range": f"page {start_page} to page {end_page}"}, **res}
 
-async def extract_pages(path: str, start_page: int, end_page: int) -> str:
-    """
-    Extract text from [start_page, end_page] inclusive (0-based indexes).
-    """
-    reader = PdfReader(path)
-    num_pages = len(reader.pages)
-
-    start_page = max(0, start_page)
-    end_page = min(end_page, num_pages - 1)
-
-    chunks = []
-    for i in range(start_page, end_page + 1):
-        page = reader.pages[i]
-        text = page.extract_text() or ""
-        chunks.append(f"\n\n--- PAGE {i+1} ---\n{text}")
-
-    return "\n".join(chunks)
-
-
-async def all_divisions(start_page: int, end_page: int):
-    pdf_path = os.path.join(
-        os.path.dirname(__file__),
-        "example_spec.pdf",
-    )
-
+async def all_divisions(pdf_path: str, start_page: int, end_page: int) -> DivisionBreakdown:
     # 🔹 Start small: first 3–5 pages so you don't blow the context window
-    spec_text = await extract_pages(pdf_path, start_page=start_page, end_page=end_page)
+    spec_pages = await rasterize_pdf(pdf_path, dpi=200, start_page=start_page, end_page=end_page)
 
-    logger.info(f"Pages: {start_page} to {end_page}, Extracted characters: {len(spec_text)}")
+    logger.info(f"Pages: {start_page} to {end_page}")
     # print(spec_text[:1000])  # uncomment if you want to sanity-check the raw text
 
-    result = await division_detection(spec_text, start_page=start_page, end_page=end_page, character_count=len(spec_text))
+    result = await division_detection(spec_pages, start_page=start_page, end_page=end_page)
 
     # result is a Pydantic model; dump it as pretty JSON
     return result
 
-# result = asyncio.run(division_detection_wrapper(start_page=0, end_page=15))
-# print(result)
+result = asyncio.run(all_divisions(pdf_path="example_spec.pdf", start_page=0, end_page=10))
+print(result)

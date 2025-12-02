@@ -1,9 +1,8 @@
 from pypdf import PdfReader
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
-from collections import defaultdict
 from pydantic import BaseModel, Field
-import os, logging, re, asyncio, json, base64, fitz
+import os, logging, json, base64, fitz
 from typing import Optional, Tuple, List
 
 load_dotenv()
@@ -160,15 +159,17 @@ Do NOT invent values that are not present. It's OK to leave value or units null.
 Only return valid JSON.
 """
 
-    resp = await client.beta.chat.completions.parse(
+    res = await client.beta.chat.completions.parse(
         model="gpt-4.1-mini",
         response_format=SubmittalSpecs,
         messages=[
             {"role": "user", "content": prompt + "\n\nTEXT:\n" + page_text}
         ],
+        temperature=0.0
     )
 
-    specs = resp.choices[0].message.parsed
+    result = res.choices[0].message
+    specs = result.parsed if hasattr(result, "parsed") else json.loads(result.content)
     for p in specs.products:
         p.document_pages.append(page_index)
     return specs.model_dump()
@@ -181,16 +182,24 @@ You are reading a construction submittal (any trade: masonry, doors, HVAC, elect
 From this PAGE IMAGE, extract ALL visible products and technical specifications
 and return them in the SubmittalSpecs schema.
 
+
 Include data from:
 - product data sheets
 - test reports
 - manufacturer letters
 - certification tables
 
+Rules:
+- If the product is not clear, infer the closest match from visible text.
+- Include standards (ASTM, ANSI, UL, NFPA) wherever they appear.
+- Include performance values (compressive strength, R-values, etc.)
+- Never hallucinate missing info — only extract what's visible.
+- Include all relevant data even if partially cut off.
+
 Only return valid JSON.
 """
 
-    resp = await client.beta.chat.completions.parse(
+    res = await client.beta.chat.completions.parse(
         model="gpt-4.1",
         response_format=SubmittalSpecs,
         messages=[
@@ -202,14 +211,16 @@ Only return valid JSON.
                         "type": "image_url",
                         "image_url": {
                             "url": "data:image/png;base64," + base64.b64encode(image_bytes).decode("utf-8")
-                        },
-                    },
-                ],
+                        }
+                    }
+                ]
             }
         ],
+        temperature=0.0
     )
 
-    specs = resp.choices[0].message.parsed
+    result = res.choices[0].message
+    specs = result.parsed if hasattr(result, "parsed") else None
     for p in specs.products:
         p.document_pages.append(page_index)
     return specs.model_dump()

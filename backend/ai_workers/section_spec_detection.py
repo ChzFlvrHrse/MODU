@@ -1,10 +1,13 @@
-import os, logging, re, asyncio, json
-from typing import Optional, Tuple
+from pathlib import Path
 from pypdf import PdfReader
-from openai import AsyncOpenAI
 from dotenv import load_dotenv
+from openai import AsyncOpenAI
+from typing import Optional, Tuple
+import os, logging, re, asyncio, sys
 from pydantic import BaseModel, Field
-from division_detection_result import division_detection_result
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from helper_functions.rasterization import rasterize_pdf
 
 load_dotenv()
 
@@ -202,7 +205,6 @@ async def extract_section_requirements(
     )
 
     return response.choices[0].message.parsed
-
 
 async def analyze_section(pdf_path: str, section_number: str, section_title: str = "") -> Optional[SectionSpecSummary]:
     # Step 1: Find the pages containing this section
