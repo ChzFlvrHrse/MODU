@@ -18,7 +18,6 @@ logger = logging.getLogger(__name__)
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def spec_section_detection_text(spec_pages: list[HybridPage], section_number: str, section_title: str) -> set[str]:
-    num_pages = len(spec_pages)
     pattern_number = re.compile(rf"\b{re.escape(section_number)}\b")
     pattern_title = re.compile(rf"\b{re.escape(section_title)}\b")
     # pattern = re.compile(rf"\b{re.escape(section_number)}\s*-\s*\d+\b")
