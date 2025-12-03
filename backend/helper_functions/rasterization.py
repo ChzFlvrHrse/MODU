@@ -89,54 +89,54 @@ def hybrid_pdf(
     finally:
         doc.close()
 
-# def rasterize_pdf(
-#     pdf_path: str,
-#     dpi: int = 200,
-#     start_index: int = 0,
-#     end_index: int = None,
-#     grayscale: bool = True
-# ) -> Iterator[dict[int, bytes]]:
-#     doc = fitz.open(pdf_path)
-#     num_pages = len(doc)
+def rasterize_pdf(
+    pdf_path: str,
+    dpi: int = 200,
+    start_index: int = 0,
+    end_index: int = None,
+    grayscale: bool = True
+) -> Iterator[dict[int, bytes]]:
+    doc = fitz.open(pdf_path)
+    num_pages = len(doc)
 
-#     if num_pages == 0:
-#         raise ValueError("Document has no pages")
-#     if start_index < 0:
-#         raise ValueError("Start index must be greater than or equal to 0")
-#     if end_index is not None and end_index < 0:
-#         raise ValueError("End index must be greater than or equal to 0")
-#     if end_index is not None and end_index >= num_pages:
-#         raise ValueError("End index must be less than the number of pages in the document")
+    if num_pages == 0:
+        raise ValueError("Document has no pages")
+    if start_index < 0:
+        raise ValueError("Start index must be greater than or equal to 0")
+    if end_index is not None and end_index < 0:
+        raise ValueError("End index must be greater than or equal to 0")
+    if end_index is not None and end_index >= num_pages:
+        raise ValueError("End index must be less than the number of pages in the document")
 
-#     try:
-#         start = max(0, start_index)
-#         stop = min(num_pages - 1, end_index) if end_index is not None else num_pages - 1
+    try:
+        start = max(0, start_index)
+        stop = min(num_pages - 1, end_index) if end_index is not None else num_pages - 1
 
-#         if start > stop:
-#             raise ValueError("Start index must be less than or equal to end index")
+        if start > stop:
+            raise ValueError("Start index must be less than or equal to end index")
 
-#         zoom = dpi / 72
-#         mat = fitz.Matrix(zoom, zoom)
-#         colorspace = fitz.csGRAY if grayscale else fitz.csRGB
+        zoom = dpi / 72
+        mat = fitz.Matrix(zoom, zoom)
+        colorspace = fitz.csGRAY if grayscale else fitz.csRGB
 
-#         for page_index in range(start, stop + 1):
-#             try:
-#                 page = doc.load_page(page_index)
-#                 pix = page.get_pixmap(matrix=mat, alpha=False, colorspace=colorspace)
-#                 png_bytes = pix.tobytes("png")
+        for page_index in range(start, stop + 1):
+            try:
+                page = doc.load_page(page_index)
+                pix = page.get_pixmap(matrix=mat, alpha=False, colorspace=colorspace)
+                png_bytes = pix.tobytes("png")
 
-#                 logger.info(
-#                     "Rasterized page %d/%d (dpi=%d, size=%dx%d)",
-#                     page_index,
-#                     num_pages - 1,
-#                     dpi,
-#                     pix.width,
-#                     pix.height
-#                 )
+                logger.info(
+                    "Rasterized page %d/%d (dpi=%d, size=%dx%d)",
+                    page_index,
+                    num_pages - 1,
+                    dpi,
+                    pix.width,
+                    pix.height
+                )
 
-#                 yield {"page_index": page_index, "bytes": png_bytes}
-#             except Exception as e:
-#                 logger.error(f"Error rasterizing page {page_index}: {e}")
-#                 continue
-#     finally:
-#         doc.close()
+                yield {"page_index": page_index, "bytes": png_bytes}
+            except Exception as e:
+                logger.error(f"Error rasterizing page {page_index}: {e}")
+                continue
+    finally:
+        doc.close()
