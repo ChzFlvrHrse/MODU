@@ -36,7 +36,7 @@ class DivisionBreakdown(BaseModel):
     divisions_detected: list[Division] = Field(description="A list of detected divisions", default=[])
     notes: str = Field(description="Any uncertainty or questions", default="")
 
-async def division_detection_ai(spec_pages: list[dict[int, bytes]], start_page: int, end_page: int) -> DivisionBreakdown:
+async def division_detection_ai(spec_pages: list[dict[int, bytes]]) -> dict:
     response = await client.beta.chat.completions.parse(
         model="gpt-4.1",
         messages=[
@@ -63,19 +63,44 @@ async def division_detection_ai(spec_pages: list[dict[int, bytes]], start_page: 
     # Convert DivisionBreakdown to JSON dict
     res = json.loads(json.dumps({**response.choices[0].message.parsed.model_dump()}))
 
-    return {"source": {"page_range": f"page {start_page} to page {end_page}"}, **res}
+    # return {"source": {"page_range": f"page {start_page} to page {end_page}"}, **res}
+    return res
 
-async def all_divisions(pdf_path: str, start_page: int, end_page: int) -> DivisionBreakdown:
-    # 🔹 Start small: first 3–5 pages so you don't blow the context window
-    spec_pages = await rasterize_pdf(pdf_path, dpi=200, start_page=start_page, end_page=end_page)
+async def divisions(
+    pdf_path: str,
+    batch_size: int = 10,
+    dpi: int = 200,
+    start_index: int = 0,
+    end_index: int = 10
+) -> list[dict]:
+    detected_divisions: list[dict] = []
+    batch: list[dict[int, bytes]] = []
 
-    logger.info(f"Pages: {start_page} to {end_page}")
-    # print(spec_text[:1000])  # uncomment if you want to sanity-check the raw text
+    if batch_size > 20:
+        raise ValueError("Batch size must be less than or equal to 20")
 
-    result = await division_detection_ai(spec_pages, start_page=start_page, end_page=end_page)
+    async for page in rasterize_pdf(pdf_path, dpi=dpi, start_index=start_index, end_index=end_index):
+        batch.append(page)
+        if len(batch) >= batch_size:
+            div = await division_detection_ai(batch)
+            div_dict = div["divisions_detected"]
+            detected_divisions.extend(div_dict)
 
-    # result is a Pydantic model; dump it as pretty JSON
-    return result
+            logger.info("Divisions: ", {"".join([f"{item['division_code']} - {item['division_title']}" for item in div_dict])})
+            logger.info(f"Divisions detected: {len(detected_divisions)}")
 
-result = asyncio.run(all_divisions(pdf_path="example_spec.pdf", start_page=0, end_page=10))
+            batch = []
+
+    if batch:
+        div = await division_detection_ai(batch)
+        div_dict = div["divisions_detected"]
+        detected_divisions.extend(div_dict)
+
+        logger.info("Divisions: ", {"".join([f"{item['division_code']} - {item['division_title']}" for item in div_dict])})
+        logger.info(f"Total detected divisions: {len(detected_divisions)}")
+
+    return detected_divisions
+
+
+result = asyncio.run(divisions(pdf_path="example_spec.pdf", batch_size=5, dpi=200, start_index=0, end_index=10))
 print(result)

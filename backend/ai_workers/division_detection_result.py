@@ -6,7 +6,7 @@ division_detection_result = {
     "divisions_detected": [
         {
             "division_code": "00",
-            "division_name": "Procurement and Contracting Requirements",
+            "division_title": "Procurement and Contracting Requirements",
             "section": [
                 {
                     "section_number": "000003",
@@ -33,7 +33,7 @@ division_detection_result = {
         },
         {
             "division_code": "01",
-            "division_name": "General Requirements",
+            "division_title": "General Requirements",
             "section": [
                 {
                     "section_number": "012200",
@@ -84,7 +84,7 @@ division_detection_result = {
         },
         {
             "division_code": "03",
-            "division_name": "Concrete",
+            "division_title": "Concrete",
             "section": [
                 {
                     "section_number": "033000",
@@ -99,7 +99,7 @@ division_detection_result = {
         },
         {
             "division_code": "04",
-            "division_name": "Masonry",
+            "division_title": "Masonry",
             "section": [
                 {
                     "section_number": "042000",
@@ -122,7 +122,7 @@ division_detection_result = {
         },
         {
             "division_code": "05",
-            "division_name": "Metals",
+            "division_title": "Metals",
             "section": [
                 {
                     "section_number": "051200",
@@ -149,7 +149,7 @@ division_detection_result = {
         },
         {
             "division_code": "06",
-            "division_name": "Wood, Plastics, and Composites",
+            "division_title": "Wood, Plastics, and Composites",
             "section": [
                 {
                     "section_number": "061000",
@@ -167,7 +167,7 @@ division_detection_result = {
         },
         {
             "division_code": "07",
-            "division_name": "Thermal and Moisture Protection",
+            "division_title": "Thermal and Moisture Protection",
             "section": [
                 {
                     "section_number": "071300",
@@ -228,7 +228,7 @@ division_detection_result = {
         },
         {
             "division_code": "08",
-            "division_name": "Openings",
+            "division_title": "Openings",
             "section": [
                 {
                     "section_number": "081113",
@@ -277,7 +277,7 @@ division_detection_result = {
         },
         {
             "division_code": "09",
-            "division_name": "Finishes",
+            "division_title": "Finishes",
             "section": [
                 {
                     "section_number": "092116",
@@ -330,7 +330,7 @@ division_detection_result = {
         },
         {
             "division_code": "10",
-            "division_name": "Specialties",
+            "division_title": "Specialties",
             "section": [
                 {
                     "section_number": "102236",
@@ -348,7 +348,7 @@ division_detection_result = {
         },
         {
             "division_code": "12",
-            "division_name": "Furnishings",
+            "division_title": "Furnishings",
             "section": [
                 {
                     "section_number": "122413",
@@ -366,7 +366,7 @@ division_detection_result = {
         },
         {
             "division_code": "13",
-            "division_name": "Special Construction",
+            "division_title": "Special Construction",
             "section": [
                 {
                     "section_number": "133413",
@@ -379,7 +379,7 @@ division_detection_result = {
         },
         {
             "division_code": "21",
-            "division_name": "Fire Suppression",
+            "division_title": "Fire Suppression",
             "section": [
                 {
                     "section_number": "210000",
@@ -422,7 +422,7 @@ division_detection_result = {
         },
         {
             "division_code": "22",
-            "division_name": "Plumbing",
+            "division_title": "Plumbing",
             "section": [
                 {
                     "section_number": "220000",
@@ -526,7 +526,7 @@ division_detection_result = {
         },
         {
             "division_code": "23",
-            "division_name": "Heating, Ventilating, and Air Conditioning (HVAC)",
+            "division_title": "Heating, Ventilating, and Air Conditioning (HVAC)",
             "section": [
                 {
                     "section_number": "230000",
@@ -642,7 +642,7 @@ division_detection_result = {
         },
         {
             "division_code": "26",
-            "division_name": "Electrical",
+            "division_title": "Electrical",
             "section": [
                 {
                     "section_number": "260000",
@@ -795,7 +795,7 @@ division_detection_result = {
         },
         {
             "division_code": "27",
-            "division_name": "Communications",
+            "division_title": "Communications",
             "section": [
                 {
                     "section_number": "270000",
@@ -862,7 +862,7 @@ division_detection_result = {
         },
         {
             "division_code": "28",
-            "division_name": "Electronic Safety and Security",
+            "division_title": "Electronic Safety and Security",
             "section": [
                 {
                     "section_number": "284621",

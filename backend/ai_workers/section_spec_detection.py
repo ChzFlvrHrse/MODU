@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from typing import Optional, Tuple
 from pydantic import BaseModel, Field
+from typing import AsyncIterator, TypedDict
 import os, logging, re, asyncio, sys, base64, json
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -251,9 +252,6 @@ client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 # result = asyncio.run(analyze_section(pdf_path, section_number, section_title))
 # print(result)
 
-class SectionPageDetection(BaseModel):
-    page_index: int = Field(description="The page index where the section number and/or section title is present")
-
 class SectionSpecList(BaseModel):
     pages: list[int] = Field(description="All pages that contain the section number and/or section title")
 
@@ -305,18 +303,41 @@ async def section_spec_detection_ai(rasterized_pages: list[dict[int, bytes]], se
 
     return json.loads(json.dumps(response.choices[0].message.parsed.model_dump()))["pages"]
 
-async def all_pages_of_section_specs(rasterized_pages: list[dict[int, bytes]], section_number: str, section_title: str, batch_size: int = 20) -> list[int]:
-    pages = []
+async def all_pages_of_section_specs(
+    pdf_path: str,
+    section_number: str,
+    section_title: str,
+    batch_size: int = 20,
+    dpi: int = 200,
+    start_index: int = 0,
+    end_index: int = None
+) -> list[int]:
+    detected_pages: list[int] = []
+    batch: list[dict[int, bytes]] = []
 
-    for i in range(0, len(rasterized_pages), batch_size):
-        batch = rasterized_pages[i:i+batch_size]
-        pages.extend(await section_spec_detection_ai(batch, section_number=section_number, section_title=section_title))
-    return pages
+    if batch_size > 20:
+        raise ValueError("Batch size must be less than or equal to 20")
 
+    async for page in rasterize_pdf(pdf_path, dpi=dpi, start_index=start_index, end_index=end_index):
+        batch.append(page)
+        if len(batch) >= batch_size:
+            detected_pages.extend(await section_spec_detection_ai(batch, section_number=section_number, section_title=section_title))
+            logger.info(f"Detected pages: {detected_pages}, Total pages: {len(detected_pages)}")
+            batch = []
+
+    if batch:
+        detected_pages.extend(await section_spec_detection_ai(batch, section_number=section_number, section_title=section_title))
+        logger.info(f"Detected pages: {detected_pages}")
+
+    return detected_pages
+
+pdf_path = "example_spec.pdf"
 section_number = "013113"
 section_title = "COORDINATION DRAWINGS"
-pdf_path = "example_spec.pdf"
-rasterized_pages = rasterize_pdf(pdf_path, dpi=200, start_page=88, end_page=103)
-print(rasterized_pages)
-# section_specs = asyncio.run(section_spec_detection_ai(rasterized_pages, section_number=section_number, section_title=section_title))
-# print(section_specs)
+batch_size = 20
+dpi = 200
+start_page = 0
+end_page = None
+
+result = asyncio.run(all_pages_of_section_specs(pdf_path, section_number, section_title, batch_size, dpi, start_page, end_page))
+print(result)
