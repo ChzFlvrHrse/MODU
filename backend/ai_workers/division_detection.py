@@ -86,7 +86,8 @@ async def divisions(
             div_dict = div["divisions_detected"]
             detected_divisions.extend(div_dict)
 
-            logger.info("Divisions: ", {"".join([f"{item['division_code']} - {item['division_title']}" for item in div_dict])})
+            division_log_string = " | ".join([f"{item['division_code']} - {item['division_title']}" for item in div_dict])
+            logger.info(f"Divisions: {division_log_string}")
             logger.info(f"Divisions detected: {len(detected_divisions)}")
 
             batch = []
@@ -96,11 +97,12 @@ async def divisions(
         div_dict = div["divisions_detected"]
         detected_divisions.extend(div_dict)
 
-        logger.info("Divisions: ", {"".join([f"{item['division_code']} - {item['division_title']}" for item in div_dict])})
+        division_log_string = " | ".join([f"{item['division_code']} - {item['division_title']}" for item in div_dict])
+        logger.info(f"Divisions: {division_log_string}")
         logger.info(f"Total detected divisions: {len(detected_divisions)}")
 
     return detected_divisions
 
 
 result = asyncio.run(divisions(pdf_path="example_spec.pdf", batch_size=5, dpi=200, start_index=0, end_index=10))
-print(result)
+# print(result)
