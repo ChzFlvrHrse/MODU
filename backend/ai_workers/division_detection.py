@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 import os, json, logging, sys, base64, asyncio
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from helper_functions.rasterization import rasterize_pdf
+from helper_functions.rasterization import hybrid_pdf, HybridPage
 
 load_dotenv()
 
@@ -36,7 +36,7 @@ class DivisionBreakdown(BaseModel):
     divisions_detected: list[Division] = Field(description="A list of detected divisions", default=[])
     notes: str = Field(description="Any uncertainty or questions", default="")
 
-async def division_detection_ai(spec_pages: list[dict[int, bytes]], previous_divisions_detected: list[str]) -> dict:
+async def division_detection_ai(spec_pages: list[HybridPage], previous_divisions_detected: list[str]) -> dict:
 
     if previous_divisions_detected:
         most_recent_division = previous_divisions_detected[-1]
@@ -44,6 +44,8 @@ async def division_detection_ai(spec_pages: list[dict[int, bytes]], previous_div
     else:
         previous_divisions_detected = "No divisions detected in previous pages"
         most_recent_division = None
+
+    text_or_image = [{"type": "text", "text": page['text']} if page['text'] else {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{base64.b64encode(page['bytes']).decode('utf-8')}"}} for page in spec_pages]
 
     response = await client.beta.chat.completions.parse(
         model="gpt-4.1",
@@ -65,7 +67,7 @@ async def division_detection_ai(spec_pages: list[dict[int, bytes]], previous_div
                 "role": "user",
                 "content": [
                     {"type": "text", "text": "Analyze the following pages of a spec sheet and detect which CSI divisions are present."},
-                    *[{"type": "image_url", "image_url": {"url": f"data:image/png;base64,{base64.b64encode(page['bytes']).decode('utf-8')}"}} for page in spec_pages]
+                    *text_or_image
                 ]
             }
         ],
@@ -108,10 +110,12 @@ def division_duplication_check(divisions_detected: list[dict]) -> list[dict]:
 async def divisions(
     pdf_path: str,
     batch_size: int = 10,
+    char_threshold: int = 800,
     dpi: int = 200,
     start_index: int = 0,
     end_index: int = 10
 ) -> list[dict]:
+
     detected_divisions: list[dict] = []
     batch: list[dict[int, bytes]] = []
     divisions_detected: list[str] = []
@@ -119,7 +123,7 @@ async def divisions(
     if batch_size > 20:
         raise ValueError("Batch size must be less than or equal to 20")
 
-    async for page in rasterize_pdf(pdf_path, dpi=dpi, start_index=start_index, end_index=end_index):
+    for page in hybrid_pdf(pdf_path, dpi=dpi, char_threshold=char_threshold, start_index=start_index, end_index=end_index):
         batch.append(page)
         if len(batch) >= batch_size:
             div = await division_detection_ai(batch, divisions_detected)
@@ -143,6 +147,5 @@ async def divisions(
 
     return division_duplication_check(detected_divisions)
 
-
-result = asyncio.run(divisions(pdf_path="example_spec.pdf", batch_size=4, dpi=200, start_index=0, end_index=4))
-print(result)
+# result = asyncio.run(divisions(pdf_path="example_spec.pdf", batch_size=5, char_threshold=300, dpi=200, start_index=0, end_index=10))
+# print(result)

@@ -339,5 +339,5 @@ dpi = 200
 start_page = 0
 end_page = None
 
-result = asyncio.run(all_pages_of_section_specs(pdf_path, section_number, section_title, batch_size, dpi, start_page, end_page))
-print(result)
+# result = asyncio.run(all_pages_of_section_specs(pdf_path, section_number, section_title, batch_size, dpi, start_page, end_page))
+# print(result)
