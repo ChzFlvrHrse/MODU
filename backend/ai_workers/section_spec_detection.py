@@ -1,11 +1,8 @@
-from typing import Any
-
-
 from pathlib import Path
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
-import os, logging, re, sys, base64, json, asyncio
+import os, logging, re, sys, base64, json, asyncio, fitz
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from helper_functions.rasterization import hybrid_pdf, HybridPage
@@ -106,6 +103,7 @@ async def section_spec_detection(
     char_threshold: int = 800,
     batch_size: int = 20,
     dpi: int = 200,
+    grayscale: bool = True,
     start_index: int = 0,
     end_index: int = None
 ) -> list[int]:
@@ -115,7 +113,7 @@ async def section_spec_detection(
     if batch_size > 20:
         raise ValueError("Batch size must be less than or equal to 20")
 
-    for page in hybrid_pdf(pdf_path, dpi=dpi, char_threshold=char_threshold, start_index=start_index, end_index=end_index):
+    for page in hybrid_pdf(pdf_path, dpi=dpi, char_threshold=char_threshold, grayscale=grayscale, start_index=start_index, end_index=end_index):
         batch.append(page)
         if len(batch) >= batch_size:
             detected_pages.extend(await spec_section_pages(batch, section_number=section_number, section_title=section_title))
@@ -132,13 +130,12 @@ pdf_path = "example_spec.pdf"
 section_number = "013113"
 section_title = "COORDINATION DRAWINGS"
 batch_size = 5
-char_threshold = 300
+# char_threshold = 0
 dpi = 200
-start_page = 88
-end_page = 103
+grayscale = False
+start_page = 9
+end_page = 9
 
-# rasterize = hybrid_pdf(pdf_path, dpi=dpi, char_threshold=char_threshold, start_index=start_page, end_index=end_page)
-# for page in rasterize:
-#     print(page['page_index'])
-# result = asyncio.run(section_spec_detection(pdf_path, section_number, section_title, char_threshold, batch_size, dpi, start_page, end_page))
-# print(result)
+rasterize = hybrid_pdf(pdf_path, dpi=dpi, grayscale=grayscale, start_index=start_page, end_index=end_page)
+for page in rasterize:
+    print(page)

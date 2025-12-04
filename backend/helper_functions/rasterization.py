@@ -38,17 +38,18 @@ def rasterize_page(
     )
     return png_bytes
 
-def get_text(doc: fitz.Document, page_index: int) -> str:
-    page = doc.load_page(page_index)
+def get_text(page: fitz.Page) -> str:
     return page.get_text("text").strip()
+
+def check_pdf_for_images(page: fitz.Page) -> bool:
+    return len(page.get_images(full=True)) > 0
 
 def hybrid_pdf(
     pdf_path: str,
     dpi: int = 200,
-    char_threshold: int = 100,
+    grayscale: bool = True,
     start_index: int = 0,
-    end_index: int = None,
-    grayscale: bool = True
+    end_index: int = None
 ) -> Iterator[HybridPage]:
 
     doc = fitz.open(pdf_path)
@@ -72,23 +73,40 @@ def hybrid_pdf(
 
         for page_index in range(start, stop + 1):
             try:
-                text = get_text(doc, page_index)
+                page = doc.load_page(page_index)
+                print(page.get_images(full=True))
 
-                # Cleaned only for character count threshold check
+                text = get_text(page)
                 clean_text = text.replace(" ", "").replace("\n", " ")
 
-                if len(clean_text) >= char_threshold:
-                    logger.info(f"Page {page_index} has {len(clean_text)} characters, skipping rasterization")
-                    yield {"page_index": page_index, "text": text, "bytes": None}
-                else:
-                    logger.info(f"Page {page_index} has {len(clean_text)} characters, rasterizing")
-                    yield {"page_index": page_index, "text": None, "bytes": rasterize_page(doc, page_index, dpi, grayscale=grayscale)}
+                has_text = len(clean_text) > 0
+                has_image = check_pdf_for_images(page)
+
+                logger.info("Text Present: %s, Image Present: %s", has_text, has_image)
+
+                yield{
+                    "page_index": page_index,
+                    "text": text if has_text else None,
+                    "bytes": rasterize_page(doc, page_index, dpi, grayscale=grayscale) if has_image else None
+                }
             except ValueError as e:
                 logger.error(f"Error processing page {page_index}: {e}")
                 continue
     finally:
         doc.close()
 
+def ingest_pdf_to_hybrid_pages(
+    pdf_path: str,
+    dpi: int = 200,
+    char_threshold: int = 100,
+    start_index: int = 0,
+    end_index: int = None,
+    grayscale: bool = True
+) -> list[HybridPage]:
+    return list(hybrid_pdf(pdf_path=pdf_path, dpi=dpi, char_threshold=char_threshold, start_index=start_index, end_index=end_index, grayscale=grayscale))
+
+# generate iterator of page indices and bytes
+# CURRENTLY NOT USED
 def rasterize_pdf(
     pdf_path: str,
     dpi: int = 200,
