@@ -48,6 +48,7 @@ def hybrid_pdf(
     pdf_path: str,
     dpi: int = 200,
     grayscale: bool = True,
+    rasterize_all: bool = False,
     start_index: int = 0,
     end_index: int = None
 ) -> Iterator[HybridPage]:
@@ -74,7 +75,13 @@ def hybrid_pdf(
         for page_index in range(start, stop + 1):
             try:
                 page = doc.load_page(page_index)
-                print(page.get_images(full=True))
+
+                if rasterize_all:
+                    yield{
+                        "page_index": page_index,
+                        "text": None,
+                        "bytes": rasterize_page(doc, page_index, dpi, grayscale=grayscale)
+                    }
 
                 text = get_text(page)
                 clean_text = text.replace(" ", "").replace("\n", " ")
