@@ -1,10 +1,13 @@
 from pathlib import Path
 from quart_cors import cors
+from aws.s3_buckets import S3Bucket
 import os, logging, asyncio, sys, uuid
 from quart import Quart, request, jsonify
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from helper_functions.rasterization import s3_bucket_uploader
+from classes.pdf_page_converter import PDFPageConverter
+
+pdf_page_converter = PDFPageConverter()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -19,9 +22,10 @@ quart_app = cors(
     allow_methods=["GET", "POST", "DELETE", "UPDATE", "PUT", "PATCH"]
 )
 
-# Upload PDF to S3 bucket
-@quart_app.route("/upload_s3", methods=["POST"])
-async def upload_pdf():
+# Upload PDF directly to S3 bucket
+@quart_app.route("/upload_to_s3", methods=["POST"])
+async def upload_to_s3():
+    s3 = S3Bucket()
     files = await request.files
     pdf = files.get("pdf")
 
@@ -31,18 +35,19 @@ async def upload_pdf():
     if not pdf.filename.endswith(".pdf"):
         return jsonify({"error": "Invalid file type. Please upload a PDF file."}), 400
 
-    spec_id = pdf.filename[:-4]
+    # spec_id = pdf.filename[:-4]
+    spec_id = str(uuid.uuid4())
 
-    loop = asyncio.get_event_loop()
-    uploaded_result = loop.run_in_executor(
+    loop = asyncio.get_running_loop()
+    original_pdf_upload_result = await loop.run_in_executor(
         None,
-        lambda: s3_bucket_uploader(
-            pdf_path=pdf.stream,
+        lambda: s3.upload_original_pdf_to_s3(
+            file=pdf,
+            file_name=pdf.filename,
             spec_id=spec_id,
-            grayscale=False,
         )
     )
 
-    return jsonify({"uploaded_result": uploaded_result}), 200
+    return jsonify(original_pdf_upload_result), original_pdf_upload_result["status_code"]
 
 quart_app.run()

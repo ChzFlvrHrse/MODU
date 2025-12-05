@@ -1,25 +1,19 @@
-from itertools import repeat
-from aws.s3_buckets import S3Bucket
+import fitz, logging, dotenv
+# from aws.s3_buckets import S3Bucket
 from typing import Iterator, Optional
-import fitz, logging, dotenv, datetime
-from concurrent.futures import ThreadPoolExecutor
-from classes.typed_dicts import HybridPage, PdfPageConverterResult
+from classes.typed_dicts import HybridPage
 
 dotenv.load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-s3 = S3Bucket()
+# s3 = S3Bucket()
 
 class PDFPageConverter:
     """
     Handles converting PDF pages to text/images and uploading them to S3.
     """
-
-    def __init__(self) -> None:
-        self.s3 = S3Bucket()
-
     # ---------- Low-level helpers ----------
 
     def rasterize_page(self, doc: fitz.Document, page_index: int, dpi: int = 200, grayscale: bool = False) -> bytes:
@@ -27,6 +21,7 @@ class PDFPageConverter:
 
         if num_pages == 0:
             raise ValueError("Document has no pages")
+
         zoom = dpi / 72.0
         mat = fitz.Matrix(zoom, zoom)
         colorspace = fitz.csGRAY if grayscale else fitz.csRGB
@@ -151,82 +146,3 @@ class PDFPageConverter:
                     continue
         finally:
             doc.close()
-
-    # ---------- High-level “upload everything” method ----------
-
-    def s3_bucket_uploader(
-        self,
-        pdf_path: str,
-        spec_id: str,
-        max_workers: int = 10,
-        dpi: int = 200,
-        grayscale: bool = False,
-        rasterize_all: bool = False,
-        start_index: int = 0,
-        end_index: Optional[int] = None,
-    ) -> PdfPageConverterResult:
-        """
-        Convert a PDF into HybridPages and upload each page's
-        text/image representation to S3 using a thread pool.
-        """
-
-        bucket = self.s3.bucket_name
-        logger.info(
-            "Uploading PDF to S3 bucket: %s, spec ID: %s",
-            bucket,
-            spec_id,
-        )
-
-        start_time = datetime.datetime.now()
-        attempts: int = 0
-        successes: int = 0
-        last_page_index: Optional[int] = None
-
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            for page_result in executor.map(
-                self.s3.upload_page_to_s3,
-                self.pdf_page_converter_generator(
-                    pdf_path=pdf_path,
-                    dpi=dpi,
-                    grayscale=grayscale,
-                    rasterize_all=rasterize_all,
-                    start_index=start_index,
-                    end_index=end_index,
-                ),
-                repeat(spec_id),
-            ):
-                attempts += page_result["attempts"]
-                successes += page_result["successes"]
-                last_page_index = page_result["page_index"]
-
-        end_time = datetime.datetime.now()
-        elapsed = end_time - start_time
-        success_rate = (successes / attempts * 100) if attempts > 0 else 0.0
-
-        logger.info(
-            "Uploaded %d/%d (%.2f%%) pages to S3 bucket: %s, spec ID: %s, "
-            "runtime: %s",
-            successes,
-            attempts,
-            success_rate,
-            bucket,
-            spec_id,
-            elapsed,
-        )
-
-        return {
-            "success_rate": float(success_rate),
-            "attempted_uploads": attempts,
-            "successful_uploads": successes,
-            "runtime": str(elapsed).split(".")[0],
-            "bucket": bucket,
-            "spec_id": spec_id,
-            "dpi": dpi,
-            "grayscale": grayscale,
-            "rasterize_all": rasterize_all,
-            "start_index": start_index,
-            "end_index": last_page_index
-        }
-
-# pdf_page_converter = PDFPageConverter()
-# print(pdf_page_converter.s3_bucket_uploader(pdf_path="example_spec.pdf", spec_id="test_spec_id", start_index=0, end_index=1))
