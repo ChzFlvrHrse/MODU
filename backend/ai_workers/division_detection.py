@@ -149,5 +149,3 @@ async def divisions(
 
 # result = asyncio.run(divisions(pdf_path="example_spec.pdf", batch_size=5, char_threshold=300, dpi=200, start_index=0, end_index=10))
 # print(result)
-for page in hybrid_pdf("example_spec.pdf", dpi=200, char_threshold=312, start_index=0, end_index=2):
-    print(page)

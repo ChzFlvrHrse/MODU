@@ -118,39 +118,51 @@ def hybrid_pdf(
         doc.close()
 
 def upload_page_to_s3(page: HybridPage, spec_id: str) -> None:
-    if page['text']:
-        s3.put_object(
-            Bucket=bucket,
-            Key=f"{spec_id}/page_{page['page_index']}.txt",
-            Body=page['text'],
-            ContentType="text/plain",
-            ServerSideEncryption="AES256"
-        )
-    if page['bytes']:
-        s3.put_object(
-            Bucket=bucket,
-            Key=f"{spec_id}/page_{page['page_index']}.png",
-            Body=page['bytes'],
-            ContentType="image/png",
-            ServerSideEncryption="AES256"
-        )
+    attempts: int = 0
+    successes: int = 0
 
-# asyncio.run(
-#     pdf_to_s3_bucket(
-#         pdf_path="example_spec.pdf",
-#         bucket=bucket,
-#         spec_id="test",
-#         dpi=200,
-#         grayscale=False,
-#         rasterize_all=False,
-#         start_index=0,
-#         end_index=10
-#     )
-# )
+    if page['text']:
+        try:
+            s3.put_object(
+                Bucket=bucket,
+                Key=f"{spec_id}/{page['page_index']}.txt",
+                Body=page['text'],
+                ContentType="text/plain",
+                ServerSideEncryption="AES256"
+            )
+
+            attempts += 1
+            successes += 1
+        except Exception as e:
+            logger.error(f"Error uploading text. Spec ID: {spec_id}, page {page['page_index']}: {e}")
+            attempts += 1
+
+    if page['bytes']:
+        try:
+            s3.put_object(
+                Bucket=bucket,
+                Key=f"{spec_id}/{page['page_index']}.png",
+                Body=page['bytes'],
+                ContentType="image/png",
+                ServerSideEncryption="AES256"
+            )
+
+            attempts += 1
+            successes += 1
+        except Exception as e:
+            logger.error(f"Error uploading image. Spec ID: {spec_id}, page {page['page_index']}: {e}")
+            attempts += 1
+
+    return {
+        "page_index": page['page_index'],
+        "attempts": attempts,
+        "successes": successes
+    }
 
 async def s3_bucket_uploader(
     pdf_path: str,
     spec_id: str,
+    max_workers: int = 10,
     dpi: int = 200,
     grayscale: bool = True,
     rasterize_all: bool = False,
@@ -160,30 +172,35 @@ async def s3_bucket_uploader(
     logger.info(f"Uploading PDF to S3 bucket: {bucket}, spec ID: {spec_id}")
 
     start_time = datetime.datetime.now()
-    count = 0
+    attempts: int = 0
+    successes: int = 0
+    pages: int = 0
 
-    with ThreadPoolExecutor(max_workers=10) as exec:
-        for _ in exec.map(
+    with ThreadPoolExecutor(max_workers=max_workers) as exec:
+        for page in exec.map(
             upload_page_to_s3,
             hybrid_pdf(pdf_path, dpi, grayscale, rasterize_all, start_index, end_index),
             repeat(spec_id)
         ):
-            count += 1
+            attempts += page['attempts']
+            successes += page['successes']
+            pages += 1
 
     end_time = datetime.datetime.now()
-    logger.info(f"Uploaded {count} pages to S3 bucket: {bucket}, spec ID: {spec_id}, runtime: {end_time - start_time}")
+    logger.info(f"Uploaded {successes}/{attempts} ({successes/attempts * 100}%) pages to S3 bucket: {bucket}, spec ID: {spec_id}, runtime: {end_time - start_time}")
 
     return {
-        "successful_uploads": count,
-        # "total_indexed_pages": end_index - start_index,
-        "run_time": end_time - start_time,
-        "s3_bucket": bucket,
+        "success_rate": float((successes/attempts) * 100),
+        "successful_uploads": successes,
+        "attempts": attempts,
+        "runtime": end_time - start_time,
+        "bucket": bucket,
         "spec_id": spec_id,
         "dpi": dpi,
         "grayscale": grayscale,
         "rasterize_all": rasterize_all,
         "start_index": start_index,
-        "end_index": end_index
+        "end_index": pages
     }
 
-# asyncio.run(s3_bucket_uploader(pdf_path="example_spec.pdf", spec_id="test", dpi=200, grayscale=False, rasterize_all=False, start_index=0, end_index=None))
+print(asyncio.run(s3_bucket_uploader(pdf_path="example_spec.pdf", spec_id="test", dpi=200, grayscale=False, rasterize_all=False, start_index=0, end_index=None)))
