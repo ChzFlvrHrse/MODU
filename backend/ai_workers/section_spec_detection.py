@@ -136,6 +136,6 @@ grayscale = False
 start_page = 9
 end_page = 9
 
-rasterize = hybrid_pdf(pdf_path, dpi=dpi, grayscale=grayscale, start_index=start_page, end_index=end_page)
-for page in rasterize:
-    print(page)
+# rasterize = hybrid_pdf(pdf_path, dpi=dpi, grayscale=grayscale, start_index=start_page, end_index=end_page)
+# for page in rasterize:
+#     print(page)
