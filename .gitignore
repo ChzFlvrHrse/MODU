@@ -19,6 +19,12 @@ dist/
 build/
 *.egg
 
+# PDF files
+*.pdf
+
+# Ignore folder pdf
+pdf/
+
 # Node.js / Frontend
 node_modules/
 npm-debug.log*
