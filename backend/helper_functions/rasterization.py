@@ -184,16 +184,16 @@ async def s3_bucket_uploader(
         ):
             attempts += page['attempts']
             successes += page['successes']
-            pages += 1
+            pages = page['page_index']
 
     end_time = datetime.datetime.now()
     logger.info(f"Uploaded {successes}/{attempts} ({successes/attempts * 100}%) pages to S3 bucket: {bucket}, spec ID: {spec_id}, runtime: {end_time - start_time}")
 
     return {
         "success_rate": float((successes/attempts) * 100),
+        "attempted_uploads": attempts,
         "successful_uploads": successes,
-        "attempts": attempts,
-        "runtime": end_time - start_time,
+        "runtime": f"{end_time - start_time}".split(".")[0],
         "bucket": bucket,
         "spec_id": spec_id,
         "dpi": dpi,
@@ -203,4 +203,4 @@ async def s3_bucket_uploader(
         "end_index": pages
     }
 
-print(asyncio.run(s3_bucket_uploader(pdf_path="example_spec.pdf", spec_id="test", dpi=200, grayscale=False, rasterize_all=False, start_index=0, end_index=None)))
+print(asyncio.run(s3_bucket_uploader(pdf_path="example_spec.pdf", spec_id="test", dpi=200, grayscale=False, rasterize_all=False, start_index=0, end_index=10)))
