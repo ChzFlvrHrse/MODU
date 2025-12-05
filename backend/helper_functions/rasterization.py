@@ -1,5 +1,8 @@
-import fitz, logging, boto3, os, dotenv
+from botocore.config import Config
+from concurrent.futures import ThreadPoolExecutor
+import fitz, logging, boto3, os, dotenv, asyncio, datetime
 from typing import Iterator, Optional, TypedDict
+from itertools import repeat
 
 dotenv.load_dotenv()
 
@@ -8,9 +11,10 @@ logger = logging.getLogger(__name__)
 
 s3 = boto3.client(
     "s3",
+    config=Config(s3={"use_accelerate_endpoint": True}),
+    region_name=os.environ.get("AWS_REGION"),
     aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
-    aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
-    region_name=os.environ.get("AWS_REGION")
+    aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY")
 )
 
 bucket = os.environ.get("BUCKET_NAME")
@@ -113,9 +117,39 @@ def hybrid_pdf(
     finally:
         doc.close()
 
-def pdf_to_s3_bucket(
+def upload_page_to_s3(page: HybridPage, spec_id: str) -> None:
+    if page['text']:
+        s3.put_object(
+            Bucket=bucket,
+            Key=f"{spec_id}/page_{page['page_index']}.txt",
+            Body=page['text'],
+            ContentType="text/plain",
+            ServerSideEncryption="AES256"
+        )
+    if page['bytes']:
+        s3.put_object(
+            Bucket=bucket,
+            Key=f"{spec_id}/page_{page['page_index']}.png",
+            Body=page['bytes'],
+            ContentType="image/png",
+            ServerSideEncryption="AES256"
+        )
+
+# asyncio.run(
+#     pdf_to_s3_bucket(
+#         pdf_path="example_spec.pdf",
+#         bucket=bucket,
+#         spec_id="test",
+#         dpi=200,
+#         grayscale=False,
+#         rasterize_all=False,
+#         start_index=0,
+#         end_index=10
+#     )
+# )
+
+async def s3_bucket_uploader(
     pdf_path: str,
-    bucket: str,
     spec_id: str,
     dpi: int = 200,
     grayscale: bool = True,
@@ -123,17 +157,33 @@ def pdf_to_s3_bucket(
     start_index: int = 0,
     end_index: int = None
 ) -> None:
-    for page in hybrid_pdf(pdf_path, dpi, grayscale, rasterize_all, start_index, end_index):
-        if page['text']:
-            s3.put_object(
-                Bucket=bucket,
-                Key=f"{spec_id}/page_{page['page_index']}.txt",
-                Body=page['text']
-            )
-        if page['bytes']:
-            s3.put_object(
-                Bucket=bucket,
-                Key=f"{spec_id}/page_{page['page_index']}.png",
-                Body=page['bytes']
-            )
-    return None
+    logger.info(f"Uploading PDF to S3 bucket: {bucket}, spec ID: {spec_id}")
+
+    start_time = datetime.datetime.now()
+    count = 0
+
+    with ThreadPoolExecutor(max_workers=10) as exec:
+        for _ in exec.map(
+            upload_page_to_s3,
+            hybrid_pdf(pdf_path, dpi, grayscale, rasterize_all, start_index, end_index),
+            repeat(spec_id)
+        ):
+            count += 1
+
+    end_time = datetime.datetime.now()
+    logger.info(f"Uploaded {count} pages to S3 bucket: {bucket}, spec ID: {spec_id}, runtime: {end_time - start_time}")
+
+    return {
+        "successful_uploads": count,
+        # "total_indexed_pages": end_index - start_index,
+        "run_time": end_time - start_time,
+        "s3_bucket": bucket,
+        "spec_id": spec_id,
+        "dpi": dpi,
+        "grayscale": grayscale,
+        "rasterize_all": rasterize_all,
+        "start_index": start_index,
+        "end_index": end_index
+    }
+
+# asyncio.run(s3_bucket_uploader(pdf_path="example_spec.pdf", spec_id="test", dpi=200, grayscale=False, rasterize_all=False, start_index=0, end_index=None))
