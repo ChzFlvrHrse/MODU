@@ -1,8 +1,8 @@
 from typing import Optional
-from quart.datastructures import FileStorage
 from itertools import repeat
 from botocore.config import Config
 import boto3, os, dotenv, logging, datetime
+from quart.datastructures import FileStorage
 from concurrent.futures import ThreadPoolExecutor
 from classes.pdf_page_converter import PDFPageConverter
 from classes.typed_dicts import HybridPage, PdfPageConverterResult
@@ -154,7 +154,7 @@ class S3Bucket:
         try:
             self.s3_client().put_object(
                 Bucket=self.bucket_name,
-                Key=f"{spec_id}/{file_name}",
+                Key=f"{spec_id}/{file_name}/original",
                 Body=file.stream,
                 ContentType="application/pdf",
                 ServerSideEncryption="AES256"
