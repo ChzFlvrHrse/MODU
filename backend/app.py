@@ -1,10 +1,10 @@
 from pathlib import Path
 from quart_cors import cors
-from aws.s3_buckets import S3Bucket
+from classes.s3_buckets import S3Bucket
 import os, logging, asyncio, sys, uuid
 from quart import Quart, request, jsonify
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# sys.path.insert(0, str(Path(__file__).parent.parent))
 from classes.pdf_page_converter import PDFPageConverter
 
 pdf_page_converter = PDFPageConverter()
@@ -49,5 +49,11 @@ async def upload_to_s3():
     )
 
     return jsonify(original_pdf_upload_result), original_pdf_upload_result["status_code"]
+
+@quart_app.route("/original_pdf/<spec_id>", methods=["GET"])
+async def get_original_pdf(spec_id: str):
+    s3 = S3Bucket()
+    original_pdf = s3.get_original_pdf(spec_id)
+    return original_pdf
 
 quart_app.run()

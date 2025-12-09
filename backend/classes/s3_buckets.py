@@ -1,9 +1,9 @@
 from typing import Optional
 from itertools import repeat
 from botocore.config import Config
-import boto3, os, dotenv, logging, datetime
 from quart.datastructures import FileStorage
 from concurrent.futures import ThreadPoolExecutor
+import boto3, os, dotenv, logging, datetime
 from classes.pdf_page_converter import PDFPageConverter
 from classes.typed_dicts import HybridPage, PdfPageConverterResult
 
@@ -150,11 +150,12 @@ class S3Bucket:
             "end_index": last_page_index
         }
 
-    def upload_original_pdf_to_s3(self, file: FileStorage, file_name: str, spec_id: str):
+    def upload_original_pdf_to_s3(self, file: FileStorage, file_name: str, spec_id: str) -> dict:
         try:
             self.s3_client().put_object(
                 Bucket=self.bucket_name,
-                Key=f"{spec_id}/{file_name}/original",
+                # Key=f"{spec_id}/{file_name}/original",
+                Key=f"{spec_id}/original",
                 Body=file.stream,
                 ContentType="application/pdf",
                 ServerSideEncryption="AES256"
@@ -169,6 +170,26 @@ class S3Bucket:
             "message": "Original PDF uploaded to S3 bucket",
             "status_code": 200
         }
+
+    def get_original_pdf(self, spec_id: str) -> dict:
+        if not spec_id:
+            raise ValueError("Spec ID is required")
+        # if file_name is None:
+        #     raise ValueError("File name is required")
+
+        try:
+            # Get pdf file from S3 bucket
+            response = self.s3_client().get_object(Bucket=self.bucket_name, Key=f"{spec_id}/original")
+            return {
+                "data": response["Body"].read(),
+                "status_code": 200
+            }
+        except Exception as e:
+            logger.error(f"Error getting original PDF from S3 bucket: {e}")
+            return {
+                "data": f"Error getting original PDF from S3 bucket: {str(e)}",
+                "status_code": 400
+            }
 
     def delete_object(self, key: str):
         self.s3_client().delete_object(Bucket=self.bucket_name, Key=key)

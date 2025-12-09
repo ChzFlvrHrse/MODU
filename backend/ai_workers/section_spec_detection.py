@@ -5,7 +5,8 @@ from pydantic import BaseModel, Field
 import os, logging, re, sys, base64, json, asyncio, fitz
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from helper_functions.rasterization import hybrid_pdf, HybridPage
+from classes.pdf_page_converter import hybrid_pdf
+from classes.typed_dicts import HybridPage
 
 load_dotenv()
 

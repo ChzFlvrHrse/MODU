@@ -4,8 +4,10 @@ from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
 import os, json, logging, sys, base64, asyncio
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from helper_functions.rasterization import hybrid_pdf, HybridPage
+# sys.path.insert(0, str(Path(__file__).parent.parent))
+from classes.pdf_page_converter import hybrid_pdf, HybridPage
+from classes.typed_dicts import HybridPage
+
 
 load_dotenv()
 

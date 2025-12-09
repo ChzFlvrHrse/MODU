@@ -1,5 +1,4 @@
 import fitz, logging, dotenv
-# from aws.s3_buckets import S3Bucket
 from typing import Iterator, Optional
 from classes.typed_dicts import HybridPage
 
@@ -7,8 +6,6 @@ dotenv.load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# s3 = S3Bucket()
 
 class PDFPageConverter:
     """
