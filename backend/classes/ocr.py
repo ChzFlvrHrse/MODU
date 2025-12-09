@@ -1,5 +1,5 @@
 from PIL import Image
-import pytesseract, logging, io
+import pytesseract, logging, io, os
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -45,6 +45,5 @@ class Tesseract:
             logger.error(f"Error converting image to data: {e}")
             return {}
 
-# tesseract = Tesseract()
-# test_image = open("test.png", "rb").read()
-# print(tesseract.image_to_string(test_image))
+# class GoogleAIDocument:
+    # def __init__(self):

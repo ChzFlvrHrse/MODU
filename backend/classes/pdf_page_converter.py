@@ -49,7 +49,7 @@ class PDFPageConverter:
 
     def pdf_page_converter_generator(
         self,
-        pdf_path: str,
+        pdf: bytes,
         dpi: int = 200,
         grayscale: bool = False,
         rasterize_all: bool = False,
@@ -63,7 +63,7 @@ class PDFPageConverter:
         - Include text if present.
         """
 
-        doc = fitz.open(pdf_path)
+        doc = fitz.open(stream=pdf, filetype="pdf")
         try:
             num_pages = len(doc)
 
@@ -108,36 +108,38 @@ class PDFPageConverter:
                                 page_index,
                                 dpi=dpi,
                                 grayscale=grayscale,
-                            ),
+                            )
                         }
 
-                    text = self.get_text(page)
-                    clean_text = text.replace(" ", "").replace("\n", " ")
+                    else:
 
-                    has_text = len(clean_text) > 0
-                    has_image = self.check_pdf_for_images(page)
+                        text = self.get_text(page)
+                        clean_text = text.replace(" ", "").replace("\n", " ")
 
-                    logger.info(
-                        "Page %d: Text Present: %s, Image Present: %s",
-                        page_index,
-                        has_text,
-                        has_image,
-                    )
+                        has_text = len(clean_text) > 0
+                        has_image = self.check_pdf_for_images(page)
 
-                    yield {
-                        "page_index": page_index,
-                        "text": text if has_text else None,
-                        "bytes": (
-                            self.rasterize_page(
-                                doc,
-                                page_index,
-                                dpi=dpi,
-                                grayscale=grayscale,
-                            )
-                            if has_image
-                            else None
-                        ),
-                    }
+                        logger.info(
+                            "Page %d: Text Present: %s, Image Present: %s",
+                            page_index,
+                            has_text,
+                            has_image,
+                        )
+
+                        yield {
+                            "page_index": page_index,
+                            "text": text if has_text else None,
+                            "bytes": (
+                                self.rasterize_page(
+                                    doc,
+                                    page_index,
+                                    dpi=dpi,
+                                    grayscale=grayscale,
+                                )
+                                if has_image
+                                else None
+                            ),
+                        }
                 except ValueError as e:
                     logger.error("Error processing page %d: %s", page_index, e)
                     continue

@@ -5,9 +5,10 @@ from pydantic import BaseModel, Field
 import os, json, logging, sys, base64, asyncio
 
 # sys.path.insert(0, str(Path(__file__).parent.parent))
-from classes.pdf_page_converter import hybrid_pdf, HybridPage
+# Classes
+from classes.pdf_page_converter import PDFPageConverter
 from classes.typed_dicts import HybridPage
-
+from classes.s3_buckets import S3Bucket
 
 load_dotenv()
 
@@ -15,6 +16,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+pdf_page_converter = PDFPageConverter()
 
 class DivisionSource(BaseModel):
     page_range: str = Field(description="Start and end page numbers in the format 'page X to page Y'", default="")
@@ -38,6 +40,15 @@ class DivisionBreakdown(BaseModel):
     divisions_detected: list[Division] = Field(description="A list of detected divisions", default=[])
     notes: str = Field(description="Any uncertainty or questions", default="")
 
+def format_spec_pages(spec_pages: list[HybridPage]) -> list[dict]:
+    formatted_spec_pages = []
+    for page in spec_pages:
+        if page['text']:
+            formatted_spec_pages.append({"type": "text", "text": page['text']})
+        if page['bytes']:
+            formatted_spec_pages.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{base64.b64encode(page['bytes']).decode('utf-8')}"}})
+    return formatted_spec_pages
+
 async def division_detection_ai(spec_pages: list[HybridPage], previous_divisions_detected: list[str]) -> dict:
 
     if previous_divisions_detected:
@@ -47,7 +58,8 @@ async def division_detection_ai(spec_pages: list[HybridPage], previous_divisions
         previous_divisions_detected = "No divisions detected in previous pages"
         most_recent_division = None
 
-    text_or_image = [{"type": "text", "text": page['text']} if page['text'] else {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{base64.b64encode(page['bytes']).decode('utf-8')}"}} for page in spec_pages]
+    # text_or_image = [{"type": "text", "text": page['text']} if page['text'] else {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{base64.b64encode(page['bytes']).decode('utf-8')}"}} for page in spec_pages]
+    formatted_spec_pages = format_spec_pages(spec_pages)
 
     response = await client.beta.chat.completions.parse(
         model="gpt-4.1",
@@ -69,7 +81,7 @@ async def division_detection_ai(spec_pages: list[HybridPage], previous_divisions
                 "role": "user",
                 "content": [
                     {"type": "text", "text": "Analyze the following pages of a spec sheet and detect which CSI divisions are present."},
-                    *text_or_image
+                    *formatted_spec_pages
                 ]
             }
         ],
@@ -109,14 +121,13 @@ def division_duplication_check(divisions_detected: list[dict]) -> list[dict]:
 
     return divisions_detected
 
-async def divisions(
-    pdf_path: str,
+async def division_breakdown(
+    spec_id: str,
     batch_size: int = 10,
-    char_threshold: int = 800,
-    dpi: int = 200,
     start_index: int = 0,
     end_index: int = 10
 ) -> list[dict]:
+    s3 = S3Bucket()
 
     detected_divisions: list[dict] = []
     batch: list[dict[int, bytes]] = []
@@ -125,7 +136,7 @@ async def divisions(
     if batch_size > 20:
         raise ValueError("Batch size must be less than or equal to 20")
 
-    for page in hybrid_pdf(pdf_path, dpi=dpi, char_threshold=char_threshold, start_index=start_index, end_index=end_index):
+    for page in s3.get_converted_pages_generator(spec_id, start_index=start_index, end_index=end_index):
         batch.append(page)
         if len(batch) >= batch_size:
             div = await division_detection_ai(batch, divisions_detected)

@@ -22,4 +22,4 @@ COPY . .
 EXPOSE 8000
 
 # Run with Hypercorn (adjust module:app name!)
-CMD ["hypercorn", "app:quart_app", "-b", "0.0.0.0:8000", "--workers", "1"]
+CMD ["hypercorn", "app:quart_app", "-b", "0.0.0.0:8000", "--workers", "1", "--read-timeout", "3000", "--write-timeout", "3000"]
