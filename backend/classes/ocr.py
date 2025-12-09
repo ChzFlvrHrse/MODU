@@ -44,3 +44,7 @@ class Tesseract:
         except Exception as e:
             logger.error(f"Error converting image to data: {e}")
             return {}
+
+# tesseract = Tesseract()
+# test_image = open("test.png", "rb").read()
+# print(tesseract.image_to_string(test_image))
