@@ -1,9 +1,9 @@
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
-import os, logging, base64, asyncio
+import os, logging, base64
 from classes.s3_buckets import S3Bucket
-from typing import Optional, Tuple, List
+from typing import Optional, List
 
 load_dotenv()
 
@@ -11,6 +11,49 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+class GeneralRequirement(BaseModel):
+    title: str = Field(
+        description=(
+            "Heading or subsection title from PART 1 – GENERAL. "
+            "Examples: '1.1 REQUIREMENTS INCLUDED', '1.2 INFORMATION SIGNS', "
+            "'1.3 QUALITY ASSURANCE'."
+        )
+    )
+    requirements: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Bullet-point style requirements under this heading. "
+            "Each entry should be a single obligation, constraint, or condition, "
+            "not a paragraph with multiple unrelated ideas."
+        )
+    )
+    document_pages: List[int] = Field(
+        default_factory=list,
+        description="0-based page numbers where these general requirements appear."
+    )
+
+
+class ExecutionRequirement(BaseModel):
+    title: str = Field(
+        description=(
+            "Heading or subsection title from PART 3 – EXECUTION. "
+            "Examples: '3.1 PROJECT IDENTIFICATION SIGN', '3.2 INFORMATIONAL SIGNS', "
+            "'3.3 MAINTENANCE', '3.4 REMOVAL'."
+        )
+    )
+    steps: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Actionable execution steps / instructions. "
+            "Examples: 'Paint exposed surfaces with one coat of primer and one coat of "
+            "exterior paint.', 'Install at a height for optimum visibility.'."
+        )
+    )
+    document_pages: List[int] = Field(
+        default_factory=list,
+        description="0-based page numbers where these execution requirements appear."
+    )
 
 class Property(BaseModel):
     name: str = Field(
@@ -118,53 +161,50 @@ class ProductSpec(BaseModel):
         )
     )
 
-class ExecutionDetails(BaseModel):
-    title: str = Field(
-        default="",
-        description=(
-            "The title of the execution details. "
-            "Examples: 'Installation Details', 'Testing Requirements', 'Quality Control Requirements'."
-        )
-    )
-    details: str = Field(
-        default="",
-        description=(
-            "Any additional relevant notes or observations. "
-            "Should not repeat property names or standards — use only for supplemental context."
-        )
-    )
-
 class SpecReqs(BaseModel):
     spec_section: Optional[str] = Field(
         default=None,
         description=(
-            "The project specification section this submittal is intended to satisfy. "
-            "Usually given by the contractor: e.g., '042000', '260519'. "
-            "If unknown, leave null."
-        )
+            "The specification section number. Example: '015812', '042000', '260519'."
+        ),
     )
     project_name: Optional[str] = Field(
         default=None,
-        description="Name of the project if found within the document."
+        description="Name of the project if found within the document.",
     )
+
+    # PART 1 – GENERAL
+    general_requirements: List[GeneralRequirement] = Field(
+        default_factory=list,
+        description=(
+            "Structured representation of PART 1 - GENERAL: scope, information signs, "
+            "quality assurance, submittals, etc."
+        ),
+    )
+
+    # PART 2 – PRODUCTS
     products: List[ProductSpec] = Field(
         default_factory=list,
         description=(
-            "List of all products or materials extracted from the submittal. "
-            "Each product may span multiple pages of the document."
-        )
+            "PART 2 - PRODUCTS: all materials, systems, or assemblies with their "
+            "technical properties and standards."
+        ),
     )
-    execution_details: List[ExecutionDetails] = Field(
+
+    # PART 3 – EXECUTION
+    execution_requirements: List[ExecutionRequirement] = Field(
         default_factory=list,
         description=(
-            "List of all execution details extracted from the submittal. "
-            "Each execution details may span multiple pages of the document."
-        )
+            "PART 3 - EXECUTION: installation, application, maintenance, removal, "
+            "and other field-execution steps."
+        ),
     )
+
     notes: str = Field(
         default="",
-        description="General notes or uncertainties about the submittal extraction."
+        description="General notes or uncertainties about the extraction.",
     )
+
 
 async def extract_section_requirements_from_pages(pages: list[dict]) -> dict:
     """
@@ -183,11 +223,11 @@ async def extract_section_requirements_from_pages(pages: list[dict]) -> dict:
             "type": "text",
             "text": (
                 "You are reading multiple PAGES from a single specification SECTION.\n\n"
-                "Use ALL of the PRIMARY pages together to extract the requirements and any execution details.\n"
+                "Use ALL of the PRIMARY pages together to extract the general, product and execution details.\n"
                 "Other pages are only references to this section (TOC, cross-references) "
                 "and should be treated as secondary context.\n"
                 "Pages are labeled below.\n\n"
-                "FIRST: PRIMARY PAGES (contain the section body and requirements and any execution details).\n"
+                "FIRST: PRIMARY PAGES (contain the section body and general, product and execution details).\n"
                 "If a page includes both text and an image, the image is the same page as "
                 "the text and should only be used to supplement or correct missing text "
                 "(tables, formatting, cut-off words), not as a separate data source.\n"
@@ -291,14 +331,20 @@ def longest_contiguous_run(page_indices: list[int]) -> list[int]:
 
     best_run = []
     current_run = [page_indices[0]]
+    longest_run = 0
 
     for p in page_indices[1:]:
         if p == current_run[-1] + 1:
             current_run.append(p)
+            longest_run = len(current_run)
         else:
             if len(current_run) > len(best_run):
                 best_run = current_run
             current_run = [p]
+            longest_run = 0
+
+    if longest_run == 0:
+        return page_indices
 
     if len(current_run) > len(best_run):
         best_run = current_run
