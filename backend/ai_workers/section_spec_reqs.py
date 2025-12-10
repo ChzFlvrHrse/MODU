@@ -30,8 +30,10 @@ class Property(BaseModel):
     units: Optional[str] = Field(
         default=None,
         description=(
-            "The units for the numeric value if separable. Examples: 'psi', 'W/m²K', "
-            "'hr', 'V', 'BTU/hr'. Leave null if unclear or not present."
+            "The units for the numeric value if separable."
+            "Examples: 'psi', 'W/m²K', 'hr', 'V', 'BTU/hr', 'feet', 'inches', 'yards', 'mm', 'cm', 'm', 'pounds', 'kilograms', 'grams', 'milligrams', 'micrograms', 'nanograms', 'picograms', 'femtograms', 'attograms', 'zeptograms', 'yoctograms'. "
+            "If there are multiple units, separate them with a comma. Example: 'inches, mm' or 'pounds, kilograms'."
+            "Leave null if unclear or not present."
         )
     )
     context: Optional[str] = Field(
@@ -116,6 +118,22 @@ class ProductSpec(BaseModel):
         )
     )
 
+class ExecutionDetails(BaseModel):
+    title: str = Field(
+        default="",
+        description=(
+            "The title of the execution details. "
+            "Examples: 'Installation Details', 'Testing Requirements', 'Quality Control Requirements'."
+        )
+    )
+    details: str = Field(
+        default="",
+        description=(
+            "Any additional relevant notes or observations. "
+            "Should not repeat property names or standards — use only for supplemental context."
+        )
+    )
+
 class SpecReqs(BaseModel):
     spec_section: Optional[str] = Field(
         default=None,
@@ -136,93 +154,17 @@ class SpecReqs(BaseModel):
             "Each product may span multiple pages of the document."
         )
     )
+    execution_details: List[ExecutionDetails] = Field(
+        default_factory=list,
+        description=(
+            "List of all execution details extracted from the submittal. "
+            "Each execution details may span multiple pages of the document."
+        )
+    )
     notes: str = Field(
         default="",
         description="General notes or uncertainties about the submittal extraction."
     )
-
-# async def extract_specs_from_text_page(page_text: str, page_index: int) -> SpecReqs:
-#     prompt = """
-# You are reading a construction submittal (any trade: masonry, doors, HVAC, electrical, etc.).
-
-# Extract ALL products and their technical specifications from this text and
-# return them in the SpecReqs schema.
-
-# - products[] should include every distinct product or material.
-# - For each product, include:
-#   - product_name, manufacturer, material_category (best guess), spec_section/csi_division if shown
-#   - all applicable standards (ASTM, UL, NFPA, IES, etc.)
-#   - properties[] for any performance/value requirement (strength, R-value, U-value,
-#     size ranges, voltages, wattage, sound ratings, coatings, etc.)
-# Do NOT invent values that are not present. It's OK to leave value or units null.
-# Only return valid JSON.
-# """
-
-#     res = await client.beta.chat.completions.parse(
-#         model="gpt-4.1",
-#         response_format=SpecReqs,
-#         messages=[
-#             {"role": "user", "content": prompt + "\n\nTEXT:\n" + page_text}
-#         ],
-#         temperature=0.0
-#     )
-
-#     result = res.choices[0].message
-#     specs = result.parsed if hasattr(result, "parsed") else json.loads(result.content)
-#     for p in specs.products:
-#         p.document_pages.append(page_index)
-#     return specs.model_dump()
-
-
-# async def extract_specs_from_image_page(image_bytes: bytes, page_index: int) -> SpecReqs:
-#     prompt = """
-# You are reading a construction submittal (any trade: masonry, doors, HVAC, electrical, etc.).
-
-# From this PAGE IMAGE, extract ALL visible products and technical specifications
-# and return them in the SpecReqs schema.
-
-
-# Include data from:
-# - product data sheets
-# - test reports
-# - manufacturer letters
-# - certification tables
-
-# Rules:
-# - If the product is not clear, infer the closest match from visible text.
-# - Include standards (ASTM, ANSI, UL, NFPA) wherever they appear.
-# - Include performance values (compressive strength, R-values, etc.)
-# - Never hallucinate missing info — only extract what's visible.
-# - Include all relevant data even if partially cut off.
-
-# Only return valid JSON.
-# """
-
-#     res = await client.beta.chat.completions.parse(
-#         model="gpt-4.1",
-#         response_format=SpecReqs,
-#         messages=[
-#             {
-#                 "role": "user",
-#                 "content": [
-#                     {"type": "text", "text": prompt},
-#                     {
-#                         "type": "image_url",
-#                         "image_url": {
-#                             "url": "data:image/png;base64," + base64.b64encode(image_bytes).decode("utf-8")
-#                         }
-#                     }
-#                 ]
-#             }
-#         ],
-#         temperature=0.0
-#     )
-
-#     result = res.choices[0].message
-#     specs = result.parsed if hasattr(result, "parsed") else None
-#     for p in specs.products:
-#         p.document_pages.append(page_index)
-#     return specs.model_dump()
 
 async def extract_section_requirements_from_pages(pages: list[dict]) -> dict:
     """
@@ -241,11 +183,11 @@ async def extract_section_requirements_from_pages(pages: list[dict]) -> dict:
             "type": "text",
             "text": (
                 "You are reading multiple PAGES from a single specification SECTION.\n\n"
-                "Use ALL of the PRIMARY pages together to extract the requirements.\n"
+                "Use ALL of the PRIMARY pages together to extract the requirements and any execution details.\n"
                 "Other pages are only references to this section (TOC, cross-references) "
                 "and should be treated as secondary context.\n"
                 "Pages are labeled below.\n\n"
-                "FIRST: PRIMARY PAGES (contain the section body and requirements).\n"
+                "FIRST: PRIMARY PAGES (contain the section body and requirements and any execution details).\n"
                 "If a page includes both text and an image, the image is the same page as "
                 "the text and should only be used to supplement or correct missing text "
                 "(tables, formatting, cut-off words), not as a separate data source.\n"

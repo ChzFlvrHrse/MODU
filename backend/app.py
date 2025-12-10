@@ -37,7 +37,6 @@ async def upload_to_s3():
     if not pdf.filename.endswith(".pdf"):
         return jsonify({"error": "Invalid file type. Please upload a PDF file."}), 400
 
-    # spec_id = pdf.filename[:-4]
     spec_id = str(uuid.uuid4())
 
     loop = asyncio.get_running_loop()
@@ -56,7 +55,11 @@ async def upload_to_s3():
 async def get_original_pdf(spec_id: str):
     s3 = S3Bucket()
     original_pdf = s3.get_original_pdf(spec_id)
-    return original_pdf
+
+    if original_pdf["status_code"] != 200:
+        return jsonify({"error": original_pdf["data"]}), original_pdf["status_code"]
+
+    return jsonify(original_pdf["data"]), original_pdf["status_code"]
 
 @quart_app.route("/text_and_rasterize", methods=["POST"])
 async def text_and_rasterize():
@@ -162,6 +165,8 @@ async def section_spec_reqs():
     spec_check = s3.get_original_pdf(spec_id)
     if spec_check["status_code"] != 200:
         return jsonify({"error": "Spec ID is invalid"}), 400
+
+    logger.info(f"Section pages: {section_pages}")
 
     section_spec_reqs = await section_spec_requirements(spec_id=spec_id, section_pages=section_pages)
 
