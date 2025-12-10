@@ -1,7 +1,7 @@
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
-import os, logging, json, base64, fitz
+import os, logging, base64, asyncio
 from classes.s3_buckets import S3Bucket
 from typing import Optional, Tuple, List
 
@@ -116,7 +116,7 @@ class ProductSpec(BaseModel):
         )
     )
 
-class SubmittalSpecs(BaseModel):
+class SpecReqs(BaseModel):
     spec_section: Optional[str] = Field(
         default=None,
         description=(
@@ -141,89 +141,227 @@ class SubmittalSpecs(BaseModel):
         description="General notes or uncertainties about the submittal extraction."
     )
 
+# async def extract_specs_from_text_page(page_text: str, page_index: int) -> SpecReqs:
+#     prompt = """
+# You are reading a construction submittal (any trade: masonry, doors, HVAC, electrical, etc.).
 
-async def extract_specs_from_text_page(page_text: str, page_index: int) -> SubmittalSpecs:
+# Extract ALL products and their technical specifications from this text and
+# return them in the SpecReqs schema.
+
+# - products[] should include every distinct product or material.
+# - For each product, include:
+#   - product_name, manufacturer, material_category (best guess), spec_section/csi_division if shown
+#   - all applicable standards (ASTM, UL, NFPA, IES, etc.)
+#   - properties[] for any performance/value requirement (strength, R-value, U-value,
+#     size ranges, voltages, wattage, sound ratings, coatings, etc.)
+# Do NOT invent values that are not present. It's OK to leave value or units null.
+# Only return valid JSON.
+# """
+
+#     res = await client.beta.chat.completions.parse(
+#         model="gpt-4.1",
+#         response_format=SpecReqs,
+#         messages=[
+#             {"role": "user", "content": prompt + "\n\nTEXT:\n" + page_text}
+#         ],
+#         temperature=0.0
+#     )
+
+#     result = res.choices[0].message
+#     specs = result.parsed if hasattr(result, "parsed") else json.loads(result.content)
+#     for p in specs.products:
+#         p.document_pages.append(page_index)
+#     return specs.model_dump()
+
+
+# async def extract_specs_from_image_page(image_bytes: bytes, page_index: int) -> SpecReqs:
+#     prompt = """
+# You are reading a construction submittal (any trade: masonry, doors, HVAC, electrical, etc.).
+
+# From this PAGE IMAGE, extract ALL visible products and technical specifications
+# and return them in the SpecReqs schema.
+
+
+# Include data from:
+# - product data sheets
+# - test reports
+# - manufacturer letters
+# - certification tables
+
+# Rules:
+# - If the product is not clear, infer the closest match from visible text.
+# - Include standards (ASTM, ANSI, UL, NFPA) wherever they appear.
+# - Include performance values (compressive strength, R-values, etc.)
+# - Never hallucinate missing info — only extract what's visible.
+# - Include all relevant data even if partially cut off.
+
+# Only return valid JSON.
+# """
+
+#     res = await client.beta.chat.completions.parse(
+#         model="gpt-4.1",
+#         response_format=SpecReqs,
+#         messages=[
+#             {
+#                 "role": "user",
+#                 "content": [
+#                     {"type": "text", "text": prompt},
+#                     {
+#                         "type": "image_url",
+#                         "image_url": {
+#                             "url": "data:image/png;base64," + base64.b64encode(image_bytes).decode("utf-8")
+#                         }
+#                     }
+#                 ]
+#             }
+#         ],
+#         temperature=0.0
+#     )
+
+#     result = res.choices[0].message
+#     specs = result.parsed if hasattr(result, "parsed") else None
+#     for p in specs.products:
+#         p.document_pages.append(page_index)
+#     return specs.model_dump()
+
+async def extract_section_requirements_from_pages(pages: list[dict]) -> dict:
+    """
+    pages: list of {"page_index", "text", "bytes"} from S3/hybrid_pdf
+    Returns a single SectionRequirements/SubmittalSpecs-style dict.
+    """
+    # Split into primary + context by longest contiguous run
+    indices = [p["page_index"] for p in pages]
+    primary_indices = set(longest_contiguous_run(indices))
+
+    primary_pages = [p for p in pages if p["page_index"] in primary_indices]
+    context_pages = [p for p in pages if p["page_index"] not in primary_indices]
+
+    content_blocks = [
+        {
+            "type": "text",
+            "text": (
+                "You are reading multiple PAGES from a single specification SECTION.\n\n"
+                "Use ALL of the PRIMARY pages together to extract the requirements.\n"
+                "Other pages are only references to this section (TOC, cross-references) "
+                "and should be treated as secondary context.\n"
+                "Pages are labeled below.\n\n"
+                "FIRST: PRIMARY PAGES (contain the section body and requirements).\n"
+                "If a page includes both text and an image, the image is the same page as "
+                "the text and should only be used to supplement or correct missing text "
+                "(tables, formatting, cut-off words), not as a separate data source.\n"
+            ),
+        }
+    ]
+
+    def add_page_block(page: dict, label: str):
+        idx = page["page_index"]
+        text = page["text"]
+        bytes_ = page["bytes"]
+
+        if text:
+            content_blocks.append(
+                {
+                    "type": "text",
+                    "text": f"\n\n===== {label} PAGE {idx} START =====\n{text}\n===== {label} PAGE {idx} END =====\n",
+                }
+            )
+        if bytes_:
+            content_blocks.append(
+                {
+                    "type": "text",
+                    "text": f"\n\n===== {label} PAGE {idx} (IMAGE) START =====\n",
+                }
+            )
+            content_blocks.append(
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": "data:image/png;base64,"
+                        + base64.b64encode(bytes_).decode("utf-8")
+                    },
+                }
+            )
+            content_blocks.append(
+                {
+                    "type": "text",
+                    "text": f"\n===== {label} PAGE {idx} (IMAGE) END =====\n",
+                }
+            )
+
+    for page in primary_pages:
+        add_page_block(page, "PRIMARY")
+
+    if context_pages:
+        content_blocks.append(
+            {
+                "type": "text",
+                "text": (
+                    "\n\nNEXT: CONTEXT PAGES (TOC or cross-references; "
+                    "only use them if they help you identify the section number/title).\n"
+                ),
+            }
+        )
+        for page in context_pages:
+            add_page_block(page, "CONTEXT")
+
     prompt = """
-You are reading a construction submittal (any trade: masonry, doors, HVAC, electrical, etc.).
+You are reading a construction SPECIFICATION SECTION that may be spread across
+multiple pages.
 
-Extract ALL products and their technical specifications from this text and
-return them in the SubmittalSpecs schema.
+PRIMARY pages contain the actual body of the section and its requirements.
+CONTEXT pages are table-of-contents or cross-reference pages.
 
-- products[] should include every distinct product or material.
-- For each product, include:
-  - product_name, manufacturer, material_category (best guess), spec_section/csi_division if shown
-  - all applicable standards (ASTM, UL, NFPA, IES, etc.)
-  - properties[] for any performance/value requirement (strength, R-value, U-value,
-    size ranges, voltages, wattage, sound ratings, coatings, etc.)
-Do NOT invent values that are not present. It's OK to leave value or units null.
+Your job:
+- Treat all PRIMARY pages as one continuous section.
+- Use CONTEXT pages only to confirm the section number, title, and project name.
+- Extract all requirements/products and return a single JSON object in the given schema.
+- Merge duplicates across pages.
+
 Only return valid JSON.
 """
 
     res = await client.beta.chat.completions.parse(
         model="gpt-4.1",
-        response_format=SubmittalSpecs,
-        messages=[
-            {"role": "user", "content": prompt + "\n\nTEXT:\n" + page_text}
-        ],
-        temperature=0.0
-    )
-
-    result = res.choices[0].message
-    specs = result.parsed if hasattr(result, "parsed") else json.loads(result.content)
-    for p in specs.products:
-        p.document_pages.append(page_index)
-    return specs.model_dump()
-
-
-async def extract_specs_from_image_page(image_bytes: bytes, page_index: int) -> SubmittalSpecs:
-    prompt = """
-You are reading a construction submittal (any trade: masonry, doors, HVAC, electrical, etc.).
-
-From this PAGE IMAGE, extract ALL visible products and technical specifications
-and return them in the SubmittalSpecs schema.
-
-
-Include data from:
-- product data sheets
-- test reports
-- manufacturer letters
-- certification tables
-
-Rules:
-- If the product is not clear, infer the closest match from visible text.
-- Include standards (ASTM, ANSI, UL, NFPA) wherever they appear.
-- Include performance values (compressive strength, R-values, etc.)
-- Never hallucinate missing info — only extract what's visible.
-- Include all relevant data even if partially cut off.
-
-Only return valid JSON.
-"""
-
-    res = await client.beta.chat.completions.parse(
-        model="gpt-4.1",
-        response_format=SubmittalSpecs,
+        response_format=SpecReqs,   # or SectionRequirements if you switch
         messages=[
             {
                 "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": "data:image/png;base64," + base64.b64encode(image_bytes).decode("utf-8")
-                        }
-                    }
-                ]
+                "content": [{"type": "text", "text": prompt}, *content_blocks],
             }
         ],
-        temperature=0.0
+        temperature=0.0,
     )
 
-    result = res.choices[0].message
-    specs = result.parsed if hasattr(result, "parsed") else None
+    specs = res.choices[0].message.parsed
+
+    # Attach explicit page indices for traceability
+    all_primary_indices = [p["page_index"] for p in primary_pages]
     for p in specs.products:
-        p.document_pages.append(page_index)
+        existing = getattr(p, "document_pages", [])
+        p.document_pages = sorted(set(existing + all_primary_indices))
+
     return specs.model_dump()
+
+
+def longest_contiguous_run(page_indices: list[int]) -> list[int]:
+    if not page_indices:
+        return []
+
+    best_run = []
+    current_run = [page_indices[0]]
+
+    for p in page_indices[1:]:
+        if p == current_run[-1] + 1:
+            current_run.append(p)
+        else:
+            if len(current_run) > len(best_run):
+                best_run = current_run
+            current_run = [p]
+
+    if len(current_run) > len(best_run):
+        best_run = current_run
+
+    return best_run
 
 async def merge_submittal_results(results: list[dict]) -> dict:
     merged = {
@@ -260,35 +398,17 @@ async def merge_submittal_results(results: list[dict]) -> dict:
 
     return merged
 
-def render_page_to_png_bytes(pdf_path: str, page_num: int) -> bytes:
-    doc = fitz.open(pdf_path)
-    page = doc.load_page(page_num)
-    pix = page.get_pixmap(dpi=300)  # PyMuPDF: 300 DPI for good OCR accuracy
-    png_bytes = pix.tobytes("png")
-    return png_bytes
-
 async def section_spec_requirements(spec_id: str, section_pages: list[int]) -> dict:
     s3 = S3Bucket()
     section_pages = s3.get_section_pages(spec_id, section_pages)
-    per_page_results: list[dict] = []
 
-    for page in section_pages:
-        text = page["text"]
-        bytes = page["bytes"]
+    extracted_specs = await extract_section_requirements_from_pages(section_pages)
 
-        if text:
-            per_page_results.append(await extract_specs_from_text_page(text, page["page_index"]))
-        if bytes:
-            per_page_results.append(await extract_specs_from_image_page(bytes, page["page_index"]))
+    # return await merge_submittal_results(per_page_results)
+    return extracted_specs
 
-        logger.info(f"Extracted specs from page {page['page_index']}")
-        # if count > 2:
-        #     return await merge_submittal_results(per_page_results)
+# s3 = S3Bucket()
+# spec_id = "2ad9cd93-2a40-4b3e-a11c-e52decfe0e6c"
+# pages = [2, 76, 89, 90, 91, 92, 93, 94, 95, 96, 103]
 
-    return await merge_submittal_results(per_page_results)
-
-# section_number = "042000"
-# section_title = "UNIT MASONRY"
-# pdf_path = "042000-1 Unit Masonry Product Data.pdf"
-
-# print(asyncio.run(classify_and_extract_submittal_specs(pdf_path)))
+# print(asyncio.run(section_spec_requirements(spec_id, pages)))
