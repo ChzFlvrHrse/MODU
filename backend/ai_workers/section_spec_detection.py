@@ -23,13 +23,14 @@ class SectionSpecList(BaseModel):
 
 def spec_section_detection_text(spec_pages: list[HybridPage], section_number: str, section_title: str) -> set[str]:
     pattern_number = re.compile(rf"\b{re.escape(section_number)}\b")
-    pattern_title = re.compile(rf"\b{re.escape(section_title)}\b")
+    # pattern_title = re.compile(rf"\b{re.escape(section_title)}\b")
     # pattern = re.compile(rf"\b{re.escape(section_number)}\s*-\s*\d+\b")
 
     page_set = []
 
     for page in spec_pages:
-        if pattern_number.search(page['text']) or pattern_title.search(page['text']):
+        # if pattern_number.search(page['text']) or pattern_title.search(page['text']):
+        if pattern_number.search(page['text']):
             page_set.append(page['page_index'])
 
     return sorted([int(page) for page in page_set])

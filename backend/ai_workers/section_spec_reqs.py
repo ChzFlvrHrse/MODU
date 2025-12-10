@@ -230,7 +230,8 @@ async def extract_section_requirements_from_pages(pages: list[dict]) -> dict:
     """
     # Split into primary + context by longest contiguous run
     indices = [p["page_index"] for p in pages]
-    primary_indices = set(longest_contiguous_run(indices))
+    # primary_indices = set(longest_contiguous_run(indices))
+    primary_indices = indices
 
     primary_pages = [p for p in pages if p["page_index"] in primary_indices]
     context_pages = [p for p in pages if p["page_index"] not in primary_indices]
