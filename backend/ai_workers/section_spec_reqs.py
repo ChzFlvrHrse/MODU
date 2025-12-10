@@ -15,7 +15,7 @@ client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 class GeneralRequirement(BaseModel):
     title: str = Field(
         description=(
-            "Heading or subsection title from PART 1 – GENERAL. "
+            "Heading or subsection title from General. "
             "Examples: '1.1 REQUIREMENTS INCLUDED', '1.2 INFORMATION SIGNS', "
             "'1.3 QUALITY ASSURANCE'."
         )
@@ -37,7 +37,7 @@ class GeneralRequirement(BaseModel):
 class ExecutionRequirement(BaseModel):
     title: str = Field(
         description=(
-            "Heading or subsection title from PART 3 – EXECUTION. "
+            "Heading or subsection title from Execution. "
             "Examples: '3.1 PROJECT IDENTIFICATION SIGN', '3.2 INFORMATIONAL SIGNS', "
             "'3.3 MAINTENANCE', '3.4 REMOVAL'."
         )
@@ -60,22 +60,28 @@ class Property(BaseModel):
         description=(
             "The name of the technical property or requirement. "
             "Examples: 'compressive_strength', 'U_value', 'R_value', 'wattage', "
-            "'voltage', 'fire_rating', 'sound_transmission_class'."
+            "'voltage', 'fire_rating', 'sound_transmission_class', 'coating_type', "
+            "'finish', 'color'."
         )
     )
     value: Optional[str] = Field(
         default=None,
         description=(
-            "The reported value of the property exactly as written. "
-            "Keep as a raw string. Example: '3000 psi', '0.32', '1-hour', '120V'."
+            "The reported value of the property exactly as written in the source document. "
+            "Keep as a raw string. Example: '3000 psi', '0.32', '1-hour', '120V', "
+            "'exterior grade', 'Bulletin colors'."
         )
     )
     units: Optional[str] = Field(
         default=None,
         description=(
-            "The units for the numeric value if separable."
-            "Examples: 'psi', 'W/m²K', 'hr', 'V', 'BTU/hr', 'feet', 'inches', 'yards', 'mm', 'cm', 'm', 'pounds', 'kilograms', 'grams', 'milligrams', 'micrograms', 'nanograms', 'picograms', 'femtograms', 'attograms', 'zeptograms', 'yoctograms'. "
-            "If there are multiple units, separate them with a comma. Example: 'inches, mm' or 'pounds, kilograms'."
+            "The units for the numeric value if separable. "
+            "Examples: 'psi', 'W/m²K', 'hr', 'V', 'BTU/hr', 'feet', 'inches', 'yards', "
+            "'mm', 'cm', 'm', 'pounds', 'kilograms', 'grams', 'milligrams', "
+            "'micrograms', 'nanograms', 'picograms', 'femtograms', 'attograms', "
+            "'zeptograms', 'yoctograms'. "
+            "If there are multiple units, separate them with a comma. "
+            "Example: 'inches, mm' or 'pounds, kilograms'. "
             "Leave null if unclear or not present."
         )
     )
@@ -83,22 +89,27 @@ class Property(BaseModel):
         default=None,
         description=(
             "Additional context, test conditions, or qualifiers. "
-            "Examples: 'at 28 days', 'minimum', 'average', 'UL listed', 'ASTM tested'."
+            "Examples: 'at 28 days', 'minimum', 'average', 'UL listed', "
+            "'ASTM tested', 'sign materials – PART 2'."
         )
     )
+
 
 class ProductSpec(BaseModel):
     product_name: str = Field(
         description=(
-            "The name/model of the product or material as written in the submittal. "
-            "Examples: 'SPEC MIX Core-Fill Grout', 'York CMU', 'FireLite Door 90-Minute', "
+            "The name/model of the product, assembly, or material as written in the "
+            "specification or submittal. "
+            "Examples: 'SPEC MIX Core-Fill Grout', 'York CMU', "
+            "'Project Identification and Informational Signs', "
             "'Lutron LED Driver'."
         )
     )
     manufacturer: Optional[str] = Field(
         default=None,
         description=(
-            "The manufacturer name if present. Example: 'SPEC MIX', 'Owens Corning', 'Siemens'."
+            "The manufacturer name if present. Example: 'SPEC MIX', "
+            "'Owens Corning', 'Siemens'. Leave null if not specified."
         )
     )
     material_category: Optional[str] = Field(
@@ -106,60 +117,66 @@ class ProductSpec(BaseModel):
         description=(
             "A broad classification of the product. Examples: "
             "'masonry', 'grout', 'concrete', 'door', 'window', 'HVAC unit', "
-            "'air handler', 'lighting fixture', 'electrical cable', 'fire alarm device'. "
-            "AI should infer this if reasonably certain."
+            "'air handler', 'lighting fixture', 'electrical cable', 'fire alarm device', "
+            "'signage'. AI should infer this if reasonably certain."
         )
     )
     csi_division: Optional[str] = Field(
         default=None,
         description=(
-            "The CSI division the product belongs to, if known. Example: '04', '05', '08', '23', '26'. "
+            "The CSI division the product belongs to, if known. "
+            "Example: '01', '04', '05', '08', '23', '26'. "
             "Do NOT guess if not clearly stated."
         )
     )
     spec_section: Optional[str] = Field(
         default=None,
         description=(
-            "The project specification section number this product falls under (if mentioned). "
-            "Examples: '042000', '260519', '233113'."
+            "The project specification section number this product falls under "
+            "(if mentioned or clearly inferable). "
+            "Examples: '015812', '042000', '260519', '233113'."
         )
     )
     document_type: Optional[str] = Field(
         default=None,
         description=(
-            "The type of submittal document. Examples: 'product_data', 'shop_drawing', "
-            "'test_report', 'mockup_photos', 'manufacturer_letter', 'UL listing', 'ICC report'."
+            "The type of source document. For submittals: 'product_data', "
+            "'shop_drawing', 'test_report', 'mockup_photos', 'manufacturer_letter', "
+            "'UL listing', 'ICC report'. For spec extraction, you may leave this null."
         )
     )
     standards: List[str] = Field(
         default_factory=list,
         description=(
-            "List of referenced standards the product claims conformance to. "
+            "List of referenced standards the product or material must conform to "
+            "or claims conformance to. "
             "Examples: ['ASTM C90', 'UL 10C', 'NFPA 72', 'ASTM E119', 'IES LM-79']."
         )
     )
     properties: List[Property] = Field(
         default_factory=list,
         description=(
-            "All extracted technical or performance properties associated with this product. "
-            "This includes physical properties, mechanical properties, electrical ratings, "
-            "fire ratings, thermal values, dimensions, tolerances, etc."
+            "All extracted technical or performance properties associated with this "
+            "product or material. This includes physical properties, mechanical "
+            "properties, electrical ratings, fire ratings, thermal values, "
+            "dimensions, tolerances, finishes, coatings, and similar requirements."
         )
     )
     notes: str = Field(
         default="",
         description=(
             "Any additional relevant notes or observations. "
-            "Should not repeat property names or standards — use only for supplemental context."
+            "Should not repeat property names or standards — use only for "
+            "supplemental context."
         )
     )
-    document_pages: List[int] = Field(
-        default_factory=list,
-        description=(
-            "List of 0-based page numbers where this product appears. "
-            "This allows mapping product specs back to the original PDF."
-        )
-    )
+    # document_pages: List[int] = Field(
+    #     default_factory=list,
+    #     description=(
+    #         "List of 0-based page numbers where this product appears in the "
+    #         "specification or submittal. This allows mapping back to the original PDF."
+    #     )
+    # )
 
 class SpecReqs(BaseModel):
     spec_section: Optional[str] = Field(
@@ -177,7 +194,7 @@ class SpecReqs(BaseModel):
     general_requirements: List[GeneralRequirement] = Field(
         default_factory=list,
         description=(
-            "Structured representation of PART 1 - GENERAL: scope, information signs, "
+            "Structured representation of General: scope, information signs, "
             "quality assurance, submittals, etc."
         ),
     )
@@ -186,7 +203,7 @@ class SpecReqs(BaseModel):
     products: List[ProductSpec] = Field(
         default_factory=list,
         description=(
-            "PART 2 - PRODUCTS: all materials, systems, or assemblies with their "
+            "Products: all materials, systems, or assemblies with their "
             "technical properties and standards."
         ),
     )
@@ -195,7 +212,7 @@ class SpecReqs(BaseModel):
     execution_requirements: List[ExecutionRequirement] = Field(
         default_factory=list,
         description=(
-            "PART 3 - EXECUTION: installation, application, maintenance, removal, "
+            "Execution: installation, application, maintenance, removal, "
             "and other field-execution steps."
         ),
     )
