@@ -1,8 +1,8 @@
-from pypdf import PdfReader
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 import os, logging, json, base64, fitz
+from classes.s3_buckets import S3Bucket
 from typing import Optional, Tuple, List
 
 load_dotenv()
@@ -160,7 +160,7 @@ Only return valid JSON.
 """
 
     res = await client.beta.chat.completions.parse(
-        model="gpt-4.1-mini",
+        model="gpt-4.1",
         response_format=SubmittalSpecs,
         messages=[
             {"role": "user", "content": prompt + "\n\nTEXT:\n" + page_text}
@@ -267,31 +267,28 @@ def render_page_to_png_bytes(pdf_path: str, page_num: int) -> bytes:
     png_bytes = pix.tobytes("png")
     return png_bytes
 
-async def classify_and_extract_submittal_specs(pdf_path: str) -> dict:
-    reader = PdfReader(pdf_path)
+async def section_spec_requirements(spec_id: str, section_pages: list[int]) -> dict:
+    s3 = S3Bucket()
+    section_pages = s3.get_section_pages(spec_id, section_pages)
     per_page_results: list[dict] = []
 
-    for i, page in enumerate(reader.pages):
-        text = page.extract_text() or ""
-        char_count = len(text)
+    for page in section_pages:
+        text = page["text"]
+        bytes = page["bytes"]
 
-        # crude heuristic – tune later
-        if char_count > 800:
-            # text-dominant
-            per_page_results.append(await extract_specs_from_text_page(text, i))
-        else:
-            # image-dominant
-            image_bytes = render_page_to_png_bytes(pdf_path, i)  # PyMuPDF
-            per_page_results.append(await extract_specs_from_image_page(image_bytes, i))
+        if text:
+            per_page_results.append(await extract_specs_from_text_page(text, page["page_index"]))
+        if bytes:
+            per_page_results.append(await extract_specs_from_image_page(bytes, page["page_index"]))
 
-        logger.info(f"Extracted specs from page {i+1}")
+        logger.info(f"Extracted specs from page {page['page_index']}")
         # if count > 2:
         #     return await merge_submittal_results(per_page_results)
 
     return await merge_submittal_results(per_page_results)
 
-section_number = "042000"
-section_title = "UNIT MASONRY"
-pdf_path = "042000-1 Unit Masonry Product Data.pdf"
+# section_number = "042000"
+# section_title = "UNIT MASONRY"
+# pdf_path = "042000-1 Unit Masonry Product Data.pdf"
 
 # print(asyncio.run(classify_and_extract_submittal_specs(pdf_path)))

@@ -130,7 +130,7 @@ async def division_breakdown(
     s3 = S3Bucket()
 
     detected_divisions: list[dict] = []
-    batch: list[dict[int, bytes]] = []
+    batch: list[HybridPage] = []
     divisions_detected: list[str] = []
 
     if batch_size > 20:

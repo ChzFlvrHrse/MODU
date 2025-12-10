@@ -3,7 +3,7 @@ from botocore.config import Config
 from typing import Optional, Iterator
 from quart.datastructures import FileStorage
 from concurrent.futures import ThreadPoolExecutor
-import boto3, os, dotenv, logging, datetime
+import boto3, os, dotenv, logging, datetime, fitz
 from classes.pdf_page_converter import PDFPageConverter
 from classes.typed_dicts import HybridPage, PdfPageConverterResult
 
@@ -200,10 +200,33 @@ class S3Bucket:
                 "status_code": 400
             }
 
+    def get_converted_page_count(self, spec_id: str) -> int:
+        """Get the number of pages by counting files in the converted/ folder."""
+        response = self.s3_client().get_paginator("list_objects_v2").paginate(
+            Bucket=self.bucket_name,
+            Prefix=f"{spec_id}/converted/"
+        )
+
+        page_count = 0
+
+        for page in response:
+            if "Contents" in page:
+                page_count += len(page["Contents"])
+
+        return page_count
+
+    def get_original_page_count(self, spec_id: str) -> int:
+        """Get the number of pages in the original PDF."""
+        pdf_result = self.get_original_pdf(spec_id)
+        if pdf_result["status_code"] != 200:
+            raise ValueError(pdf_result["data"])
+        doc = fitz.open(stream=pdf_result["data"], filetype="pdf")
+        count = len(doc)
+        doc.close()
+        return count
+
     def get_converted_pages_generator(self, spec_id: str, start_index: int = 0, end_index: int = 10) -> Iterator[HybridPage]:
 
-        if not end_index:
-            end_index = 10
         if start_index < 0:
             raise ValueError("Start index must be greater than or equal to 0")
         if end_index < 0:
@@ -219,7 +242,7 @@ class S3Bucket:
         # converted_pages = []
 
         try:
-            for i in range(start_index, end_index + 1):
+            for i in range(start_index, end_index):
                 try:
                     tex_response = self.s3_client().get_object(Bucket=self.bucket_name, Key=f"{spec_id}/converted/{i}.txt")
                     if tex_response:
@@ -251,12 +274,58 @@ class S3Bucket:
             logger.error(f"Error getting converted pages from S3 bucket: {e}")
             raise ValueError(f"Error getting converted pages from S3 bucket: {str(e)}")
 
+    def get_single_page(self, spec_id: str, page_index: int) -> HybridPage:
+        if page_index < 0:
+            raise ValueError("Page index must be greater than or equal to 0")
+        if page_index >= self.get_converted_page_count(spec_id):
+            raise ValueError(f"Page index {page_index} is greater than the number of converted pages: {self.get_converted_page_count(spec_id)}")
+
+        spec_check = self.get_original_pdf(spec_id)
+        if spec_check["status_code"] != 200:
+            raise ValueError(spec_check["data"])
+
+        try:
+            tex_response = self.s3_client().get_object(Bucket=self.bucket_name, Key=f"{spec_id}/converted/{page_index}.txt")
+            if tex_response:
+                text = tex_response["Body"].read().decode("utf-8")
+            else:
+                logger.debug(f"No text for page {page_index}")
+                text = None
+        except Exception as e:
+            logger.debug(f"No text for page {page_index}: {e}")
+            text = None
+
+        try:
+            bytes_response = self.s3_client().get_object(Bucket=self.bucket_name, Key=f"{spec_id}/converted/{page_index}.png")
+            if bytes_response:
+                bytes = bytes_response["Body"].read()
+            else:
+                logger.debug(f"No image for page {page_index}")
+                bytes = None
+        except Exception as e:
+            logger.debug(f"No image for page {page_index}: {e}")
+            bytes = None
+
+        return {
+            "page_index": page_index,
+            "text": text,
+            "bytes": bytes
+        }
+
+    def get_section_pages(self, spec_id: str, section_pages: list[int]) -> list[HybridPage]:
+        pages = []
+
+        for page_index in section_pages:
+            page = self.get_single_page(spec_id, page_index)
+            pages.append(page)
+
+        return pages
+
     def delete_object(self, key: str):
         self.s3_client().delete_object(Bucket=self.bucket_name, Key=key)
 
 # if __name__ == "__main__":
 #     s3 = S3Bucket()
 #     spec_id = "2ad9cd93-2a40-4b3e-a11c-e52decfe0e6c"
-#     converted_pages = s3.get_converted_pages_generator(spec_id, start_index=0, end_index=10)
-#     for page in converted_pages:
-#         print(page)
+#     section_pages = s3.get_section_pages(spec_id, [2, 76, 89, 90, 91, 92, 93, 94, 95, 96, 103])
+#     print(len(section_pages))
