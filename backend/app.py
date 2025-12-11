@@ -59,7 +59,7 @@ async def get_original_pdf(spec_id: str):
     if original_pdf["status_code"] != 200:
         return jsonify({"error": original_pdf["data"]}), original_pdf["status_code"]
 
-    return jsonify(original_pdf["data"]), original_pdf["status_code"]
+    return jsonify({"original_pdf": original_pdf["data"], "spec_id": spec_id}), original_pdf["status_code"]
 
 @quart_app.route("/text_and_rasterize", methods=["POST"])
 async def text_and_rasterize():
@@ -78,8 +78,53 @@ async def text_and_rasterize():
     s3 = S3Bucket()
     pdf_bytes = s3.get_original_pdf(spec_id)["data"]
 
-    text_and_rasterize = s3.bulk_upload_to_s3(pdf=pdf_bytes, spec_id=spec_id, rasterize_all=rasterize_all, start_index=start_index, end_index=end_index, dpi=dpi, grayscale=grayscale)
-    return jsonify(text_and_rasterize), 200
+    loop = asyncio.get_running_loop()
+    text_and_rasterize = await loop.run_in_executor(
+        None,
+        lambda: s3.bulk_upload_to_s3(pdf=pdf_bytes, spec_id=spec_id, rasterize_all=rasterize_all, start_index=start_index, end_index=end_index, dpi=dpi, grayscale=grayscale)
+    )
+
+    if text_and_rasterize["status_code"] != 200:
+        return jsonify({"error": text_and_rasterize["data"]}), text_and_rasterize["status_code"]
+
+    return jsonify({"upload_data": text_and_rasterize, "spec_id": spec_id}), 200
+
+@quart_app.route("/upload_and_convert_pdf", methods=["POST"])
+async def upload_and_convert_pdf():
+    s3 = S3Bucket()
+    files = await request.files
+
+    pdf = files.get("pdf")
+    rasterize_all = files.get("rasterize_all", False)
+    start_index = files.get("start_index", 0)
+    end_index = files.get("end_index", None)
+    dpi = files.get("dpi", 200)
+    grayscale = files.get("grayscale", False)
+
+    spec_id = str(uuid.uuid4())
+
+    loop = asyncio.get_running_loop()
+    original_pdf_upload_result = await loop.run_in_executor(
+        None,
+        lambda: s3.upload_original_pdf(
+            file=pdf,
+            file_name=pdf.filename,
+            spec_id=spec_id
+        )
+    )
+    if original_pdf_upload_result["status_code"] != 200:
+        return jsonify({"error": original_pdf_upload_result["data"]}), original_pdf_upload_result["status_code"]
+    else:
+        logger.info(f"Original PDF uploaded successfully to S3 bucket: {spec_id}")
+
+    pdf_bytes = s3.get_original_pdf(spec_id)["data"]
+
+    text_and_rasterize = await loop.run_in_executor(
+        None,
+        lambda: s3.bulk_upload_to_s3(pdf=pdf_bytes, spec_id=spec_id, rasterize_all=rasterize_all, start_index=start_index, end_index=end_index, dpi=dpi, grayscale=grayscale)
+    )
+
+    return jsonify({"upload_data": text_and_rasterize, "spec_id": spec_id}), 200
 
 @quart_app.route("/divisions_and_sections", methods=["POST"])
 async def divisons_and_sections():

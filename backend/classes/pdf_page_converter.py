@@ -119,12 +119,15 @@ class PDFPageConverter:
                         has_text = len(clean_text) > 0
                         has_image = self.check_pdf_for_images(page)
 
-                        logger.info(
-                            "Page %d: Text Present: %s, Image Present: %s",
-                            page_index,
-                            has_text,
-                            has_image,
-                        )
+                        if not has_text and not has_image:
+                            logger.info(f"No text or image found for page {page_index}")
+                        else:
+                            logger.info(
+                                "Page %d: Text Present: %s, Image Present: %s",
+                                page_index,
+                                has_text,
+                                has_image,
+                            )
 
                         yield {
                             "page_index": page_index,

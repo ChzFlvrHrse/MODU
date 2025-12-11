@@ -108,6 +108,7 @@ class S3Bucket:
         successes: int = 0
         last_page_index: Optional[int] = None
         attempt_page_index = []
+        indexes_with_no_text_or_image: list[int] = []
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             for page_result in executor.map(
@@ -126,6 +127,9 @@ class S3Bucket:
                 successes += page_result["successes"]
                 last_page_index = page_result["page_index"]
                 attempt_page_index.extend(page_result["attempt_page_index"])
+
+                if page_result["attempts"] == 0:
+                    indexes_with_no_text_or_image.append(page_result["page_index"])
 
         end_time = datetime.datetime.now()
         elapsed = end_time - start_time
@@ -156,7 +160,9 @@ class S3Bucket:
             "grayscale": grayscale,
             "rasterize_all": rasterize_all,
             "start_index": start_index,
-            "end_index": last_page_index
+            "end_index": last_page_index,
+            "indexes_with_no_text_or_image": indexes_with_no_text_or_image,
+            "total_indexes_with_no_text_or_image": len(indexes_with_no_text_or_image)
         }
 
     def upload_original_pdf(self, file: FileStorage, file_name: str, spec_id: str) -> dict:

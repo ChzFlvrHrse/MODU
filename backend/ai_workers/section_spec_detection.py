@@ -37,13 +37,11 @@ def spec_section_detection_text(spec_pages: list[dict], section_number: str) -> 
 
 def spec_section_detection_ocr(spec_pages: list[dict], section_number: str) -> list[int]:
     pattern_number = re.compile(rf"\b{re.escape(section_number)}\b")
-    # pattern_title = re.compile(rf"\b{re.escape(section_title)}\b")
     # pattern = re.compile(rf"\b{re.escape(section_number)}\s*-\s*\d+\b")
 
     page_indices: list[int] = []
 
     for page in spec_pages:
-        # if pattern_number.search(page['text']) or pattern_title.search(page['text']):
         text = tesseract.image_to_string(page['bytes'])
         if pattern_number.search(text):
             logger.info(f"Detected page {page['page_index']} from image")
@@ -159,11 +157,11 @@ async def section_spec_detection(
         for page in s3.get_converted_pages_generator(spec_id, start_index=start_index, end_index=end_index):
             batch.append(page)
             if len(batch) >= batch_size:
-                detected_pages.extend(await spec_section_pages(batch, section_number=section_number, section_title=section_title))
+                detected_pages.extend(await spec_section_pages(batch, section_number=section_number))
                 logger.info(f"Total detected pages: {detected_pages}, Total pages: {len(detected_pages)}")
                 batch = []
         if batch:
-            detected_pages.extend(await spec_section_pages(batch, section_number=section_number, section_title=section_title))
+            detected_pages.extend(await spec_section_pages(batch, section_number=section_number))
             logger.info(f"Total detected pages: {detected_pages}")
     except Exception as e:
         logger.error(f"Error getting converted pages from S3 bucket: {e}")
@@ -171,13 +169,13 @@ async def section_spec_detection(
 
     return detected_pages
 
-spec_id = "0ec5802c-4df5-416a-b435-409daf26db9e"
-section_number = "013524"
-section_title = "Safety"
+# spec_id = "0ec5802c-4df5-416a-b435-409daf26db9e"
+# section_number = "013524"
+# section_title = "Safety"
 # batch_size = 5
 # dpi = 200
 # grayscale = False
 # start_page = 9
 # # end_page = 9
 
-asyncio.run(section_spec_detection(spec_id=spec_id, section_number=section_number, section_title=section_title))
+# asyncio.run(section_spec_detection(spec_id=spec_id, section_number=section_number))
