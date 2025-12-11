@@ -165,11 +165,10 @@ class S3Bucket:
             "total_indexes_with_no_text_or_image": len(indexes_with_no_text_or_image)
         }
 
-    def upload_original_pdf(self, file: FileStorage, file_name: str, spec_id: str) -> dict:
+    def upload_original_pdf(self, file: FileStorage, spec_id: str) -> dict:
         try:
             self.s3_client().put_object(
                 Bucket=self.bucket_name,
-                # Key=f"{spec_id}/{file_name}/original",
                 Key=f"{spec_id}/original",
                 Body=file.stream,
                 ContentType="application/pdf",

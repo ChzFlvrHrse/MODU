@@ -108,7 +108,6 @@ async def upload_and_convert_pdf():
         None,
         lambda: s3.upload_original_pdf(
             file=pdf,
-            file_name=pdf.filename,
             spec_id=spec_id
         )
     )
@@ -117,7 +116,14 @@ async def upload_and_convert_pdf():
     else:
         logger.info(f"Original PDF uploaded successfully to S3 bucket: {spec_id}")
 
-    pdf_bytes = s3.get_original_pdf(spec_id)["data"]
+    pdf_result = await loop.run_in_executor(
+        None,
+        lambda: s3.get_original_pdf(spec_id)
+    )
+    if pdf_result["status_code"] != 200:
+        return jsonify({"error": pdf_result["data"]}), pdf_result["status_code"]
+
+    pdf_bytes = pdf_result["data"]
 
     text_and_rasterize = await loop.run_in_executor(
         None,
