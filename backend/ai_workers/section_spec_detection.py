@@ -35,6 +35,7 @@ def spec_section_detection_text(spec_pages: list[dict], section_number: str, sec
 
     return page_indices
 
+# This is by far the dumbest function in the entire codebase. It's a waste of time and resources.
 async def spec_section_detection_ai(spec_pages: list[dict], section_number: str, section_title: str) -> list[int]:
     detected_pages: list[int] = []
 
@@ -87,9 +88,6 @@ async def spec_section_detection_ai(spec_pages: list[dict], section_number: str,
     return detected_pages
 
 async def spec_section_pages(spec_pages: list[HybridPage], section_number: str, section_title: str) -> list[int]:
-    # all_text_pages = [{"page_index": page['page_index'], "text": page['text']} for page in spec_pages if page['text']]
-    # all_image_pages = [{"page_index": page['page_index'], "bytes": page['bytes']} for page in spec_pages if page['bytes']]
-
     detected_text_pages: list[int] = []
     all_text_pages: list[dict] = []
     all_image_pages: list[dict] = []
