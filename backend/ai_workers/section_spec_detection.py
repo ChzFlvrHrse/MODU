@@ -21,22 +21,22 @@ s3 = S3Bucket()
 class SectionSpecList(BaseModel):
     pages: list[int] = Field(description="All pages that contain the section number and/or section title. Should be left empty if the section number and/or section title is not present.")
 
-def spec_section_detection_text(spec_pages: list[HybridPage], section_number: str, section_title: str) -> set[str]:
+def spec_section_detection_text(spec_pages: list[dict], section_number: str, section_title: str) -> list[int]:
     pattern_number = re.compile(rf"\b{re.escape(section_number)}\b")
     # pattern_title = re.compile(rf"\b{re.escape(section_title)}\b")
     # pattern = re.compile(rf"\b{re.escape(section_number)}\s*-\s*\d+\b")
 
-    page_set = []
+    page_indices: list[int] = []
 
     for page in spec_pages:
         # if pattern_number.search(page['text']) or pattern_title.search(page['text']):
         if pattern_number.search(page['text']):
-            page_set.append(page['page_index'])
+            page_indices.append(page['page_index'])
 
-    return sorted([int(page) for page in page_set])
+    return page_indices
 
-async def spec_section_detection_ai(spec_pages: list[HybridPage], section_number: str, section_title: str) -> list[int]:
-    detected_pages = []
+async def spec_section_detection_ai(spec_pages: list[dict], section_number: str, section_title: str) -> list[int]:
+    detected_pages: list[int] = []
 
     for image_page in spec_pages:
         response = await client.beta.chat.completions.parse(
@@ -51,7 +51,7 @@ async def spec_section_detection_ai(spec_pages: list[HybridPage], section_number
                         "Given a page image of a spec sheet, your job is to detect the image contains the section number and/or section title. "
                         "Return the index of the page if the section number and/or section title is present."
                         f"The section number is: {section_number}"
-                        f"The section title is: {section_title}"
+                        # f"The section title is: {section_title}"
                         f"The page index is: {image_page['page_index']}"
                     )
                 },
@@ -65,7 +65,7 @@ async def spec_section_detection_ai(spec_pages: list[HybridPage], section_number
                                 "Given a page image of a spec sheet, your job is to detect ALL pages that contain the section number and/or section title. "
                                 "Return every page where the section number and/or section title is present."
                                 f"The section number is: {section_number}"
-                                f"The section title is: {section_title}"
+                                # f"The section title is: {section_title}"
                                 f"The page index is: {image_page['page_index']}"
                             )
                         },
@@ -82,12 +82,31 @@ async def spec_section_detection_ai(spec_pages: list[HybridPage], section_number
             ]
         )
         detected_pages.extend(json.loads(json.dumps(response.choices[0].message.parsed.model_dump()))["pages"])
+        logger.info(f"Detected pages from image: {detected_pages}")
 
-    return list(set(detected_pages))
+    return detected_pages
 
 async def spec_section_pages(spec_pages: list[HybridPage], section_number: str, section_title: str) -> list[int]:
-    all_text_pages = [{"page_index": page['page_index'], "text": page['text']} for page in spec_pages if page['text']]
-    all_image_pages = [{"page_index": page['page_index'], "bytes": page['bytes']} for page in spec_pages if page['bytes']]
+    # all_text_pages = [{"page_index": page['page_index'], "text": page['text']} for page in spec_pages if page['text']]
+    # all_image_pages = [{"page_index": page['page_index'], "bytes": page['bytes']} for page in spec_pages if page['bytes']]
+
+    detected_text_pages: list[int] = []
+    all_text_pages: list[dict] = []
+    all_image_pages: list[dict] = []
+
+    for page in spec_pages:
+        if page['text'] and page['bytes']:
+            res = spec_section_detection_text([page], section_number, section_title)
+            if len(res) > 0:
+                logger.info(f"Detected pages from text: {res}")
+                detected_text_pages.extend(res)
+            else:
+                logger.info(f"No text detected for page {page['page_index']}")
+                all_image_pages.append({"page_index": page['page_index'], "bytes": page['bytes']})
+        elif page['text'] and not page['bytes']:
+            all_text_pages.append({"page_index": page['page_index'], "text": page['text']})
+        elif not page['text'] and page['bytes']:
+            all_image_pages.append({"page_index": page['page_index'], "bytes": page['bytes']})
 
     if all_text_pages:
         detected_text_pages = spec_section_detection_text(all_text_pages, section_number, section_title)
@@ -122,33 +141,29 @@ async def section_spec_detection(
         raise ValueError("End index must be greater than or equal to start index")
 
     if end_index is None:
-        end_index = s3.get_page_count(spec_id)
+        end_index = s3.get_original_page_count(spec_id)
 
     try:
         for page in s3.get_converted_pages_generator(spec_id, start_index=start_index, end_index=end_index):
             batch.append(page)
             if len(batch) >= batch_size:
                 detected_pages.extend(await spec_section_pages(batch, section_number=section_number, section_title=section_title))
-                logger.info(f"Detected pages: {detected_pages}, Total pages: {len(detected_pages)}")
+                logger.info(f"Total detected pages: {detected_pages}, Total pages: {len(detected_pages)}")
                 batch = []
         if batch:
             detected_pages.extend(await spec_section_pages(batch, section_number=section_number, section_title=section_title))
-            logger.info(f"Detected pages: {detected_pages}")
+            logger.info(f"Total detected pages: {detected_pages}")
     except Exception as e:
         logger.error(f"Error getting converted pages from S3 bucket: {e}")
         return []
 
     return detected_pages
 
-# pdf_path = "example_spec.pdf"
-# section_number = "013113"
-# section_title = "COORDINATION DRAWINGS"
+# spec_id = "0ec5802c-4df5-416a-b435-409daf26db9e"
+# section_number = "013524"
+# section_title = "Safety"
 # batch_size = 5
 # dpi = 200
 # grayscale = False
 # start_page = 9
-# end_page = 9
-
-# rasterize = hybrid_pdf(pdf_path, dpi=dpi, grayscale=grayscale, start_index=start_page, end_index=end_page)
-# for page in rasterize:
-#     print(page)
+# # end_page = 9

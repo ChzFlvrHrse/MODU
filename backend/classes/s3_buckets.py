@@ -242,7 +242,7 @@ class S3Bucket:
         # converted_pages = []
 
         try:
-            for i in range(start_index, end_index):
+            for i in range(start_index, end_index+1):
                 try:
                     tex_response = self.s3_client().get_object(Bucket=self.bucket_name, Key=f"{spec_id}/converted/{i}.txt")
                     if tex_response:

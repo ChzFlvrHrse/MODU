@@ -138,7 +138,7 @@ async def section_spec_pages():
 
     s3 = S3Bucket()
     if end_index is None:
-        end_index = s3.get_converted_page_count(spec_id)
+        end_index = s3.get_original_page_count(spec_id)
 
     spec_check = s3.get_original_pdf(spec_id)
     if spec_check["status_code"] != 200:
