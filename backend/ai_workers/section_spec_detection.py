@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from classes.pdf_page_converter import PDFPageConverter
 from classes.typed_dicts import HybridPage
 from classes.s3_buckets import S3Bucket
+from classes.ocr import Tesseract
 
 load_dotenv()
 
@@ -17,11 +18,24 @@ logger = logging.getLogger(__name__)
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 pdf_page_converter = PDFPageConverter()
 s3 = S3Bucket()
+tesseract = Tesseract()
 
 class SectionSpecList(BaseModel):
     pages: list[int] = Field(description="All pages that contain the section number and/or section title. Should be left empty if the section number and/or section title is not present.")
 
-def spec_section_detection_text(spec_pages: list[dict], section_number: str, section_title: str) -> list[int]:
+def spec_section_detection_text(spec_pages: list[dict], section_number: str) -> list[int]:
+    pattern_number = re.compile(rf"\b{re.escape(section_number)}\b")
+    # pattern = re.compile(rf"\b{re.escape(section_number)}\s*-\s*\d+\b")
+
+    page_indices: list[int] = []
+
+    for page in spec_pages:
+        if pattern_number.search(page['text']):
+            page_indices.append(page['page_index'])
+
+    return page_indices
+
+def spec_section_detection_ocr(spec_pages: list[dict], section_number: str) -> list[int]:
     pattern_number = re.compile(rf"\b{re.escape(section_number)}\b")
     # pattern_title = re.compile(rf"\b{re.escape(section_title)}\b")
     # pattern = re.compile(rf"\b{re.escape(section_number)}\s*-\s*\d+\b")
@@ -30,13 +44,15 @@ def spec_section_detection_text(spec_pages: list[dict], section_number: str, sec
 
     for page in spec_pages:
         # if pattern_number.search(page['text']) or pattern_title.search(page['text']):
-        if pattern_number.search(page['text']):
+        text = tesseract.image_to_string(page['bytes'])
+        if pattern_number.search(text):
+            logger.info(f"Detected page {page['page_index']} from image")
             page_indices.append(page['page_index'])
 
     return page_indices
 
 # This is by far the dumbest function in the entire codebase. It's a waste of time and resources.
-async def spec_section_detection_ai(spec_pages: list[dict], section_number: str, section_title: str) -> list[int]:
+async def spec_section_detection_ai(spec_pages: list[dict], section_number: str) -> list[int]:
     detected_pages: list[int] = []
 
     for image_page in spec_pages:
@@ -52,7 +68,6 @@ async def spec_section_detection_ai(spec_pages: list[dict], section_number: str,
                         "Given a page image of a spec sheet, your job is to detect the image contains the section number and/or section title. "
                         "Return the index of the page if the section number and/or section title is present."
                         f"The section number is: {section_number}"
-                        # f"The section title is: {section_title}"
                         f"The page index is: {image_page['page_index']}"
                     )
                 },
@@ -66,7 +81,6 @@ async def spec_section_detection_ai(spec_pages: list[dict], section_number: str,
                                 "Given a page image of a spec sheet, your job is to detect ALL pages that contain the section number and/or section title. "
                                 "Return every page where the section number and/or section title is present."
                                 f"The section number is: {section_number}"
-                                # f"The section title is: {section_title}"
                                 f"The page index is: {image_page['page_index']}"
                             )
                         },
@@ -87,14 +101,14 @@ async def spec_section_detection_ai(spec_pages: list[dict], section_number: str,
 
     return detected_pages
 
-async def spec_section_pages(spec_pages: list[HybridPage], section_number: str, section_title: str) -> list[int]:
+async def spec_section_pages(spec_pages: list[HybridPage], section_number: str) -> list[int]:
     detected_text_pages: list[int] = []
     all_text_pages: list[dict] = []
     all_image_pages: list[dict] = []
 
     for page in spec_pages:
         if page['text'] and page['bytes']:
-            res = spec_section_detection_text([page], section_number, section_title)
+            res = spec_section_detection_text([page], section_number)
             if len(res) > 0:
                 logger.info(f"Detected pages from text: {res}")
                 detected_text_pages.extend(res)
@@ -107,12 +121,13 @@ async def spec_section_pages(spec_pages: list[HybridPage], section_number: str, 
             all_image_pages.append({"page_index": page['page_index'], "bytes": page['bytes']})
 
     if all_text_pages:
-        detected_text_pages = spec_section_detection_text(all_text_pages, section_number, section_title)
+        detected_text_pages = spec_section_detection_text(all_text_pages, section_number)
     else:
         detected_text_pages = []
 
     if all_image_pages:
-        detected_image_pages = await spec_section_detection_ai(all_image_pages, section_number=section_number, section_title=section_title)
+        # detected_image_pages = await spec_section_detection_ai(all_image_pages, section_number=section_number, section_title=section_title)
+        detected_image_pages = spec_section_detection_ocr(all_image_pages, section_number=section_number)
     else:
         detected_image_pages = []
 
@@ -121,7 +136,6 @@ async def spec_section_pages(spec_pages: list[HybridPage], section_number: str, 
 async def section_spec_detection(
     spec_id: str,
     section_number: str,
-    section_title: str,
     batch_size: int = 20,
     start_index: int = 0,
     end_index: int = None
@@ -157,11 +171,13 @@ async def section_spec_detection(
 
     return detected_pages
 
-# spec_id = "0ec5802c-4df5-416a-b435-409daf26db9e"
-# section_number = "013524"
-# section_title = "Safety"
+spec_id = "0ec5802c-4df5-416a-b435-409daf26db9e"
+section_number = "013524"
+section_title = "Safety"
 # batch_size = 5
 # dpi = 200
 # grayscale = False
 # start_page = 9
 # # end_page = 9
+
+asyncio.run(section_spec_detection(spec_id=spec_id, section_number=section_number, section_title=section_title))

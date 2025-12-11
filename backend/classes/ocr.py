@@ -17,6 +17,9 @@ class Tesseract:
         self.config: str = f"--oem {oem} --psm {psm} {extra_config}".strip()
 
     def image_to_string(self, image: bytes) -> str:
+        """
+        Extracts text from an image.
+        """
         try:
             with Image.open(io.BytesIO(image)) as img:
                 text = pytesseract.image_to_string(

@@ -117,7 +117,6 @@ async def section_spec_pages():
 
     spec_id = data.get("spec_id")
     section_number = data.get("section_number")
-    section_title = data.get("section_title")
     batch_size = data.get("batch_size", 10)
     start_index = data.get("start_index", 0)
     end_index = data.get("end_index", None)
@@ -126,8 +125,6 @@ async def section_spec_pages():
         return jsonify({"error": "Spec ID is required"}), 400
     if section_number is None:
         return jsonify({"error": "Section number is required"}), 400
-    if section_title is None:
-        return jsonify({"error": "Section title is required"}), 400
 
     if start_index < 0:
         return jsonify({"error": "Start index must be greater than or equal to 0"}), 400
@@ -144,9 +141,9 @@ async def section_spec_pages():
     if spec_check["status_code"] != 200:
         return jsonify({"error": "Spec ID is invalid"}), 400
 
-    section_spec_requirements = await section_spec_detection(spec_id=spec_id, section_number=section_number, section_title=section_title, batch_size=batch_size, start_index=start_index, end_index=end_index)
+    section_spec_requirements = await section_spec_detection(spec_id=spec_id, section_number=section_number, batch_size=batch_size, start_index=start_index, end_index=end_index)
 
-    return jsonify({"section_number": section_number, "section_title": section_title, "section_spec_requirements": section_spec_requirements}), 200
+    return jsonify({"section_number": section_number, "section_spec_requirements": section_spec_requirements}), 200
 
 @quart_app.route("/section_spec_requirements", methods=["POST"])
 async def section_spec_reqs():
