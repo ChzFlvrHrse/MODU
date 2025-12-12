@@ -31,6 +31,7 @@ def spec_section_detection_text(spec_pages: list[dict], section_number: str) -> 
 
     for page in spec_pages:
         if pattern_number.search(page['text']):
+            logger.info(f"Detected page {page['page_index']} from text")
             page_indices.append(page['page_index'])
 
     return page_indices
@@ -49,7 +50,7 @@ def spec_section_detection_ocr(spec_pages: list[dict], section_number: str) -> l
 
     return page_indices
 
-# This is by far the dumbest function in the entire codebase. It's a waste of time and resources.
+# This is by far the DUMBEST function in the entire codebase. It's a waste of time and resources.
 async def spec_section_detection_ai(spec_pages: list[dict], section_number: str) -> list[int]:
     detected_pages: list[int] = []
 
@@ -95,7 +96,9 @@ async def spec_section_detection_ai(spec_pages: list[dict], section_number: str)
             ]
         )
         detected_pages.extend(json.loads(json.dumps(response.choices[0].message.parsed.model_dump()))["pages"])
-        logger.info(f"Detected pages from image: {detected_pages}")
+
+        for page in detected_pages:
+            logger.info(f"Detected on page {page} from image")
 
     return detected_pages
 
@@ -134,7 +137,7 @@ async def spec_section_pages(spec_pages: list[HybridPage], section_number: str) 
 async def section_spec_detection(
     spec_id: str,
     section_number: str,
-    batch_size: int = 20,
+    batch_size: int = 10,
     start_index: int = 0,
     end_index: int = None
 ) -> list[int]:

@@ -38,9 +38,19 @@ async def section_spec_pages():
     if spec_check["status_code"] != 200:
         return jsonify({"error": "Spec ID is invalid"}), 400
 
-    section_spec_requirements = await section_spec_detection(spec_id=spec_id, section_number=section_number, batch_size=batch_size, start_index=start_index, end_index=end_index)
+    section_spec_requirements = await section_spec_detection(
+        spec_id=spec_id,
+        section_number=section_number,
+        batch_size=batch_size,
+        start_index=start_index,
+        end_index=end_index
+    )
 
-    return jsonify({"section_number": section_number, "section_spec_requirements": section_spec_requirements}), 200
+    return jsonify({
+        "section_number": section_number,
+        "section_spec_requirements": section_spec_requirements,
+        "total_detected_pages": len(section_spec_requirements),
+    }), 200
 
 @section_specs_bp.route("/section_spec_requirements", methods=["POST"])
 async def section_spec_reqs():

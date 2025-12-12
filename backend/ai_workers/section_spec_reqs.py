@@ -170,13 +170,13 @@ class ProductSpec(BaseModel):
             "supplemental context."
         )
     )
-    # document_pages: List[int] = Field(
-    #     default_factory=list,
-    #     description=(
-    #         "List of 0-based page numbers where this product appears in the "
-    #         "specification or submittal. This allows mapping back to the original PDF."
-    #     )
-    # )
+    document_pages: List[int] = Field(
+        default_factory=list,
+        description=(
+            "List of 0-based page numbers where this product appears in the "
+            "specification or submittal. This allows mapping back to the original PDF."
+        )
+    )
 
 class SpecReqs(BaseModel):
     spec_section: Optional[str] = Field(
@@ -414,7 +414,7 @@ async def section_spec_requirements(spec_id: str, section_pages: list[int]) -> d
     return extracted_specs
 
 # s3 = S3Bucket()
-# spec_id = "2ad9cd93-2a40-4b3e-a11c-e52decfe0e6c"
+# spec_id = "dd878363-2fca-4c2c-9e04-dd37a883d5a6"
 # pages = [2, 76, 89, 90, 91, 92, 93, 94, 95, 96, 103]
 
 # print(asyncio.run(section_spec_requirements(spec_id, pages)))

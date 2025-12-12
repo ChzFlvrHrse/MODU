@@ -118,7 +118,7 @@ async def upload_and_convert_pdf():
         lambda: s3.bulk_upload_to_s3(pdf=pdf_bytes, spec_id=spec_id, rasterize_all=rasterize_all, start_index=start_index, end_index=end_index, dpi=dpi, grayscale=grayscale)
     )
 
-    return jsonify({"upload_data": text_and_rasterize}), 200
+    return jsonify(text_and_rasterize), text_and_rasterize["status_code"]
 
 @upload_routes_bp.route("/get_original_pdf/<spec_id>", methods=["GET"])
 async def get_original_pdf(spec_id: str):

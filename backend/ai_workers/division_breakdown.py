@@ -136,7 +136,7 @@ def division_duplication_check(divisions_detected: list[dict]) -> list[dict]:
 async def division_breakdown(
     spec_id: str,
     toc_indices: list[int],
-    batch_size: int = 10,
+    # batch_size: int = 10,
     start_index: int = 0,
     end_index: int = None
 ) -> list[dict]:
@@ -148,8 +148,10 @@ async def division_breakdown(
     batch: list[HybridPage] = []
     divisions_detected: list[str] = []
 
-    if batch_size > 20:
-        raise ValueError("Batch size must be less than or equal to 20")
+    batch_size = len(toc_indices) if len(toc_indices) > 12 else 12
+
+    # if batch_size > 12:
+    #     raise ValueError("Batch size must be less than or equal to 20")
 
     logger.info(f"Starting scan from page {start_index} to page {end_index}")
 

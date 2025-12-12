@@ -26,7 +26,7 @@ async def divisions_and_sections():
 
     spec_id = data.get("spec_id")
     toc_indices = data.get("toc_indices", [])
-    batch_size = data.get("batch_size", 10)
+    # batch_size = data.get("batch_size", 10)
     start_index = data.get("start_index", 0)
     end_index = data.get("end_index", None)
 
@@ -38,10 +38,10 @@ async def divisions_and_sections():
 
     if start_index < 0:
         return jsonify({"error": "Start index must be greater than or equal to 0"}), 400
-    # if end_index < 0:
-    #     return jsonify({"error": "End index must be greater than or equal to 0"}), 400
-    # if end_index < start_index:
-    #     return jsonify({"error": "End index must be greater than or equal to start index"}), 400
+    if end_index is not None and end_index < 0:
+        return jsonify({"error": "End index cannot be less than 0"}), 400
+    if end_index is not None and end_index < start_index:
+        return jsonify({"error": "End index must be greater than or equal to start index"}), 400
 
     s3 = S3Bucket()
 
@@ -49,5 +49,11 @@ async def divisions_and_sections():
     if spec_check["status_code"] != 200:
         return jsonify({"error": "Spec ID is invalid"}), 400
 
-    divisions_and_sections = await division_breakdown(spec_id=spec_id, toc_indices=toc_indices, batch_size=batch_size, start_index=start_index, end_index=end_index)
+    divisions_and_sections = await division_breakdown(
+        spec_id=spec_id,
+        toc_indices=toc_indices,
+        # batch_size=batch_size,
+        start_index=start_index,
+        end_index=end_index
+    )
     return jsonify(divisions_and_sections), 200

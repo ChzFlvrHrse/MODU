@@ -1,11 +1,7 @@
 import logging
-from quart_cors import cors
+from api import api_bp
 from quart import Quart
-from api import (
-    upload_routes_bp,
-    division_breakdown_bp,
-    section_specs_bp,
-)
+from quart_cors import cors
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -20,8 +16,6 @@ quart_app = cors(
     allow_methods=["GET", "POST", "DELETE", "UPDATE", "PUT", "PATCH"]
 )
 
-quart_app.register_blueprint(upload_routes_bp, url_prefix="/api/upload")
-quart_app.register_blueprint(division_breakdown_bp, url_prefix="/api/division_breakdown")
-quart_app.register_blueprint(section_specs_bp, url_prefix="/api/section_specs")
+quart_app.register_blueprint(api_bp, url_prefix="/api")
 
 quart_app.run()
