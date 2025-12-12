@@ -95,75 +95,77 @@ class S3Bucket:
         Convert a PDF into HybridPages and upload each page's
         text/image representation to S3 using a thread pool.
         """
+        try:
 
-        bucket = self.bucket_name
-        logger.info(
-            "Uploading PDF to S3 bucket: %s, spec ID: %s",
-            bucket,
-            spec_id,
-        )
+            bucket = self.bucket_name
+            logger.info(
+                "Uploading PDF to S3 bucket: %s, spec ID: %s",
+                bucket,
+                spec_id,
+            )
 
-        start_time = datetime.datetime.now()
-        attempts: int = 0
-        successes: int = 0
-        last_page_index: Optional[int] = None
-        attempt_page_index = []
-        indexes_with_no_text_or_image: list[int] = []
+            start_time = datetime.datetime.now()
+            attempts: int = 0
+            successes: int = 0
+            last_page_index: Optional[int] = None
+            attempt_page_index = []
+            indexes_with_no_text_or_image: list[int] = []
 
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            for page_result in executor.map(
-                self.upload_page_to_s3,
-                self.pdf_page_converter.pdf_page_converter_generator(
-                    pdf=pdf,
-                    dpi=dpi,
-                    grayscale=grayscale,
-                    rasterize_all=rasterize_all,
-                    start_index=start_index,
-                    end_index=end_index,
-                ),
-                repeat(spec_id)
-            ):
-                attempts += page_result["attempts"]
-                successes += page_result["successes"]
-                last_page_index = page_result["page_index"]
-                attempt_page_index.extend(page_result["attempt_page_index"])
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                for page_result in executor.map(
+                    self.upload_page_to_s3,
+                    self.pdf_page_converter.pdf_page_converter_generator(
+                        pdf=pdf,
+                        dpi=dpi,
+                        grayscale=grayscale,
+                        rasterize_all=rasterize_all,
+                        start_index=start_index,
+                        end_index=end_index,
+                    ),
+                    repeat(spec_id)):
+                        attempts += page_result["attempts"]
+                        successes += page_result["successes"]
+                        last_page_index = page_result["page_index"]
+                        attempt_page_index.extend(page_result["attempt_page_index"])
 
-                if page_result["attempts"] == 0:
-                    indexes_with_no_text_or_image.append(page_result["page_index"])
+                        if page_result["attempts"] == 0:
+                            indexes_with_no_text_or_image.append(page_result["page_index"])
 
-        end_time = datetime.datetime.now()
-        elapsed = end_time - start_time
-        success_rate = (successes / attempts * 100) if attempts > 0 else 0.0
+            end_time = datetime.datetime.now()
+            elapsed = end_time - start_time
+            success_rate = (successes / attempts * 100) if attempts > 0 else 0.0
 
-        logger.info(
-            "Uploaded %d/%d (%.2f%%) pages to S3 bucket: %s, spec ID: %s, "
-            "runtime: %s",
-            successes,
-            attempts,
-            success_rate,
-            bucket,
-            spec_id,
-            elapsed,
-        )
+            logger.info(
+                "Uploaded %d/%d (%.2f%%) pages to S3 bucket: %s, spec ID: %s, "
+                "runtime: %s",
+                successes,
+                attempts,
+                success_rate,
+                bucket,
+                spec_id,
+                elapsed,
+            )
 
-        logger.info(f"Attempted page indices: {attempt_page_index}")
-
-        return {
-            "success_rate": float(success_rate),
-            "attempted_uploads": attempts,
-            "successful_uploads": successes,
-            "unsuccessful_uploads": attempt_page_index if attempt_page_index else "No unsuccessful uploads",
-            "runtime": str(elapsed).split(".")[0],
-            "bucket": bucket,
-            "spec_id": spec_id,
-            "dpi": dpi,
-            "grayscale": grayscale,
-            "rasterize_all": rasterize_all,
-            "start_index": start_index,
-            "end_index": last_page_index,
-            "indexes_with_no_text_or_image": indexes_with_no_text_or_image,
-            "total_indexes_with_no_text_or_image": len(indexes_with_no_text_or_image)
-        }
+            return {
+                "success_rate": float(success_rate),
+                "attempted_uploads": attempts,
+                "successful_uploads": successes,
+                "unsuccessful_uploads": attempt_page_index if attempt_page_index else "No unsuccessful uploads",
+                "runtime": str(elapsed).split(".")[0],
+                "bucket": bucket,
+                "spec_id": spec_id,
+                "dpi": dpi,
+                "grayscale": grayscale,
+                "rasterize_all": rasterize_all,
+                "start_index": start_index,
+                "end_index": end_index,
+                "indexes_with_no_text_or_image": indexes_with_no_text_or_image,
+                "total_indexes_with_no_text_or_image": len(indexes_with_no_text_or_image),
+                "status_code": 200
+            }
+        except Exception as e:
+            logger.error(f"Error uploading PDF to S3 bucket: {e}")
+            return { "message": f"Error uploading PDF to S3 bucket: {str(e)}", "status_code": 400 }
 
     def upload_original_pdf(self, files: list[FileStorage], spec_id: str) -> dict:
         successes: int = 0
