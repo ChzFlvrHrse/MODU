@@ -349,7 +349,7 @@ class S3Bucket:
             "bytes": bytes
         }
 
-    def get_section_pages(self, spec_id: str, section_pages: list[int]) -> list[HybridPage]:
+    def get_pages(self, spec_id: str, section_pages: list[int]) -> list[HybridPage]:
         pages = []
 
         for page_index in section_pages:

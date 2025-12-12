@@ -135,6 +135,7 @@ def division_duplication_check(divisions_detected: list[dict]) -> list[dict]:
 
 async def division_breakdown(
     spec_id: str,
+    toc_indices: list[int],
     batch_size: int = 10,
     start_index: int = 0,
     end_index: int = None
@@ -152,17 +153,13 @@ async def division_breakdown(
 
     logger.info(f"Starting scan from page {start_index} to page {end_index}")
 
-    for page in s3.get_converted_pages_generator(spec_id, start_index=start_index, end_index=end_index):
+    # for page in s3.get_converted_pages_generator(spec_id, start_index=start_index, end_index=end_index):
+    toc_pages = s3.get_pages(spec_id, toc_indices)
+    for page in toc_pages:
         batch.append(page)
         if len(batch) >= batch_size:
-            div = await division_detection_ai(batch, divisions_detected)
+            div = await division_detection_ai(batch, divisions_detected, toc_indices)
             div_dict = div.get("divisions_detected", [])
-
-            detected_divisions.extend(div_dict)
-            divisions_detected = [
-                f"{item['division_code']} - {item['division_title']}"
-                for item in div_dict
-            ]
 
             logger.info(f"Divisions: {' | '.join(divisions_detected)}")
             logger.info(f"Divisions detected: {len(detected_divisions)}")
@@ -186,3 +183,8 @@ async def division_breakdown(
         logger.info(f"Total detected divisions: {len(detected_divisions)}")
 
     return division_duplication_check(detected_divisions)
+
+if __name__ == "__main__":
+    spec_id = "eac1e6d2-119c-4add-afdc-b42405f944a9"
+    toc_indices = [2, 3, 4, 5, 6, 7]
+    print(asyncio.run(division_breakdown(spec_id, toc_indices)))

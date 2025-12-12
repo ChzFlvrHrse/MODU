@@ -50,38 +50,48 @@ async def table_of_contents_detection_ai(spec_page: bytes) -> bool:
     return json.loads(json.dumps(response.choices[0].message.parsed.model_dump()))
 
 async def table_of_contents_detection(spec_id: str) -> list[int]:
-    s3 = S3Bucket()
-    pdf_page_converter = PDFPageConverter()
+    try:
+        s3 = S3Bucket()
+        pdf_page_converter = PDFPageConverter()
 
-    original_pdf = s3.get_original_pdf(spec_id)
+        original_pdf = s3.get_original_pdf(spec_id)
 
-    if original_pdf['status_code'] != 200:
-        raise ValueError(original_pdf['data'])
+        if original_pdf['status_code'] != 200:
+            raise ValueError(original_pdf['data'])
 
-    doc = fitz.open(stream=original_pdf['data'], filetype="pdf")
+        doc = fitz.open(stream=original_pdf['data'], filetype="pdf")
 
-    toc_indices: list[int] = []
-    for page in s3.get_converted_pages_generator(spec_id):
-        if page['bytes']:
-            res = await table_of_contents_detection_ai(page['bytes'])
-            is_toc = res['is_toc_page']
-        else:
-            bytes = pdf_page_converter.rasterize_page(doc, page['page_index'])
-            res = await table_of_contents_detection_ai(bytes)
-            is_toc = res['is_toc_page']
+        toc_indices: list[int] = []
+        for page in s3.get_converted_pages_generator(spec_id):
+            if page['bytes']:
+                res = await table_of_contents_detection_ai(page['bytes'])
+                is_toc = res['is_toc_page']
+            else:
+                bytes = pdf_page_converter.rasterize_page(doc, page['page_index'])
+                res = await table_of_contents_detection_ai(bytes)
+                is_toc = res['is_toc_page']
 
-        if not is_toc and len(toc_indices) == 0:
-            logger.info(f"Skipping Page. Not a TOC. Page: {page['page_index']}")
-            continue
-        elif is_toc:
-            toc_indices.append(page['page_index'])
-            logger.info(f"Continuing Scan. Found TOC. Page: {page['page_index']}")
-        else:
-            logger.info(f"Stopping Scan. End of TOC detected. Page: {page['page_index']}")
-            break
+            if not is_toc and len(toc_indices) == 0:
+                logger.info(f"Skipping Page. Not a TOC. Page: {page['page_index']}")
+                continue
+            elif is_toc:
+                toc_indices.append(page['page_index'])
+                logger.info(f"Found TOC. Continuing Scan. Page: {page['page_index']}")
+            else:
+                logger.info(f"End of TOC detected. Stopping Scan. Page: {page['page_index']}")
+                break
 
-    return toc_indices
-
+        return {
+            "toc_indices": toc_indices,
+            "status_code": 200 if len(toc_indices) > 0 else 404
+        }
+    except Exception as e:
+        logger.error(f"Error getting table of contents from S3 bucket: {e}")
+        return {
+            "toc_indices": [],
+            "status_code": 500,
+            "error": str(e)
+        }
 
 # import asyncio
 # if __name__ == "__main__":

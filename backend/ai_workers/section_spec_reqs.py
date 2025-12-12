@@ -406,7 +406,7 @@ async def merge_submittal_results(results: list[dict]) -> dict:
 
 async def section_spec_requirements(spec_id: str, section_pages: list[int]) -> dict:
     s3 = S3Bucket()
-    section_pages = s3.get_section_pages(spec_id, section_pages)
+    section_pages = s3.get_pages(spec_id, section_pages)
 
     extracted_specs = await extract_section_requirements_from_pages(section_pages)
 
