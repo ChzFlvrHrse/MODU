@@ -39,6 +39,15 @@ class Division(BaseModel):
 class DivisionBreakdown(BaseModel):
     divisions_detected: list[Division] = Field(description="A list of detected divisions", default=[])
     notes: str = Field(description="Any uncertainty or questions", default="")
+    # has_more_divisions: bool = Field(
+    #     description=(
+    #         "True if these pages appear to be part of a continuing table-of-contents "
+    #         "style listing of divisions/sections (so later pages likely list more "
+    #         "divisions or sections). False if the listing appears to have ended and "
+    #         "later pages are the body of specification sections rather than TOC rows."
+    #     ),
+    #     default=True
+    # )
 
 def format_spec_pages(spec_pages: list[HybridPage]) -> list[dict]:
     formatted_spec_pages = []
@@ -58,7 +67,6 @@ async def division_detection_ai(spec_pages: list[HybridPage], previous_divisions
         previous_divisions_detected = "No divisions detected in previous pages"
         most_recent_division = None
 
-    # text_or_image = [{"type": "text", "text": page['text']} if page['text'] else {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{base64.b64encode(page['bytes']).decode('utf-8')}"}} for page in spec_pages]
     formatted_spec_pages = format_spec_pages(spec_pages)
 
     response = await client.beta.chat.completions.parse(
@@ -67,14 +75,21 @@ async def division_detection_ai(spec_pages: list[HybridPage], previous_divisions
             {
                 "role": "system",
                 "content": (
-                    "You are an expert construction estimator. "
+                    "You are an expert division breakdown analyst. "
                     "Given a section of a spec sheet, your job is to detect which CSI divisions are present. "
                     "Divisions are always in CSI Master Format. "
                     "Analyze the text and identify divisions by their CSI codes (e.g., '03' for Concrete, '09' for Finishes)."
                     f"Divisions already detected in previous pages: {previous_divisions_detected}."
                     "If the first page in this batch begins only with section numbers and no new division header, "
                     f"assume those sections belong to the most recently detected division: {most_recent_division}, "
-                    "unless the text clearly indicates a new division."
+                    "unless the text clearly indicates a new division. "
+                    "Never invent a division or section that is not present in the spec. "
+                    # "If the page is not part of a table-of-contents style listing of divisions/sections, "
+                    # "do not include it as a division or section. "
+                    # "If you see a page that clearly indicates the end of the table-of-contents style listing of divisions/sections, return False. "
+                    # "Return True if the listing appears to be part of a continuing table-of-contents style listing of divisions/sections, otherwise return False. "
+                    # "If the listing appears to have ended and later pages are the body of specification sections rather than TOC rows, return False. "
+                    # "If you are unsure, return True."
                 )
             },
             {
@@ -88,10 +103,7 @@ async def division_detection_ai(spec_pages: list[HybridPage], previous_divisions
         response_format=DivisionBreakdown
     )
 
-    # Convert DivisionBreakdown to JSON
-    res = json.loads(json.dumps({**response.choices[0].message.parsed.model_dump()}))
-
-    return res
+    return json.loads(json.dumps({**response.choices[0].message.parsed.model_dump()}))
 
 def division_duplication_check(divisions_detected: list[dict]) -> list[dict]:
     i = 0
@@ -125,9 +137,11 @@ async def division_breakdown(
     spec_id: str,
     batch_size: int = 10,
     start_index: int = 0,
-    end_index: int = 10
+    end_index: int = None
 ) -> list[dict]:
     s3 = S3Bucket()
+    if end_index is None:
+        end_index = s3.get_original_page_count(spec_id)
 
     detected_divisions: list[dict] = []
     batch: list[HybridPage] = []
@@ -136,18 +150,31 @@ async def division_breakdown(
     if batch_size > 20:
         raise ValueError("Batch size must be less than or equal to 20")
 
+    logger.info(f"Starting scan from page {start_index} to page {end_index}")
+
     for page in s3.get_converted_pages_generator(spec_id, start_index=start_index, end_index=end_index):
         batch.append(page)
         if len(batch) >= batch_size:
             div = await division_detection_ai(batch, divisions_detected)
-            div_dict = div["divisions_detected"]
+            div_dict = div.get("divisions_detected", [])
+
             detected_divisions.extend(div_dict)
-            divisions_detected = [f"{item['division_code']} - {item['division_title']}" for item in div_dict]
+            divisions_detected = [
+                f"{item['division_code']} - {item['division_title']}"
+                for item in div_dict
+            ]
 
             logger.info(f"Divisions: {' | '.join(divisions_detected)}")
             logger.info(f"Divisions detected: {len(detected_divisions)}")
 
             batch = []
+
+            has_more_divisions = div.get("has_more_divisions", True)
+            if has_more_divisions:
+                logger.info("More divisions or sections detected. Continuing scan")
+            else:
+                logger.info("No more divisions or sections detected. Stopping scan")
+                break
 
     if batch:
         div = await division_detection_ai(batch, divisions_detected)
@@ -159,6 +186,3 @@ async def division_breakdown(
         logger.info(f"Total detected divisions: {len(detected_divisions)}")
 
     return division_duplication_check(detected_divisions)
-
-# result = asyncio.run(divisions(pdf_path="example_spec.pdf", batch_size=5, char_threshold=300, dpi=200, start_index=0, end_index=10))
-# print(result)
