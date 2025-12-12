@@ -4,8 +4,6 @@ from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
 import os, json, logging, sys, base64, asyncio
 
-# sys.path.insert(0, str(Path(__file__).parent.parent))
-# Classes
 from classes.pdf_page_converter import PDFPageConverter
 from classes.typed_dicts import HybridPage
 from classes.s3_buckets import S3Bucket
@@ -39,15 +37,6 @@ class Division(BaseModel):
 class DivisionBreakdown(BaseModel):
     divisions_detected: list[Division] = Field(description="A list of detected divisions", default=[])
     notes: str = Field(description="Any uncertainty or questions", default="")
-    # has_more_divisions: bool = Field(
-    #     description=(
-    #         "True if these pages appear to be part of a continuing table-of-contents "
-    #         "style listing of divisions/sections (so later pages likely list more "
-    #         "divisions or sections). False if the listing appears to have ended and "
-    #         "later pages are the body of specification sections rather than TOC rows."
-    #     ),
-    #     default=True
-    # )
 
 def format_spec_pages(spec_pages: list[HybridPage]) -> list[dict]:
     formatted_spec_pages = []
@@ -186,7 +175,7 @@ async def division_breakdown(
 
     return division_duplication_check(detected_divisions)
 
-if __name__ == "__main__":
-    spec_id = "eac1e6d2-119c-4add-afdc-b42405f944a9"
-    toc_indices = [2, 3, 4, 5, 6, 7]
-    print(asyncio.run(division_breakdown(spec_id, toc_indices)))
+# if __name__ == "__main__":
+#     spec_id = "eac1e6d2-119c-4add-afdc-b42405f944a9"
+#     toc_indices = [2, 3, 4, 5, 6, 7]
+#     print(asyncio.run(division_breakdown(spec_id, toc_indices)))
