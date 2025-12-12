@@ -29,13 +29,10 @@ quart_app = cors(
 async def upload_to_s3():
     s3 = S3Bucket()
     files = await request.files
-    pdf = files.get("pdf")
+    pdf = files.getlist("pdf")
 
-    if pdf is None or pdf.filename == "":
+    if len(pdf) == 0 or pdf[0].content_type != "application/pdf" or not pdf[0].filename.endswith(".pdf"):
         return jsonify({"error": "No PDF file provided"}), 400
-
-    if not pdf.filename.endswith(".pdf"):
-        return jsonify({"error": "Invalid file type. Please upload a PDF file."}), 400
 
     spec_id = str(uuid.uuid4())
 
@@ -43,8 +40,7 @@ async def upload_to_s3():
     original_pdf_upload_result = await loop.run_in_executor(
         None,
         lambda: s3.upload_original_pdf(
-            file=pdf,
-            file_name=pdf.filename,
+            files=pdf,
             spec_id=spec_id,
         )
     )
@@ -61,6 +57,7 @@ async def get_original_pdf(spec_id: str):
 
     return jsonify({"original_pdf": original_pdf["data"], "spec_id": spec_id}), original_pdf["status_code"]
 
+# Upload and convert PDF to text or rasterize
 @quart_app.route("/text_and_rasterize", methods=["POST"])
 async def text_and_rasterize():
     data = await request.json
@@ -74,9 +71,23 @@ async def text_and_rasterize():
 
     if spec_id is None:
         return jsonify({"error": "Spec ID is required"}), 400
+    if start_index < 0:
+        return jsonify({"error": "Start index must be greater than or equal to 0"}), 400
+    if end_index is not None and end_index < 0:
+        return jsonify({"error": "End index must be greater than or equal to 0"}), 400
+    if end_index is not None and end_index < start_index:
+        return jsonify({"error": "End index must be greater than or equal to start index"}), 400
 
     s3 = S3Bucket()
-    pdf_bytes = s3.get_original_pdf(spec_id)["data"]
+    loop = asyncio.get_running_loop()
+    pdf_result = await loop.run_in_executor(
+        None,
+        lambda: s3.get_original_pdf(spec_id)
+    )
+    if pdf_result["status_code"] != 200:
+        return jsonify({"error": pdf_result["data"]}), pdf_result["status_code"]
+
+    pdf_bytes = pdf_result["data"]
 
     loop = asyncio.get_running_loop()
     text_and_rasterize = await loop.run_in_executor(
@@ -84,17 +95,20 @@ async def text_and_rasterize():
         lambda: s3.bulk_upload_to_s3(pdf=pdf_bytes, spec_id=spec_id, rasterize_all=rasterize_all, start_index=start_index, end_index=end_index, dpi=dpi, grayscale=grayscale)
     )
 
-    if text_and_rasterize["status_code"] != 200:
-        return jsonify({"error": text_and_rasterize["data"]}), text_and_rasterize["status_code"]
+    # if text_and_rasterize["status_code"] != 200:
+    #     return jsonify({"error": text_and_rasterize["data"]}), text_and_rasterize["status_code"]
 
-    return jsonify({"upload_data": text_and_rasterize, "spec_id": spec_id}), 200
+    return jsonify({"upload_data": text_and_rasterize}), 200
 
 @quart_app.route("/upload_and_convert_pdf", methods=["POST"])
 async def upload_and_convert_pdf():
     s3 = S3Bucket()
     files = await request.files
 
-    pdf = files.get("pdf")
+    pdf = files.getlist("pdf")
+    if not pdf[0].content_type == "application/pdf" or not pdf[0].filename.endswith(".pdf"):
+        return jsonify({"error": "No PDF file provided"}), 400
+
     rasterize_all = files.get("rasterize_all", False)
     start_index = files.get("start_index", 0)
     end_index = files.get("end_index", None)
@@ -107,7 +121,7 @@ async def upload_and_convert_pdf():
     original_pdf_upload_result = await loop.run_in_executor(
         None,
         lambda: s3.upload_original_pdf(
-            file=pdf,
+            files=pdf,
             spec_id=spec_id
         )
     )
@@ -130,7 +144,7 @@ async def upload_and_convert_pdf():
         lambda: s3.bulk_upload_to_s3(pdf=pdf_bytes, spec_id=spec_id, rasterize_all=rasterize_all, start_index=start_index, end_index=end_index, dpi=dpi, grayscale=grayscale)
     )
 
-    return jsonify({"upload_data": text_and_rasterize, "spec_id": spec_id}), 200
+    return jsonify({"upload_data": text_and_rasterize}), 200
 
 @quart_app.route("/divisions_and_sections", methods=["POST"])
 async def divisons_and_sections():
@@ -139,21 +153,19 @@ async def divisons_and_sections():
     spec_id = data.get("spec_id")
     batch_size = data.get("batch_size", 10)
     start_index = data.get("start_index", 0)
-    end_index = data.get("end_index", 10)
+    end_index = data.get("end_index", None)
 
     if spec_id is None:
         return jsonify({"error": "Spec ID is required"}), 400
 
     if start_index < 0:
         return jsonify({"error": "Start index must be greater than or equal to 0"}), 400
-    if end_index < 0:
-        return jsonify({"error": "End index must be greater than or equal to 0"}), 400
-    if end_index < start_index:
-        return jsonify({"error": "End index must be greater than or equal to start index"}), 400
+    # if end_index < 0:
+    #     return jsonify({"error": "End index must be greater than or equal to 0"}), 400
+    # if end_index < start_index:
+    #     return jsonify({"error": "End index must be greater than or equal to start index"}), 400
 
     s3 = S3Bucket()
-    if end_index is None:
-        end_index = s3.get_original_page_count(spec_id)
 
     spec_check = s3.get_original_pdf(spec_id)
     if spec_check["status_code"] != 200:

@@ -165,37 +165,69 @@ class S3Bucket:
             "total_indexes_with_no_text_or_image": len(indexes_with_no_text_or_image)
         }
 
-    def upload_original_pdf(self, file: FileStorage, spec_id: str) -> dict:
-        try:
-            self.s3_client().put_object(
-                Bucket=self.bucket_name,
-                Key=f"{spec_id}/original",
-                Body=file.stream,
-                ContentType="application/pdf",
-                ServerSideEncryption="AES256"
-            )
-        except Exception as e:
-            logger.error(f"Error uploading original PDF to S3 bucket: {e}")
-            return {
-                    "message": f"Error uploading original PDF to S3 bucket: {str(e)}",
+    def upload_original_pdf(self, files: list[FileStorage], spec_id: str) -> dict:
+        successes: int = 0
+        for i, file in enumerate(files):
+            try:
+                self.s3_client().put_object(
+                    Bucket=self.bucket_name,
+                    Key=f"{spec_id}/original/{i+1}",
+                    Body=file.stream,
+                    ContentType=file.content_type,
+                    ServerSideEncryption="AES256"
+                )
+                logger.info(f"Uploaded original PDF {i+1} to S3 bucket")
+                successes += 1
+            except Exception as e:
+                logger.error(f"Error uploading original PDF {i+1} to S3 bucket: {e}")
+                return {
+                    "message": f"Error uploading original PDF {i+1} to S3 bucket: {str(e)}",
                     "status_code": 400
-            }
+                }
         return {
-            "message": "Original PDF uploaded to S3 bucket",
+            "message": f"{successes}/{len(files)} original PDFs uploaded to S3 bucket",
+            "spec_id": spec_id,
             "status_code": 200
         }
 
     def get_original_pdf(self, spec_id: str) -> dict:
         if not spec_id:
             raise ValueError("Spec ID is required")
-        # if file_name is None:
-        #     raise ValueError("File name is required")
 
         try:
             # Get pdf file from S3 bucket
-            response = self.s3_client().get_object(Bucket=self.bucket_name, Key=f"{spec_id}/original")
+            response = self.s3_client().list_objects(Bucket=self.bucket_name, Prefix=f"{spec_id}/original/")
+
+            # Sort by key to maintain order (1, 2, 3, etc.)
+            contents = sorted(response.get("Contents", []), key=lambda x: x["Key"])
+
+            if not contents:
+                return {
+                    "data": "No original PDFs found",
+                    "status_code": 404
+                }
+
+            # If only one PDF, return it directly
+            if len(contents) == 1:
+                pdf_bytes = self.s3_client().get_object(Bucket=self.bucket_name, Key=contents[0]["Key"])["Body"].read()
+                return {
+                    "data": pdf_bytes,
+                    "status_code": 200
+                }
+
+            # Merge multiple PDFs using PyMuPDF
+            merged_doc = fitz.open()
+            for item in contents:
+                pdf_bytes = self.s3_client().get_object(Bucket=self.bucket_name, Key=item["Key"])["Body"].read()
+                src_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+                merged_doc.insert_pdf(src_doc)
+                src_doc.close()
+
+            merged_bytes = merged_doc.tobytes()
+            merged_doc.close()
+
             return {
-                "data": response["Body"].read(),
+                "data": merged_bytes,
                 "status_code": 200
             }
         except Exception as e:
@@ -331,6 +363,7 @@ class S3Bucket:
 
 # if __name__ == "__main__":
 #     s3 = S3Bucket()
-#     spec_id = "2ad9cd93-2a40-4b3e-a11c-e52decfe0e6c"
-#     section_pages = s3.get_section_pages(spec_id, [2, 76, 89, 90, 91, 92, 93, 94, 95, 96, 103])
-#     print(len(section_pages))
+#     # spec_id = "0ec5802c-4df5-416a-b435-409daf26db9e"
+#     spec_id = "13d80a28-9f58-40e8-969b-e378d7051fe5"
+#     get_original_pdf = s3.get_original_pdf(spec_id)
+#     print(get_original_pdf)
