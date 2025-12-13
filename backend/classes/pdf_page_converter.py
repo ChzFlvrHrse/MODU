@@ -1,36 +1,31 @@
-import fitz, logging, dotenv
+import fitz, logging, dotenv, re
 from typing import Iterator, Optional
 from classes.typed_dicts import HybridPage
+from classes.ocr import OCRQualityChecker
 
 dotenv.load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class PDFPageConverter:
+class PDFPageConverter(OCRQualityChecker):
     """
     Handles converting PDF pages to text/images and uploading them to S3.
     """
     # ---------- Low-level helpers ----------
 
-    def rasterize_page(self, doc: fitz.Document, page_index: int, dpi: int = 200, grayscale: bool = False) -> bytes:
-        num_pages = len(doc)
-
-        if num_pages == 0:
-            raise ValueError("Document has no pages")
-
+    def rasterize_page(self, page: fitz.Page, total_pages: int, page_index: int, dpi: int = 200, grayscale: bool = False) -> bytes:
         zoom = dpi / 72.0
         mat = fitz.Matrix(zoom, zoom)
         colorspace = fitz.csGRAY if grayscale else fitz.csRGB
 
-        page = doc.load_page(page_index)
         pix = page.get_pixmap(matrix=mat, alpha=False, colorspace=colorspace)
         png_bytes = pix.tobytes("png")
 
         logger.info(
             "Rasterized page %d/%d (dpi=%d, size=%dx%d)",
             page_index,
-            num_pages - 1,
+            total_pages,
             dpi,
             pix.width,
             pix.height,
@@ -59,7 +54,7 @@ class PDFPageConverter:
         """
         Yield HybridPage dicts for the given PDF:
         - Optionally rasterize all pages.
-        - Otherwise, only rasterize if the page contains images.
+        - Otherwise, only rasterize if the page has no text or contains images.
         - Include text if present.
         """
 
@@ -100,15 +95,23 @@ class PDFPageConverter:
 
                     # If rasterize_all, immediately yield a raster-only page
                     if rasterize_all:
+                        rasterized_bytes = self.rasterize_page(
+                            page,
+                            num_pages,
+                            page_index,
+                            dpi=dpi,
+                            grayscale=grayscale,
+                        )
+                        ocr_text = self.ocr_quality_assurance(
+                            page,
+                            page_index,
+                            dpi_start=dpi,
+                            grayscale=grayscale
+                        )
                         yield {
                             "page_index": page_index,
-                            "text": None,
-                            "bytes": self.rasterize_page(
-                                doc,
-                                page_index,
-                                dpi=dpi,
-                                grayscale=grayscale,
-                            )
+                            "text": ocr_text["text"] if ocr_text["passes"] else "",
+                            "bytes": rasterized_bytes,
                         }
 
                     else:
@@ -116,33 +119,54 @@ class PDFPageConverter:
                         text = self.get_text(page)
                         clean_text = text.replace(" ", "").replace("\n", " ")
 
-                        has_text = len(clean_text) > 0
-                        has_image = self.check_pdf_for_images(page)
+                        alnum = sum(c.isalnum() for c in clean_text)
+                        word_count = len(re.findall(r"[A-Za-z0-9]{2,}", text))
+                        has_text = (alnum >= 50 and word_count >= 10) or (word_count >= 15)
 
-                        if not has_text and not has_image:
-                            logger.info(f"No text or image found for page {page_index}")
-                        else:
-                            logger.info(
-                                "Page %d: Text Present: %s, Image Present: %s",
+                        if not has_text:
+                            logger.info(f"Page {page_index} has no text, rasterizing and OCRing")
+                            rasterized_bytes = self.rasterize_page(
+                                page,
+                                num_pages,
                                 page_index,
-                                has_text,
-                                has_image,
+                                dpi=dpi,
+                                grayscale=grayscale,
                             )
-
-                        yield {
-                            "page_index": page_index,
-                            "text": text if has_text else None,
-                            "bytes": (
-                                self.rasterize_page(
-                                    doc,
+                            ocr_text = self.ocr_quality_assurance(
+                                page,
+                                page_index,
+                                num_pages,
+                                dpi_start=dpi,
+                                grayscale=grayscale
+                            )
+                            yield {
+                                "page_index": page_index,
+                                "text": ocr_text["text"] if ocr_text["passes"] else "",
+                                "bytes": rasterized_bytes
+                            }
+                        elif has_text:
+                            logger.info(f"Page {page_index} has text, checking for images")
+                            if self.check_pdf_for_images(page):
+                                logger.info(f"Page {page_index} has images, rasterizing")
+                                rasterized_bytes = self.rasterize_page(
+                                    page,
+                                    num_pages,
                                     page_index,
                                     dpi=dpi,
                                     grayscale=grayscale,
                                 )
-                                if has_image
-                                else None
-                            ),
-                        }
+                                yield {
+                                    "page_index": page_index,
+                                    "text": text if len(text) > 0 else "",
+                                    "bytes": rasterized_bytes
+                                }
+                            else:
+                                logger.info(f"Page {page_index} has no images, yielding text")
+                                yield {
+                                    "page_index": page_index,
+                                    "text": text if len(text) > 0 else "",
+                                    "bytes": None
+                                }
                 except ValueError as e:
                     logger.error("Error processing page %d: %s", page_index, e)
                     continue

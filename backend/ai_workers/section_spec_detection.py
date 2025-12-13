@@ -4,7 +4,6 @@ from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
 import os, logging, re, sys, base64, json, asyncio, fitz
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
 from classes.pdf_page_converter import PDFPageConverter
 from classes.typed_dicts import HybridPage
 from classes.s3_buckets import S3Bucket

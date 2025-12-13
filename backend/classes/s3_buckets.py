@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 import boto3, os, dotenv, logging, datetime, fitz
 from classes.pdf_page_converter import PDFPageConverter
 from classes.typed_dicts import HybridPage, PdfPageConverterResult
+from classes.ocr import Tesseract
 
 dotenv.load_dotenv()
 
@@ -20,10 +21,9 @@ s3_client = boto3.client(
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class S3Bucket:
+class S3Bucket(PDFPageConverter):
     def __init__(self):
         self.bucket_name = os.environ.get("BUCKET_NAME")
-        self.pdf_page_converter = PDFPageConverter()
 
     def s3_client(self):
         return s3_client
@@ -96,7 +96,6 @@ class S3Bucket:
         text/image representation to S3 using a thread pool.
         """
         try:
-
             bucket = self.bucket_name
             logger.info(
                 "Uploading PDF to S3 bucket: %s, spec ID: %s",
@@ -105,16 +104,16 @@ class S3Bucket:
             )
 
             start_time = datetime.datetime.now()
+            last_page_index: int = 0
             attempts: int = 0
             successes: int = 0
-            last_page_index: Optional[int] = None
             attempt_page_index = []
             indexes_with_no_text_or_image: list[int] = []
 
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 for page_result in executor.map(
                     self.upload_page_to_s3,
-                    self.pdf_page_converter.pdf_page_converter_generator(
+                    self.pdf_page_converter_generator(
                         pdf=pdf,
                         dpi=dpi,
                         grayscale=grayscale,

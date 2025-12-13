@@ -1,11 +1,14 @@
-from typing import Optional, TypedDict
+from typing import Optional
+from dataclasses import dataclass
 
-class HybridPage(TypedDict):
+@dataclass
+class HybridPage():
     page_index: int
-    text: Optional[str]
+    text: str
     bytes: Optional[bytes]
 
-class PdfPageConverterResult(TypedDict):
+@dataclass
+class PdfPageConverterResult():
     success_rate: float
     attempted_uploads: int
     successful_uploads: int
