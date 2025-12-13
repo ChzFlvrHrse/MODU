@@ -77,9 +77,11 @@ async def text_and_rasterize():
 @upload_routes_bp.route("/upload_and_convert_pdf", methods=["POST"])
 async def upload_and_convert_pdf():
     s3 = S3Bucket()
-    files = await request.files
 
+    # Consider switching to request.form instead of request.files
+    files = await request.files
     pdf = files.getlist("pdf")
+
     if not pdf[0].content_type == "application/pdf" or not pdf[0].filename.endswith(".pdf"):
         return jsonify({"error": "No PDF file provided"}), 400
 
@@ -91,32 +93,29 @@ async def upload_and_convert_pdf():
 
     spec_id = str(uuid.uuid4())
 
-    loop = asyncio.get_running_loop()
-    original_pdf_upload_result = await loop.run_in_executor(
-        None,
-        lambda: s3.upload_original_pdf(
-            files=pdf,
-            spec_id=spec_id
+    async with s3.s3_client() as s3_client:
+        original_pdf_upload_result = await s3.upload_original_pdf_with_client(files=pdf, spec_id=spec_id, s3=s3_client)
+        if original_pdf_upload_result["status_code"] != 200:
+            return jsonify({"error": original_pdf_upload_result["data"]}), original_pdf_upload_result["status_code"]
+        else:
+            logger.info(f"Original PDF uploaded successfully to S3 bucket: {spec_id}")
+
+        pdf_result = await s3.get_original_pdf_with_client(spec_id=spec_id, s3=s3_client)
+        if pdf_result["status_code"] != 200:
+            return jsonify({"error": pdf_result["data"]}), pdf_result["status_code"]
+
+        pdf_bytes = pdf_result["data"]
+
+        text_and_rasterize = await s3.bulk_upload_to_s3_with_client(
+            pdf=pdf_bytes,
+            spec_id=spec_id,
+            s3=s3_client,
+            dpi=dpi,
+            grayscale=grayscale,
+            rasterize_all=rasterize_all,
+            start_index=start_index,
+            end_index=end_index
         )
-    )
-    if original_pdf_upload_result["status_code"] != 200:
-        return jsonify({"error": original_pdf_upload_result["data"]}), original_pdf_upload_result["status_code"]
-    else:
-        logger.info(f"Original PDF uploaded successfully to S3 bucket: {spec_id}")
-
-    pdf_result = await loop.run_in_executor(
-        None,
-        lambda: s3.get_original_pdf(spec_id)
-    )
-    if pdf_result["status_code"] != 200:
-        return jsonify({"error": pdf_result["data"]}), pdf_result["status_code"]
-
-    pdf_bytes = pdf_result["data"]
-
-    text_and_rasterize = await loop.run_in_executor(
-        None,
-        lambda: s3.bulk_upload_to_s3(pdf=pdf_bytes, spec_id=spec_id, rasterize_all=rasterize_all, start_index=start_index, end_index=end_index, dpi=dpi, grayscale=grayscale)
-    )
 
     return jsonify(text_and_rasterize), text_and_rasterize["status_code"]
 
