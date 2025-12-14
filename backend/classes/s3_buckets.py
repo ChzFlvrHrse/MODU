@@ -29,11 +29,17 @@ class S3Bucket(PDFPageConverter):
     async def get_object(self, key: str):
         async with self.s3_client() as s3:
             response = await s3.get_object(Bucket=self.bucket_name, Key=key)
-            return await response["Body"].read()
+            body = response["Body"]
+            data = await body.read()
+            body.close()
+            return data
 
     async def get_object_with_client(self, key: str, s3: any):
         response = await s3.get_object(Bucket=self.bucket_name, Key=key)
-        return await response["Body"].read()
+        body = response["Body"]
+        data = await body.read()
+        body.close()
+        return data
 
     async def get_text_page(self, spec_id: str, index: int):
         key = f"{spec_id}/converted/{index}/TEXT.txt"
@@ -44,13 +50,33 @@ class S3Bucket(PDFPageConverter):
             logger.error(f"Error getting text page {index}: {e}")
             return None
 
-    async def get_text_page_with_client(self, spec_id: str, index: int, s3: any):
+    async def get_image_page(self, spec_id: str, index: int):
+        key = f"{spec_id}/converted/{index}/IMAGE.png"
+        try:
+            image = await self.get_object(key)
+            return fitz.open(stream=image, filetype="png")
+        except Exception as e:
+            logger.error(f"Error getting image page {index}: {e}")
+            return None
+
+    async def get_text_page_with_client(self, spec_id: str, index: int, s3_client: any):
         key = f"{spec_id}/converted/{index}/TEXT.txt"
         try:
-            text = await self.get_object_with_client(key, s3)
+            text = await self.get_object_with_client(key, s3_client)
+            logger.info(f"Text page {index} found")
             return text.decode("utf-8", errors="replace")
         except Exception as e:
             logger.error(f"Error getting text page {index}: {e}")
+            return None
+
+    async def get_image_page_with_client(self, spec_id: str, index: int, s3_client: any):
+        key = f"{spec_id}/converted/{index}/IMAGE.png"
+        try:
+            image = await self.get_object_with_client(key, s3_client)
+            logger.info(f"Image page {index} found")
+            return fitz.open(stream=image, filetype="png") if image else None
+        except Exception as e:
+            logger.error(f"Error getting image page {index}: {e}")
             return None
 
     async def get_objects_gen(self, prefix: str = "") -> AsyncGenerator[list[dict], None]:
@@ -63,69 +89,14 @@ class S3Bucket(PDFPageConverter):
                 if "Contents" in page:
                     yield page.get("Contents", [])
 
-    async def get_objects_gen_with_client(self, s3: any, prefix: str = "") -> AsyncGenerator[list[dict], None]:
-        paginator = s3.get_paginator("list_objects_v2")
+    async def get_objects_gen_with_client(self, s3_client: any, prefix: str = "") -> AsyncGenerator[list[dict], None]:
+        paginator = s3_client.get_paginator("list_objects_v2")
         kwargs = {"Bucket": self.bucket_name}
         if prefix:
             kwargs["Prefix"] = prefix
         async for page in paginator.paginate(**kwargs):
             if "Contents" in page:
                 yield page.get("Contents", [])
-
-    async def get_text_pages_gen(self, spec_id: str, start_index: int = 0, end_index: int = None, batch_size: int = 25, max_in_flight: int = 32) -> AsyncGenerator[list[dict], None]:
-        converted_page_count = await self.get_converted_page_count(spec_id)
-
-        if (start_index < 0 or end_index < start_index) and end_index is not None:
-            raise ValueError("Start index must be greater than or equal to 0")
-        if end_index < 0:
-            raise ValueError("End index must be greater than or equal to 0")
-        if (end_index is not None and end_index >= converted_page_count) or (end_index is None):
-            end_index = converted_page_count
-
-        sem = asyncio.Semaphore(max_in_flight)
-
-        async with self.s3_client() as s3:
-            async def fetch(index: int):
-                async with sem:
-                    text = await self.get_text_page(spec_id, index)
-                    return {
-                        "page_index": index,
-                        "text": text,
-                    }
-
-            indicies = list(range(start_index, end_index+1))
-            batches = [indicies[i:i+batch_size] for i in range(0, len(indicies), batch_size)]
-            for batch in batches:
-                tasks = [fetch(index) for index in batch]
-                results = await asyncio.gather(*tasks)
-                yield results
-
-    async def get_text_pages_gen_with_client(self, spec_id: str, s3: any, start_index: int = 0, end_index: int = None, batch_size: int = 25, max_in_flight: int = 32) -> AsyncGenerator[list[dict], None]:
-        converted_page_count = await self.get_converted_page_count_with_client(spec_id, s3)
-
-        if (start_index < 0 or end_index < start_index) and end_index is not None:
-            raise ValueError("Start index must be greater than or equal to 0")
-        if end_index < 0:
-            raise ValueError("End index must be greater than or equal to 0")
-        if (end_index is not None and end_index >= converted_page_count) or (end_index is None):
-            end_index = converted_page_count
-
-        sem = asyncio.Semaphore(max_in_flight)
-
-        async def fetch(index: int) -> dict:
-            async with sem:
-                text = await self.get_text_page_with_client(spec_id, index, s3)
-                return {
-                    "page_index": index,
-                    "text": text,
-                }
-
-        indicies = list(range(start_index, end_index+1))
-        batches = [indicies[i:i+batch_size] for i in range(0, len(indicies), batch_size)]
-        for batch in batches:
-            tasks = [fetch(index) for index in batch]
-            results = await asyncio.gather(*tasks)
-            yield results
 
     async def upload_page_to_s3(self, page: HybridPage, spec_id: str) -> dict:
         attempts: int = 0
@@ -509,13 +480,13 @@ class S3Bucket(PDFPageConverter):
                 "status_code": 400
             }
 
-    async def get_original_pdf_with_client(self, spec_id: str, s3: any) -> dict:
+    async def get_original_pdf_with_client(self, spec_id: str, s3_client: any) -> dict:
         if not spec_id:
             raise ValueError("Spec ID is required")
 
         try:
             # Get pdf file from S3 bucket
-            response = await s3.list_objects(Bucket=self.bucket_name, Prefix=f"{spec_id}/original/")
+            response = await s3_client.list_objects(Bucket=self.bucket_name, Prefix=f"{spec_id}/original/")
 
             # Sort by key to maintain order (1, 2, 3, etc.)
             contents = sorted(response.get("Contents", []), key=lambda x: x["Key"])
@@ -528,7 +499,7 @@ class S3Bucket(PDFPageConverter):
 
             # If only one PDF, return it directly
             if len(contents) == 1:
-                response = await s3.get_object(Bucket=self.bucket_name, Key=contents[0]["Key"])
+                response = await s3_client.get_object(Bucket=self.bucket_name, Key=contents[0]["Key"])
                 pdf_bytes = await response["Body"].read()
                 return {
                     "data": pdf_bytes,
@@ -538,7 +509,7 @@ class S3Bucket(PDFPageConverter):
             # Merge multiple PDFs using PyMuPDF
             merged_doc = fitz.open()
             for item in contents:
-                response = await s3.get_object(Bucket=self.bucket_name, Key=item["Key"])
+                response = await s3_client.get_object(Bucket=self.bucket_name, Key=item["Key"])
                 pdf_bytes = await response["Body"].read()
                 src_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
                 merged_doc.insert_pdf(src_doc)
@@ -589,26 +560,31 @@ class S3Bucket(PDFPageConverter):
         return page_count
 
     async def get_original_page_count(self, spec_id: str) -> int:
-        """Get the number of pages in the original PDF."""
-        pdf_result = self.get_original_pdf(spec_id)
-        if pdf_result["status_code"] != 200:
-            raise ValueError(pdf_result["data"])
-        doc = fitz.open(stream=pdf_result["data"], filetype="pdf")
-        count = len(doc)
-        doc.close()
+        paginator = self.s3_client().get_paginator("list_objects_v2")
+        response = paginator.paginate(
+            Bucket=self.bucket_name,
+            Prefix=f"{spec_id}/converted/",
+            Delimiter="/"
+        )
+        count = 0
+        async for page in response:
+            count += len(page.get("CommonPrefixes", []))
         return count
 
-    async def get_original_page_count_with_client(self, spec_id: str, s3: any) -> int:
+    async def get_original_page_count_with_client(self, spec_id: str, s3_client: any) -> int:
         """Get the number of pages in the original PDF."""
-        pdf_result = await s3.get_original_pdf_with_client(spec_id, s3)
-        if pdf_result["status_code"] != 200:
-            raise ValueError(pdf_result["data"])
-        doc = fitz.open(stream=pdf_result["data"], filetype="pdf")
-        count = len(doc)
-        doc.close()
+        paginator = s3_client.get_paginator("list_objects_v2")
+        response = paginator.paginate(
+            Bucket=self.bucket_name,
+            Prefix=f"{spec_id}/converted/",
+            Delimiter="/"
+        )
+        count = 0
+        async for page in response:
+            count += len(page.get("CommonPrefixes", []))
         return count
 
-    async def get_converted_pages_generator(self, spec_id: str, start_index: int = 0, end_index: int = 10) -> Iterator[HybridPage]:
+    async def get_converted_pages_generator(self, spec_id: str, start_index: int = 0, end_index: int = 10) -> AsyncGenerator[HybridPage, None]:
 
         if start_index < 0:
             raise ValueError("Start index must be greater than or equal to 0")
@@ -616,20 +592,16 @@ class S3Bucket(PDFPageConverter):
             raise ValueError("End index must be greater than or equal to 0")
         if end_index < start_index:
             raise ValueError("End index must be greater than or equal to start index")
-        # if end_index is not None and end_index >= 10:
-        #     raise ValueError("End index must be less than 10")
 
         if start_index == end_index:
             end_index = start_index + 1
 
-        # converted_pages = []
-
         try:
             for i in range(start_index, end_index+1):
                 try:
-                    tex_response = self.s3_client().get_object(Bucket=self.bucket_name, Key=f"{spec_id}/converted/{i}.txt")
-                    if tex_response:
-                        text = tex_response["Body"].read().decode("utf-8")
+                    text_response = self.s3_client().get_object(Bucket=self.bucket_name, Key=f"{spec_id}/converted/{i}.txt")
+                    if text_response:
+                        text = text_response["Body"].read().decode("utf-8")
                     else:
                         logger.debug(f"No text for page {i}")
                         text = None
@@ -640,24 +612,24 @@ class S3Bucket(PDFPageConverter):
                 try:
                     bytes_response = self.s3_client().get_object(Bucket=self.bucket_name, Key=f"{spec_id}/converted/{i}.png")
                     if bytes_response:
-                        bytes = bytes_response["Body"].read()
+                        bytes_data = bytes_response["Body"].read()
                     else:
                         logger.debug(f"No image for page {i}")
-                        bytes = None
+                        bytes_data = None
                 except Exception as e:
                     logger.debug(f"No image for page {i}: {e}")
-                    bytes = None
+                    bytes_data = None
 
                 yield {
                     "page_index": i,
                     "text": text,
-                    "bytes": bytes
+                    "bytes": bytes_data
                 }
         except Exception as e:
             logger.error(f"Error getting converted pages from S3 bucket: {e}")
             raise ValueError(f"Error getting converted pages from S3 bucket: {str(e)}")
 
-    async def get_converted_pages_generator_with_client(self, spec_id: str, s3: any, start_index: int = 0, end_index: int = 10) -> Iterator[HybridPage]:
+    async def get_converted_pages_generator_with_client(self, spec_id: str, s3_client: any, start_index: int = 0, end_index: int = 10) -> AsyncGenerator[HybridPage, None]:
 
         if start_index < 0:
             raise ValueError("Start index must be greater than or equal to 0")
@@ -665,47 +637,18 @@ class S3Bucket(PDFPageConverter):
             raise ValueError("End index must be greater than or equal to 0")
         if end_index < start_index:
             raise ValueError("End index must be greater than or equal to start index")
-        # if end_index is not None and end_index >= 10:
-        #     raise ValueError("End index must be less than 10")
 
-        if start_index == end_index:
-            end_index = start_index + 1
+        for i in range(start_index, end_index):
+            text, bytes_data = await asyncio.gather(
+                self.get_text_page_with_client(spec_id, i, s3_client),
+                self.get_image_page_with_client(spec_id, i, s3_client)
+            )
 
-        # converted_pages = []
-
-        try:
-            for i in range(start_index, end_index+1):
-                try:
-                    tex_response = await s3.get_object(Bucket=self.bucket_name, Key=f"{spec_id}/converted/{i}.txt")
-                    if tex_response:
-                        text = tex_response["Body"].read().decode("utf-8")
-                    else:
-                        logger.debug(f"No text for page {i}")
-                        text = None
-                except Exception as e:
-                    logger.debug(f"No text for page {i}: {e}")
-                    text = None
-
-                try:
-                    bytes_response = await s3.get_object(Bucket=self.bucket_name, Key=f"{spec_id}/converted/{i}.png")
-                    if bytes_response:
-                        bytes = bytes_response["Body"].read()
-                    else:
-                        logger.debug(f"No image for page {i}")
-                        bytes = None
-                except Exception as e:
-                    logger.debug(f"No image for page {i}: {e}")
-                    bytes = None
-
-                yield {
-                    "page_index": i,
-                    "text": text,
-                    "bytes": bytes
-                }
-        except Exception as e:
-            logger.error(f"Error getting converted pages from S3 bucket: {e}")
-            raise ValueError(f"Error getting converted pages from S3 bucket: {str(e)}")
-
+            yield {
+                "page_index": i,
+                "text": text,
+                "bytes": bytes_data
+            }
 
     async def get_single_page(self, spec_id: str, page_index: int) -> HybridPage:
         if page_index < 0:
@@ -745,18 +688,18 @@ class S3Bucket(PDFPageConverter):
             "bytes": bytes
         }
 
-    async def get_single_page_with_client(self, spec_id: str, page_index: int, s3: any) -> HybridPage:
+    async def get_single_page_with_client(self, spec_id: str, page_index: int, s3_client: any) -> HybridPage:
         if page_index < 0:
             raise ValueError("Page index must be greater than or equal to 0")
-        if page_index >= await s3.get_converted_page_count_with_client(spec_id, s3):
-            raise ValueError(f"Page index {page_index} is greater than the number of converted pages: {await s3.get_converted_page_count_with_client(spec_id, s3)}")
+        # if page_index >= await self.get_converted_page_count_with_client(spec_id, s3_client):
+        #     raise ValueError(f"Page index {page_index} is greater than the number of converted pages: {await s3.get_converted_page_count_with_client(spec_id, s3)}")
 
-        spec_check = await s3.get_original_pdf_with_client(spec_id, s3)
+        spec_check = await self.get_original_pdf_with_client(spec_id, s3_client)
         if spec_check["status_code"] != 200:
             raise ValueError(spec_check["data"])
 
         try:
-            tex_response = await s3.get_object(Bucket=self.bucket_name, Key=f"{spec_id}/converted/{page_index}.txt")
+            tex_response = await s3_client.get_object(Bucket=self.bucket_name, Key=f"{spec_id}/converted/{page_index}.txt")
             if tex_response:
                 text = tex_response["Body"].read().decode("utf-8")
             else:
@@ -767,7 +710,7 @@ class S3Bucket(PDFPageConverter):
             text = None
 
         try:
-            bytes_response = await s3.get_object(Bucket=self.bucket_name, Key=f"{spec_id}/converted/{page_index}.png")
+            bytes_response = await s3_client.get_object(Bucket=self.bucket_name, Key=f"{spec_id}/converted/{page_index}.png")
             if bytes_response:
                 bytes = bytes_response["Body"].read()
             else:
@@ -783,11 +726,34 @@ class S3Bucket(PDFPageConverter):
             "bytes": bytes
         }
 
+    async def check_pdf_exists(self, spec_id: str) -> bool:
+        async with self.s3_client() as s3:
+            resp = await s3.list_objects_v2(
+                Bucket=self.bucket_name,
+                Prefix=f"{spec_id}/original/",
+                MaxKeys=1,
+            )
+            return resp.get("KeyCount", 0) > 0
+
+
+    async def check_pdf_exists_with_client(self, spec_id: str, s3_client: any) -> bool:
+        resp = await s3_client.list_objects_v2(
+            Bucket=self.bucket_name,
+            Prefix=f"{spec_id}/original/",
+            MaxKeys=1
+        )
+        return resp.get("KeyCount", 0) > 0
+
     async def delete_object(self, key: str):
         await self.s3_client().delete_object(Bucket=self.bucket_name, Key=key)
 
-if __name__ == "__main__":
-    s3 = S3Bucket()
-    # spec_id = "0ec5802c-4df5-416a-b435-409daf26db9e"
-    spec_id = "6fa3c868-d9a2-4ba1-9b14-ab712be937b5"
-    get_object = s3.get_object(key=f"{spec_id}/converted/1")
+# if __name__ == "__main__":
+#     async def main():
+#         s3 = S3Bucket()
+#         spec_id = "1ca7077a-ac58-4f5a-9b40-f6847ff235e2"
+#         index = 0
+#         async with s3.s3_client() as s3_client:
+#             get_object = await s3.get_text_page_with_client(spec_id, index, s3_client)
+#             print(get_object)
+
+#     asyncio.run(main())

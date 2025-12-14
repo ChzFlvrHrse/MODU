@@ -19,14 +19,8 @@ async def upload_to_s3():
 
     spec_id = str(uuid.uuid4())
 
-    loop = asyncio.get_running_loop()
-    original_pdf_upload_result = await loop.run_in_executor(
-        None,
-        lambda: s3.upload_original_pdf(
-            files=pdf,
-            spec_id=spec_id,
-        )
-    )
+    async with s3.s3_client() as s3_client:
+        original_pdf_upload_result = await s3.upload_original_pdf_with_client(files=pdf, spec_id=spec_id, s3=s3_client)
 
     return jsonify(original_pdf_upload_result), original_pdf_upload_result["status_code"]
 
@@ -52,24 +46,23 @@ async def text_and_rasterize():
         return jsonify({"error": "End index must be greater than or equal to start index"}), 400
 
     s3 = S3Bucket()
-    loop = asyncio.get_running_loop()
-    pdf_result = await loop.run_in_executor(
-        None,
-        lambda: s3.get_original_pdf(spec_id)
-    )
-    if pdf_result["status_code"] != 200:
-        return jsonify({"error": pdf_result["data"]}), pdf_result["status_code"]
+    async with s3.s3_client() as s3_client:
+        pdf_result = await s3.get_original_pdf_with_client(spec_id=spec_id, s3=s3_client)
+        if pdf_result["status_code"] != 200:
+            return jsonify({"error": pdf_result["data"]}), pdf_result["status_code"]
 
-    pdf_bytes = pdf_result["data"]
+        pdf_bytes = pdf_result["data"]
 
-    loop = asyncio.get_running_loop()
-    text_and_rasterize = await loop.run_in_executor(
-        None,
-        lambda: s3.bulk_upload_to_s3(pdf=pdf_bytes, spec_id=spec_id, rasterize_all=rasterize_all, start_index=start_index, end_index=end_index, dpi=dpi, grayscale=grayscale)
-    )
-
-    if text_and_rasterize["status_code"] != 200:
-        return jsonify({"error": text_and_rasterize["message"]}), text_and_rasterize["status_code"]
+        text_and_rasterize = await s3.bulk_upload_to_s3_with_client(
+            pdf=pdf_bytes,
+            spec_id=spec_id,
+            s3=s3_client,
+            dpi=dpi,
+            grayscale=grayscale,
+            rasterize_all=rasterize_all,
+            start_index=start_index,
+            end_index=end_index
+        )
 
     return jsonify(text_and_rasterize), text_and_rasterize["status_code"]
 
@@ -122,9 +115,9 @@ async def upload_and_convert_pdf():
 @upload_routes_bp.route("/get_original_pdf/<spec_id>", methods=["GET"])
 async def get_original_pdf(spec_id: str):
     s3 = S3Bucket()
-    original_pdf = s3.get_original_pdf(spec_id)
-
-    if original_pdf["status_code"] != 200:
-        return jsonify({"error": original_pdf["data"]}), original_pdf["status_code"]
+    async with s3.s3_client() as s3_client:
+        original_pdf = await s3.get_original_pdf_with_client(spec_id=spec_id, s3=s3_client)
+        if original_pdf["status_code"] != 200:
+            return jsonify({"error": original_pdf["data"]}), original_pdf["status_code"]
 
     return jsonify({"original_pdf": original_pdf["data"], "spec_id": spec_id}), original_pdf["status_code"]
