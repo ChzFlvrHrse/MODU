@@ -17,7 +17,7 @@ async def section_spec_pages():
     start_index = data.get("start_index", 0)
     end_index = data.get("end_index", None)
 
-    time_stamp = datetime.datetime.now().strftime("%H:%M:%S")
+    start_time = datetime.datetime.now()
 
     if spec_id is None:
         return jsonify({"error": "Spec ID is required"}), 400
@@ -56,7 +56,7 @@ async def section_spec_pages():
                 "section_number": section_number,
                 "section_spec_requirements": section_spec_requirements,
                 "total_detected_pages": len(section_spec_requirements),
-                "time_stamp": time_stamp
+                "run_time": datetime.datetime.now() - start_time
             }), 200
 
     except Exception as e:
@@ -66,6 +66,8 @@ async def section_spec_pages():
 @section_specs_bp.route("/section_spec_requirements", methods=["POST"])
 async def section_spec_reqs():
     data = await request.json
+    start_time = datetime.datetime.now()
+    s3 = S3Bucket()
 
     spec_id = data.get("spec_id")
     section_pages = data.get("section_pages")
@@ -76,13 +78,17 @@ async def section_spec_reqs():
     if section_pages is None or len(section_pages) == 0:
         return jsonify({"error": "Section pages are required"}), 400
 
-    s3 = S3Bucket()
-    spec_check = s3.get_original_pdf(spec_id)
-    if spec_check["status_code"] != 200:
-        return jsonify({"error": "Spec ID is invalid"}), 400
+    try:
+        async with s3.s3_client() as s3_client:
+            spec_check = await s3.get_original_pdf_with_client(spec_id=spec_id, s3_client=s3_client)
+            if spec_check["status_code"] != 200:
+                return jsonify({"error": "Spec ID is invalid"}), 400
 
-    logger.info(f"Section pages: {section_pages}")
+        logger.info(f"Section pages: {section_pages}")
 
-    section_spec_reqs = await section_spec_requirements(spec_id=spec_id, section_pages=section_pages)
+        section_spec_reqs = await section_spec_requirements(spec_id=spec_id, section_pages=section_pages, s3_client=s3_client)
+    except Exception as e:
+        logger.error(f"Error in section_spec_reqs: {e}")
+        return jsonify({"error": str(e)}), 400
 
-    return jsonify({"section_spec_requirements": section_spec_reqs}), 200
+    return jsonify({"section_spec_requirements": section_spec_reqs, "run_time": datetime.datetime.now() - start_time}), 200

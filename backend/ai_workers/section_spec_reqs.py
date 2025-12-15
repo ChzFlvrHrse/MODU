@@ -1,9 +1,9 @@
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
-import os, logging, base64
-from classes.s3_buckets import S3Bucket
 from typing import Optional, List
+import os, logging, base64, asyncio
+from pydantic import BaseModel, Field
+from classes.s3_buckets import S3Bucket
 
 load_dotenv()
 
@@ -223,9 +223,8 @@ class SpecReqs(BaseModel):
     )
 
 
-async def extract_section_requirements_from_pages(pages: list[dict]) -> dict:
+async def extract_section_requirements_from_pages_ai(pages: list[dict]) -> dict:
     """
-    pages: list of {"page_index", "text", "bytes"} from S3/hybrid_pdf
     Returns a single SectionRequirements/SubmittalSpecs-style dict.
     """
     # Split into primary + context by longest contiguous run
@@ -234,7 +233,6 @@ async def extract_section_requirements_from_pages(pages: list[dict]) -> dict:
     primary_indices = indices
 
     primary_pages = [p for p in pages if p["page_index"] in primary_indices]
-    context_pages = [p for p in pages if p["page_index"] not in primary_indices]
 
     content_blocks = [
         {
@@ -246,9 +244,7 @@ async def extract_section_requirements_from_pages(pages: list[dict]) -> dict:
                 "and should be treated as secondary context.\n"
                 "Pages are labeled below.\n\n"
                 "FIRST: PRIMARY PAGES (contain the section body and general, product and execution details).\n"
-                "If a page includes both text and an image, the image is the same page as "
-                "the text and should only be used to supplement or correct missing text "
-                "(tables, formatting, cut-off words), not as a separate data source.\n"
+                ""
             ),
         }
     ]
@@ -256,35 +252,12 @@ async def extract_section_requirements_from_pages(pages: list[dict]) -> dict:
     def add_page_block(page: dict, label: str):
         idx = page["page_index"]
         text = page["text"]
-        bytes_ = page["bytes"]
 
         if text:
             content_blocks.append(
                 {
                     "type": "text",
                     "text": f"\n\n===== {label} PAGE {idx} START =====\n{text}\n===== {label} PAGE {idx} END =====\n",
-                }
-            )
-        if bytes_:
-            content_blocks.append(
-                {
-                    "type": "text",
-                    "text": f"\n\n===== {label} PAGE {idx} (IMAGE) START =====\n",
-                }
-            )
-            content_blocks.append(
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": "data:image/png;base64,"
-                        + base64.b64encode(bytes_).decode("utf-8")
-                    },
-                }
-            )
-            content_blocks.append(
-                {
-                    "type": "text",
-                    "text": f"\n===== {label} PAGE {idx} (IMAGE) END =====\n",
                 }
             )
 
@@ -305,20 +278,19 @@ async def extract_section_requirements_from_pages(pages: list[dict]) -> dict:
             add_page_block(page, "CONTEXT")
 
     prompt = """
-You are reading a construction SPECIFICATION SECTION that may be spread across
-multiple pages.
+            You are reading a construction SPECIFICATION SECTION that may be spread across
+            multiple pages.
 
-PRIMARY pages contain the actual body of the section and its requirements.
-CONTEXT pages are table-of-contents or cross-reference pages.
+            PRIMARY pages contain the actual body of the section and its requirements.
+            CONTEXT pages are table-of-contents or cross-reference pages.
 
-Your job:
-- Treat all PRIMARY pages as one continuous section.
-- Use CONTEXT pages only to confirm the section number, title, and project name.
-- Extract all requirements/products and return a single JSON object in the given schema.
-- Merge duplicates across pages.
-
-Only return valid JSON.
-"""
+            Your job:
+            - Treat all PRIMARY pages as one continuous section.
+            - Use CONTEXT pages only to confirm the section number, title, and project name.
+            - Extract all requirements/products and return a single JSON object in the given schema.
+            - Merge duplicates across pages.
+            - Only return valid JSON.
+    """
 
     res = await client.beta.chat.completions.parse(
         model="gpt-4.1",
@@ -404,17 +376,24 @@ async def merge_submittal_results(results: list[dict]) -> dict:
 
     return merged
 
-async def section_spec_requirements(spec_id: str, section_pages: list[int]) -> dict:
+async def section_spec_requirements(spec_id: str, section_pages: list[int], s3_client: any) -> dict:
     s3 = S3Bucket()
-    section_pages = s3.get_pages(spec_id, section_pages)
+    section_pages_text = await asyncio.gather(*[s3.get_text_page_with_client(spec_id=spec_id, index=page, s3_client=s3_client) for page in section_pages])
 
-    extracted_specs = await extract_section_requirements_from_pages(section_pages)
+    payload = [
+        {"page_index": i, "text": text}
+        for i, text in enumerate(section_pages_text)
+    ]
+    sorted_pages = sorted(payload, key=lambda x: x["page_index"])
 
-    # return await merge_submittal_results(per_page_results)
-    return extracted_specs
+    extracted_specs = await extract_section_requirements_from_pages_ai(sorted_pages)
 
-# s3 = S3Bucket()
-# spec_id = "dd878363-2fca-4c2c-9e04-dd37a883d5a6"
-# pages = [2, 76, 89, 90, 91, 92, 93, 94, 95, 96, 103]
+    # return extracted_specs
 
-# print(asyncio.run(section_spec_requirements(spec_id, pages)))
+if __name__ == "__main__":
+    async def main():
+        async with S3Bucket().s3_client() as s3_client:
+            spec_id = "1ca7077a-ac58-4f5a-9b40-f6847ff235e2"
+            section_pages = [2, 76, 89, 90, 91, 92, 93, 94, 95, 96, 103]
+            print(await section_spec_requirements(spec_id, section_pages, s3_client))
+    asyncio.run(main())

@@ -75,8 +75,10 @@ async def upload_and_convert_pdf():
     files = await request.files
     pdf = files.getlist("pdf")
 
-    if not pdf[0].content_type == "application/pdf" or not pdf[0].filename.endswith(".pdf"):
+    if len(pdf) == 0:
         return jsonify({"error": "No PDF file provided"}), 400
+    elif not pdf[0].content_type == "application/pdf" or not pdf[0].filename.endswith(".pdf"):
+        return jsonify({"error": "Invalid PDF file"}), 400
 
     rasterize_all = files.get("rasterize_all", False)
     start_index = files.get("start_index", 0)
@@ -93,7 +95,7 @@ async def upload_and_convert_pdf():
         else:
             logger.info(f"Original PDF uploaded successfully to S3 bucket: {spec_id}")
 
-        pdf_result = await s3.get_original_pdf_with_client(spec_id=spec_id, s3=s3_client)
+        pdf_result = await s3.get_original_pdf_with_client(spec_id=spec_id, s3_client=s3_client)
         if pdf_result["status_code"] != 200:
             return jsonify({"error": pdf_result["data"]}), pdf_result["status_code"]
 
@@ -102,7 +104,7 @@ async def upload_and_convert_pdf():
         text_and_rasterize = await s3.bulk_upload_to_s3_with_client(
             pdf=pdf_bytes,
             spec_id=spec_id,
-            s3=s3_client,
+            s3_client=s3_client,
             dpi=dpi,
             grayscale=grayscale,
             rasterize_all=rasterize_all,

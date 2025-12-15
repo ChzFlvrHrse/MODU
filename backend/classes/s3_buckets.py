@@ -280,7 +280,7 @@ class S3Bucket(PDFPageConverter):
         self,
         pdf: bytes,
         spec_id: str,
-        s3: any,
+        s3_client: any,
         max_workers: int = 10,
         dpi: int = 200,
         grayscale: bool = False,
@@ -293,14 +293,14 @@ class S3Bucket(PDFPageConverter):
         text/image representation to S3 using a thread pool.
         """
         try:
+            start_time = datetime.datetime.now()
             bucket = self.bucket_name
             logger.info(
-                "Uploading PDF to S3 bucket: %s, spec ID: %s",
+                "Uploading PDF to S3 bucket: %s, spec ID: %s, start time: %s",
                 bucket,
                 spec_id,
+                start_time,
             )
-
-            start_time = datetime.datetime.now()
 
             loop = asyncio.get_running_loop()
             queue: asyncio.Queue = asyncio.Queue(maxsize=max_workers * 2)
@@ -336,7 +336,7 @@ class S3Bucket(PDFPageConverter):
                         item = await queue.get()
                         if item is STOP:
                             break
-                        page_result = await asyncio.wait_for(self.upload_page_to_s3_with_client(item, spec_id, s3), timeout=60)
+                        page_result = await asyncio.wait_for(self.upload_page_to_s3_with_client(item, spec_id, s3_client), timeout=60)
                         attempts += page_result["attempts"]
                         successes += page_result["successes"]
                         attempt_page_index.extend(page_result["attempt_page_index"])
@@ -345,6 +345,8 @@ class S3Bucket(PDFPageConverter):
                     except Exception as e:
                         logger.error(f"Error uploading page to S3 bucket: {e}")
                         continue
+                    finally:
+                        queue.task_done()
 
             await asyncio.gather(*(consumer() for _ in range(max_workers)))
 
@@ -529,36 +531,6 @@ class S3Bucket(PDFPageConverter):
                 "status_code": 400
             }
 
-    async def get_converted_page_count(self, spec_id: str) -> int:
-        """Get the number of pages by counting files in the converted/ folder."""
-        response = self.s3_client().get_paginator("list_objects_v2").paginate(
-            Bucket=self.bucket_name,
-            Prefix=f"{spec_id}/converted/"
-        )
-
-        page_count = 0
-
-        for page in response:
-            if "Contents" in page:
-                page_count += len(page["Contents"])
-
-        return page_count
-
-    async def get_converted_page_count_with_client(self, spec_id: str, s3: any) -> int:
-        """Get the number of pages by counting files in the converted/ folder."""
-        response = s3.get_paginator("list_objects_v2").paginate(
-            Bucket=self.bucket_name,
-            Prefix=f"{spec_id}/converted/"
-        )
-
-        page_count = 0
-
-        for page in response:
-            if "Contents" in page:
-                page_count += len(page["Contents"])
-
-        return page_count
-
     async def get_original_page_count(self, spec_id: str) -> int:
         paginator = self.s3_client().get_paginator("list_objects_v2")
         response = paginator.paginate(
@@ -734,7 +706,6 @@ class S3Bucket(PDFPageConverter):
                 MaxKeys=1,
             )
             return resp.get("KeyCount", 0) > 0
-
 
     async def check_pdf_exists_with_client(self, spec_id: str, s3_client: any) -> bool:
         resp = await s3_client.list_objects_v2(
