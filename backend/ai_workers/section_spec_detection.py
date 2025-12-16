@@ -197,13 +197,13 @@ async def primary_context_classification(spec_id: str, section_pages: list[int],
 
     return await classify_primary_or_context_segments_ai(res)
 
-if __name__ == "__main__":
-    import asyncio
-    async def main():
-        s3 = S3Bucket()
-        spec_id = "1ca7077a-ac58-4f5a-9b40-f6847ff235e2"
-        section_number = "013113"
-        section_pages = [76, 89, 90, 91, 92, 93, 94, 95, 96, 103]
-        async with s3.s3_client() as s3_client:
-            print(await primary_context_classification(spec_id, section_pages, s3_client, section_number))
-    asyncio.run(main())
+# if __name__ == "__main__":
+#     import asyncio
+#     async def main():
+#         s3 = S3Bucket()
+#         spec_id = "1ca7077a-ac58-4f5a-9b40-f6847ff235e2"
+#         section_number = "013113"
+#         section_pages = [76, 89, 90, 91, 92, 93, 94, 95, 96, 103]
+#         async with s3.s3_client() as s3_client:
+#             print(await primary_context_classification(spec_id, section_pages, s3_client, section_number))
+#     asyncio.run(main())
