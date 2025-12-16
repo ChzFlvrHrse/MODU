@@ -1,7 +1,8 @@
+import os, logging, asyncio
+from subprocess import list2cmdline
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 from typing import Optional, List
-import os, logging, base64, asyncio
 from pydantic import BaseModel, Field
 from classes.s3_buckets import S3Bucket
 
@@ -264,18 +265,6 @@ async def extract_section_requirements_from_pages_ai(pages: list[dict]) -> dict:
     for page in primary_pages:
         add_page_block(page, "PRIMARY")
 
-    if context_pages:
-        content_blocks.append(
-            {
-                "type": "text",
-                "text": (
-                    "\n\nNEXT: CONTEXT PAGES (TOC or cross-references; "
-                    "only use them if they help you identify the section number/title).\n"
-                ),
-            }
-        )
-        for page in context_pages:
-            add_page_block(page, "CONTEXT")
 
     prompt = """
             You are reading a construction SPECIFICATION SECTION that may be spread across
@@ -298,7 +287,7 @@ async def extract_section_requirements_from_pages_ai(pages: list[dict]) -> dict:
         messages=[
             {
                 "role": "user",
-                "content": [{"type": "text", "text": prompt}, *content_blocks],
+                "content": {"type": "text", "text": prompt},
             }
         ],
         temperature=0.0,
@@ -314,68 +303,6 @@ async def extract_section_requirements_from_pages_ai(pages: list[dict]) -> dict:
 
     return specs.model_dump()
 
-
-def longest_contiguous_run(page_indices: list[int]) -> list[int]:
-    if not page_indices:
-        return []
-
-    best_run = []
-    current_run = [page_indices[0]]
-    longest_run = 0
-
-    for p in page_indices[1:]:
-        if p == current_run[-1] + 1:
-            current_run.append(p)
-            longest_run = len(current_run)
-        else:
-            if len(current_run) > len(best_run):
-                best_run = current_run
-            current_run = [p]
-            longest_run = 0
-
-    if longest_run == 0:
-        return page_indices
-
-    if len(current_run) > len(best_run):
-        best_run = current_run
-
-    return best_run
-
-async def merge_submittal_results(results: list[dict]) -> dict:
-    merged = {
-        "spec_section": None,
-        "project_name": None,
-        "products": [],
-        "notes": ""
-    }
-
-    # simple product dedupe by (name, manufacturer)
-    index = {}
-    for res in results:
-        if res["notes"]:
-            merged["notes"] += f"{res['notes']} "
-
-        for p in res["products"]:
-            key = (p["product_name"].strip().lower(), (p["manufacturer"] or "").strip().lower())
-            if key not in index:
-                index[key] = p
-                merged["products"].append(p)
-            else:
-                existing = index[key]
-                # merge pages
-                existing["document_pages"] = sorted(
-                    set(existing["document_pages"] + p["document_pages"])
-                )
-                # merge standards & properties without duplicates
-                for s in p["standards"]:
-                    if s not in existing["standards"]:
-                        existing["standards"].append(s)
-                existing["properties"].extend(p["properties"])  # later you can dedupe by name
-
-    merged['notes'] = merged['notes'].strip()
-
-    return merged
-
 async def section_spec_requirements(spec_id: str, section_pages: list[int], s3_client: any) -> dict:
     s3 = S3Bucket()
     section_pages_text = await asyncio.gather(*[s3.get_text_page_with_client(spec_id=spec_id, index=page, s3_client=s3_client) for page in section_pages])
@@ -390,10 +317,11 @@ async def section_spec_requirements(spec_id: str, section_pages: list[int], s3_c
 
     # return extracted_specs
 
-if __name__ == "__main__":
-    async def main():
-        async with S3Bucket().s3_client() as s3_client:
-            spec_id = "1ca7077a-ac58-4f5a-9b40-f6847ff235e2"
-            section_pages = [2, 76, 89, 90, 91, 92, 93, 94, 95, 96, 103]
-            print(await section_spec_requirements(spec_id, section_pages, s3_client))
-    asyncio.run(main())
+# if __name__ == "__main__":
+#     async def main():
+#         s3 = S3Bucket()
+#         spec_id = "1ca7077a-ac58-4f5a-9b40-f6847ff235e2"
+#         section_pages = [2, 76, 89, 90, 91, 92, 93, 94, 95, 96, 103]
+#         async with s3.s3_client() as s3_client:
+#             print(await primary_vs_context(spec_id, section_pages, s3_client))
+#     asyncio.run(main())
