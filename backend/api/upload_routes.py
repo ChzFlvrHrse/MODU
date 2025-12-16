@@ -27,7 +27,7 @@ async def upload_to_s3():
 # Upload and convert PDF to text or rasterize
 @upload_routes_bp.route("/text_and_rasterize", methods=["POST"])
 async def text_and_rasterize():
-    data = await request.json
+    data = await request.get_json()
 
     spec_id = data.get("spec_id")
     start_index = data.get("start_index", 0)

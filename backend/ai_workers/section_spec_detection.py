@@ -12,6 +12,53 @@ logger = logging.getLogger(__name__)
 
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+
+def split_section(section: str) -> tuple[str, str]:
+    section = section.strip()
+    if len(section) < 6 or not section[:6].isdigit():
+        raise ValueError(f"Section must start with 6 digits: {section}")
+
+    return section[:6], section[6:]
+
+def base_variants(base6: str) -> list[str]:
+    a, b, c = base6[:2], base6[2:4], base6[4:]
+    return [
+        rf"{base6}",                    # 003132
+        rf"{a}\s*{b}\s*{c}",             # 00 31 32 (or 003132 with spaces)
+        rf"{a}[-\.]{b}[-\.]{c}",         # 00-31-32 or 00.31.32
+    ]
+
+def suffix_pattern(suffix: str) -> str:
+    if not suffix:
+        return ""
+
+    if suffix.startswith("."):
+        # .12 → allow whitespace around dot
+        return rf"\s*\.\s*{re.escape(suffix[1:])}"
+
+    # letter / alphanumeric suffix (b, a, A1, etc.)
+    return rf"\s*{re.escape(suffix)}"
+
+def build_section_patterns(section: str) -> list[re.Pattern]:
+    base6, suffix = split_section(section)
+
+    base_pats = base_variants(base6)
+    suf_pat = suffix_pattern(suffix)
+
+    patterns: list[str] = []
+
+    for b in base_pats:
+        full = rf"{b}{suf_pat}"
+
+        # Strict standalone match
+        patterns.append(rf"(?<!\w){full}(?!\w)")
+
+        # Common heading formats
+        patterns.append(rf"\bSECTION\s+{full}\b")
+        patterns.append(rf"{full}\s*[-–—]\s*[A-Z]")
+
+    return [re.compile(p, re.IGNORECASE) for p in patterns]
+
 async def section_spec_detection(
     spec_id: str,
     section_number: str,
@@ -29,7 +76,7 @@ async def section_spec_detection(
         raise ValueError("End index must be greater than or equal to start index")
 
     detected_pages: list[int] = []
-    compiled_patterns: list[re.Pattern] = [re.compile(rf"\b{re.escape(section_number)}\b")]
+    compiled_patterns: list[re.Pattern] = build_section_patterns(section_number)
 
     if end_index is None:
         page_count = await s3.get_original_page_count_with_client(spec_id, s3_client)
@@ -42,22 +89,20 @@ async def section_spec_detection(
         if not text:
             continue
 
-        for pat in compiled_patterns:
-            if pat.search(text):
-                detected_pages.append(page["page_index"])
-                break
+        if any(pat.search(text) for pat in compiled_patterns):
+            detected_pages.append(page["page_index"])
 
     return detected_pages
 
 # Sort contiguous page indices into arrays by length
 def contiguous_page_divider(page_indices: list[int]) -> dict[str, list]:
-    if not page_indices:
-        return []
-
     dict_indices: dict[list[int]] = {
         "single": [],
         "multi": []
     }
+    if not page_indices:
+        return dict_indices
+
     indices: list[list[int]] = [[page_indices[0]]]
     for p in page_indices[1:]:
         current_series = indices[-1]
@@ -162,8 +207,7 @@ async def classify_primary_or_context_segments_ai(pages_dict: dict, max_in_fligh
         "section_number": section_number
     }
 
-async def primary_context_classification(spec_id: str, section_pages: list[int], s3_client: any, section_number: str) -> dict:
-    s3 = S3Bucket()
+async def primary_context_classification(spec_id: str, section_pages: list[int], s3: S3Bucket, s3_client: any, section_number: str) -> dict:
     sorted_pages = sorted(section_pages, key=lambda x: x)
 
     all_indices = contiguous_page_divider(sorted_pages)
@@ -171,6 +215,7 @@ async def primary_context_classification(spec_id: str, section_pages: list[int],
     single_pages: list[int] = all_indices['single']
     multi_pages: list[list[int]] = all_indices['multi']
 
+    single_pages_text: list[dict] = []
     if single_pages:
         single_texts = await asyncio.gather(
             *[s3.get_text_page_with_client(spec_id=spec_id, index=page, s3_client=s3_client) for page in single_pages]

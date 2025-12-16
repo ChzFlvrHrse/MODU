@@ -1,7 +1,7 @@
 import logging, datetime
 from classes import S3Bucket
 from quart import Blueprint, request, jsonify
-from ai_workers import section_spec_detection, section_spec_requirements
+from ai_workers import section_spec_detection, section_spec_requirements, primary_context_classification
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -10,7 +10,7 @@ section_specs_bp = Blueprint("section_specs", __name__)
 
 @section_specs_bp.route("/section_spec_pages", methods=["POST"])
 async def section_spec_pages():
-    data = await request.json
+    data = await request.get_json()
 
     spec_id = data.get("spec_id")
     section_number = data.get("section_number")
@@ -43,7 +43,7 @@ async def section_spec_pages():
             if end_index is None:
                 end_index = await s3.get_original_page_count_with_client(spec_id, s3_client)
 
-            section_spec_requirements = await section_spec_detection(
+            section_spec_page_indices = await section_spec_detection(
                 spec_id=spec_id,
                 section_number=section_number,
                 s3=s3,
@@ -52,11 +52,18 @@ async def section_spec_pages():
                 end_index=end_index
             )
 
+            primary_and_context = await primary_context_classification(
+                spec_id=spec_id,
+                section_pages=section_spec_page_indices,
+                s3=s3,
+                s3_client=s3_client,
+                section_number=section_number
+            )
+
             return jsonify({
-                "section_number": section_number,
-                "section_spec_requirements": section_spec_requirements,
-                "total_detected_pages": len(section_spec_requirements),
-                "run_time": datetime.datetime.now() - start_time
+                **primary_and_context,
+                "total_detected_pages": len(primary_and_context["primary"]) + len(primary_and_context["context"]),
+                "run_time": f"{datetime.datetime.now() - start_time}"
             }), 200
 
     except Exception as e:
@@ -65,7 +72,7 @@ async def section_spec_pages():
 
 @section_specs_bp.route("/section_spec_requirements", methods=["POST"])
 async def section_spec_reqs():
-    data = await request.json
+    data = await request.get_json()
     start_time = datetime.datetime.now()
     s3 = S3Bucket()
 
