@@ -13,7 +13,7 @@ async def section_spec_pages():
     data = await request.get_json()
 
     spec_id = data.get("spec_id")
-    section_number = data.get("section_number")
+    section_numbers = data.get("section_numbers")
     start_index = data.get("start_index", 0)
     end_index = data.get("end_index", None)
 
@@ -21,7 +21,7 @@ async def section_spec_pages():
 
     if spec_id is None:
         return jsonify({"error": "Spec ID is required"}), 400
-    if section_number is None:
+    if section_numbers is None or len(section_numbers) == 0:
         return jsonify({"error": "Section number is required"}), 400
 
     if start_index < 0:
@@ -45,7 +45,7 @@ async def section_spec_pages():
 
             section_spec_page_indices = await section_spec_detection(
                 spec_id=spec_id,
-                section_number=section_number,
+                section_number=section_numbers,
                 s3=s3,
                 s3_client=s3_client,
                 start_index=start_index,
@@ -56,8 +56,7 @@ async def section_spec_pages():
                 spec_id=spec_id,
                 section_pages=section_spec_page_indices,
                 s3=s3,
-                s3_client=s3_client,
-                section_number=section_number
+                s3_client=s3_client
             )
 
             return jsonify({
