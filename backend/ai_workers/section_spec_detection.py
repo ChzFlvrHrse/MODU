@@ -215,28 +215,43 @@ async def classify_primary_or_context_segments_ai(pages_dict: dict, max_in_fligh
             return parsed.is_primary, segment_pages
 
     # Classify multi segments concurrently
-    multi_results = await asyncio.gather(*[classify_segment(seg) for seg in multi_pages])
+    if not multi_pages:
+        single_results = await asyncio.gather(*[classify_segment([p]) for p in single_pages])
 
-    for is_primary, seg_pages in multi_results:
-        if is_primary:
-            # Only get page indices
-            primary_pages.extend([page['page_index'] for page in seg_pages])
-        else:
-            context_pages.extend([page['page_index'] for page in seg_pages])
+        for is_primary, seg_pages in single_results:
+            if is_primary:
+                # Only get page indices
+                primary_pages.extend([page['page_index'] for page in seg_pages])
+            else:
+                context_pages.extend([page['page_index'] for page in seg_pages])
 
-    # Optional: only classify singles if you want (often cheaper to treat them as context by default)
-    # If you want to classify singles too, do it like this:
-    # single_results = await asyncio.gather(*[classify_segment([p]) for p in single_pages])
-    # for is_primary, seg_pages in single_results:
-    #     (primary_pages if is_primary else context_pages).extend(seg_pages)
+        return {
+            "primary": primary_pages,
+            "context": context_pages
+        }
+    else:
+        multi_results = await asyncio.gather(*[classify_segment(seg) for seg in multi_pages])
 
-    # Default behavior: treat singles as context (unless you decide otherwise)
-    context_pages.extend([page['page_index'] for page in single_pages])
+        for is_primary, seg_pages in multi_results:
+            if is_primary:
+                # Only get page indices
+                primary_pages.extend([page['page_index'] for page in seg_pages])
+            else:
+                context_pages.extend([page['page_index'] for page in seg_pages])
 
-    return {
-        "primary": primary_pages,
-        "context": context_pages
-    }
+        single_results = await asyncio.gather(*[classify_segment([p]) for p in single_pages])
+
+        for is_primary, seg_pages in single_results:
+            if is_primary:
+                # Only get page indices
+                primary_pages.extend([page['page_index'] for page in seg_pages])
+            else:
+                context_pages.extend([page['page_index'] for page in seg_pages])
+
+        return {
+            "primary": primary_pages,
+            "context": context_pages
+        }
 
 async def primary_context_classification(
     spec_id: str,
