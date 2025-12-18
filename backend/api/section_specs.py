@@ -22,7 +22,7 @@ async def section_spec_pages():
     if spec_id is None:
         return jsonify({"error": "Spec ID is required"}), 400
     if section_numbers is None or len(section_numbers) == 0:
-        return jsonify({"error": "Section number is required"}), 400
+        return jsonify({"error": "Section numbers are required"}), 400
 
     if start_index < 0:
         return jsonify({"error": "Start index must be greater than or equal to 0"}), 400
@@ -45,7 +45,7 @@ async def section_spec_pages():
 
             section_spec_page_indices = await section_spec_detection(
                 spec_id=spec_id,
-                section_number=section_numbers,
+                section_numbers=section_numbers,
                 s3=s3,
                 s3_client=s3_client,
                 start_index=start_index,
@@ -61,7 +61,6 @@ async def section_spec_pages():
 
             return jsonify({
                 **primary_and_context,
-                "total_detected_pages": len(primary_and_context["primary"]) + len(primary_and_context["context"]),
                 "run_time": f"{datetime.datetime.now() - start_time}"
             }), 200
 

@@ -2,6 +2,7 @@ from dotenv import load_dotenv
 from openai import AsyncOpenAI
 import os, logging, re, asyncio
 from pydantic import BaseModel, Field
+from concurrent.futures import ProcessPoolExecutor
 
 from classes.s3_buckets import S3Bucket
 
@@ -50,9 +51,54 @@ def build_section_patterns(section_pages: list[str]) -> dict[str, list[str]]:
             patterns[f"{section}"].append(rf"(?<!\w){full}(?!\w)")
     return patterns
 
+def worker_scan_shard(spec_id: str, start_index: int, end_index: int, section_pages: list[str]) -> dict:
+    async def _run():
+        s3 = S3Bucket()
+        compiled_patterns = build_section_patterns(section_pages)
+        detected_pages: dict[str, list[int]] = {sec: [] for sec in compiled_patterns.keys()}
+
+        async with s3.s3_client() as s3_client:
+            gen = s3.get_converted_pages_generator_with_client(
+                spec_id, s3_client, start_index=start_index, end_index=end_index
+            )
+            # do work here (regex etc)
+            async for page in gen:
+
+                text = page.get("text") or ""
+                if not text:
+                    continue
+
+                page_index = page["page_index"]
+                for section, patterns in compiled_patterns.items():
+                    if any(re.search(pat, text, re.IGNORECASE) for pat in patterns):
+                        detected_pages[section].append(page_index)
+            return detected_pages
+
+    return asyncio.run(_run())
+
+async def run_shards(spec_id: str, section_pages: list[str], total_pages: int) -> dict:
+    divider = total_pages / 4
+    shards = [(int(divider * i), int(divider * (i + 1))) for i in range(4)]
+    loop = asyncio.get_running_loop()
+
+    with ProcessPoolExecutor(max_workers=4) as executor:
+        futures = [
+            loop.run_in_executor(executor, worker_scan_shard, spec_id, start_index, end_index, section_pages)
+            for start_index, end_index in shards
+        ]
+        return await asyncio.gather(*futures)
+
+def merge_results(section_pages: list[dict]) -> dict:
+    merged_results = {}
+    for section, page_indices in section_pages[0].items():
+        for i in range(1, len(section_pages)):
+            page_indices.extend(section_pages[i][section])
+        merged_results[section] = page_indices
+    return merged_results
+
 async def section_spec_detection(
     spec_id: str,
-    section_pages: list[str],
+    section_numbers: list[str],
     s3: S3Bucket,
     s3_client: any,
     start_index: int = 0,
@@ -66,51 +112,42 @@ async def section_spec_detection(
     if end_index is not None and end_index < start_index:
         raise ValueError("End index must be greater than or equal to start index")
 
-    # compiled_patterns: list[re.Pattern] = build_section_patterns(section_number)
-    compiled_patterns: dict[str, list[str]] = build_section_patterns(section_pages)
+    page_count = await s3.get_original_page_count_with_client(spec_id, s3_client)
 
     if end_index is None:
-        page_count = await s3.get_original_page_count_with_client(spec_id, s3_client)
-        end_index = page_count
+        end_index = await s3.get_original_page_count_with_client(spec_id, s3_client)
+    else:
+        end_index = min(end_index, page_count)
 
-    detected_pages: dict[str, list[int]] = {sec: [] for sec in compiled_patterns.keys()}
+    results = await run_shards(spec_id, section_numbers, page_count)
+    return merge_results(results)
 
-    async for page in s3.get_converted_pages_generator_with_client(
-        spec_id, s3_client, start_index=start_index, end_index=end_index
-    ):
-        text = page.get("text") or ""
-        if not text:
-            continue
-
-        page_index = page["page_index"]
-        for section, patterns in compiled_patterns.items():
-            if any(re.search(pat, text, re.IGNORECASE) for pat in patterns):
-                detected_pages[section].append(page_index)
-
-    return detected_pages
+# ---------------------------------------------------------------- Divider ------------------------------------------------------------
 
 # Sort contiguous page indices into arrays by length
-def contiguous_page_divider(page_indices: list[int]) -> dict[str, list]:
-    dict_indices: dict[list[int]] = {
+def contiguous_page_divider(page_indices: dict[str, list[int]]) -> dict:
+    dict_indices: dict[list[int]] = {section: {
         "single": [],
         "multi": []
-    }
+    } for section in page_indices.keys()}
+
     if not page_indices:
         return dict_indices
 
-    indices: list[list[int]] = [[page_indices[0]]]
-    for p in page_indices[1:]:
-        current_series = indices[-1]
-        if p == current_series[-1] + 1:
-            current_series.append(p)
-        else:
-            indices.append([p])
+    for section, indices in page_indices.items():
+        indices_list: list[list[int]] = [[indices[0]]]
+        for p in indices[1:]:
+            current_series = indices_list[-1]
+            if p == current_series[-1] + 1:
+                current_series.append(p)
+            else:
+                indices_list.append([p])
 
-    for i in indices:
-        if len(i) == 1:
-            dict_indices['single'].extend(i)
-        else:
-            dict_indices['multi'].append(i)
+        for i in indices_list:
+            if len(i) == 1:
+                dict_indices[section]["single"].extend(i)
+            else:
+                dict_indices[section]["multi"].append(i)
 
     return dict_indices
 
@@ -198,8 +235,7 @@ async def classify_primary_or_context_segments_ai(pages_dict: dict, max_in_fligh
 
     return {
         "primary": primary_pages,
-        "context": context_pages,
-        "section_number": section_number
+        "context": context_pages
     }
 
 async def primary_context_classification(

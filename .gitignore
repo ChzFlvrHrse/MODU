@@ -19,11 +19,8 @@ dist/
 build/
 *.egg
 
-# PDF files
-*.pdf
-
-# Ignore folder pdf
-pdf/
+# test files
+test/
 
 # Node.js / Frontend
 node_modules/
