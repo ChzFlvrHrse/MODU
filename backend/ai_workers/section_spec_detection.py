@@ -11,7 +11,10 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = AsyncOpenAI(
+    api_key=os.getenv("OPENAI_API_KEY"),
+    max_retries=10,  # Retry more on 429 rate limits
+)
 
 def split_section(section: str) -> tuple[str, str]:
     section = section.strip()
@@ -202,11 +205,11 @@ async def classify_primary_or_context_segments_ai(pages_dict: dict, max_in_fligh
         return [{"role": "user", "content": content_blocks}]
 
     sem = asyncio.Semaphore(max_in_flight)
-
     async def classify_segment(segment_pages: list[dict]) -> tuple[bool, list[dict]]:
         async with sem:
             res = await client.beta.chat.completions.parse(
                 model="gpt-4.1",
+                # model="gpt-4.1-mini",
                 response_format=PageClassification,
                 messages=build_messages(segment_pages),
                 temperature=0.0,
@@ -253,13 +256,24 @@ async def classify_primary_or_context_segments_ai(pages_dict: dict, max_in_fligh
             "context": context_pages
         }
 
+def division_parser(section_pages: dict) -> dict:
+    sections = section_pages.keys()
+    divisions: set[str] = set([sec[0:2] for sec in sections])
+    div_sec_pages = {div: [] for div in divisions}
+
+    for sec in sections:
+        div_key = sec[0:2]
+        div_sec_pages[div_key].append({f"{sec}": section_pages[sec]})
+
+    return div_sec_pages
+
 async def primary_context_classification(
     spec_id: str,
     section_pages: dict[str, list[int]],
     s3: S3Bucket,
     s3_client: any,
     s3_max_in_flight: int = 25,   # throttle S3 reads
-    ai_max_in_flight: int = 6,    # your classifier already throttles internally
+    ai_max_in_flight: int = 3,    # your classifier already throttles internally
 ) -> dict[str, dict]:
     all_indices = contiguous_page_divider(section_pages)
 
@@ -299,11 +313,9 @@ async def primary_context_classification(
             "section_number": section,
         }
 
-        # If you want, you can throttle section-level AI calls too,
-        # but your classify_primary_or_context_segments_ai already throttles segments.
         results[section] = await classify_primary_or_context_segments_ai(res, max_in_flight=ai_max_in_flight)
 
-    return results
+    return division_parser(results)
 
 # if __name__ == "__main__":
 #     import asyncio

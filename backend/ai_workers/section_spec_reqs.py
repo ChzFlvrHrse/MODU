@@ -12,6 +12,12 @@ logger = logging.getLogger(__name__)
 
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+AI_MAX_IN_FLIGHT = 6
+S3_MAX_IN_FLIGHT = 25
+
+ai_sem = asyncio.Semaphore(AI_MAX_IN_FLIGHT)
+s3_sem = asyncio.Semaphore(S3_MAX_IN_FLIGHT)
+
 class GeneralRequirement(BaseModel):
     title: str = Field(
         description=(
@@ -32,7 +38,6 @@ class GeneralRequirement(BaseModel):
         default_factory=list,
         description="0-based page numbers where these general requirements appear."
     )
-
 
 class ExecutionRequirement(BaseModel):
     title: str = Field(
@@ -93,7 +98,6 @@ class Property(BaseModel):
             "'ASTM tested', 'sign materials – PART 2'."
         )
     )
-
 
 class ProductSpec(BaseModel):
     product_name: str = Field(
@@ -179,10 +183,10 @@ class ProductSpec(BaseModel):
     )
 
 class SpecReqs(BaseModel):
-    spec_section: Optional[str] = Field(
+    section_number: Optional[str] = Field(
         default=None,
         description=(
-            "The specification section number. Example: '015812', '042000', '260519'."
+            "The specification section number. Example: '015812', '042000a', '260519.12'."
         ),
     )
     project_name: Optional[str] = Field(
@@ -258,14 +262,9 @@ Treat ALL pages below as the section body (PRIMARY).
 
     specs = res.choices[0].message.parsed
 
-    # all_primary_indices = [page["page_index"] for page in content_blocks]
-    # for prod in specs.products:
-    #     prod.document_pages = sorted(set((prod.document_pages or []) + all_primary_indices))
-
     return specs.model_dump()
 
-async def section_spec_requirements(spec_id: str, section_pages: list[dict], section_number: str, s3_client: any) -> dict:
-    s3 = S3Bucket()
+async def section_spec_requirements(spec_id: str, section_pages: list[dict], section_number: str, s3: S3Bucket, s3_client: any) -> dict:
     primary_pages = section_pages["primary"]
     # context_pages = section_pages["context"]
 

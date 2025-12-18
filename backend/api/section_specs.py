@@ -94,7 +94,13 @@ async def section_spec_reqs():
             logger.info(f"Primary pages: {primary_pages}")
             # logger.info(f"Context pages: {context_pages}")
 
-            section_spec_reqs = await section_spec_requirements(spec_id=spec_id, section_pages=primary_context, section_number=section_number, s3_client=s3_client)
+            section_spec_reqs = await section_spec_requirements(
+                spec_id=spec_id,
+                section_pages=primary_context,
+                section_number=section_number,
+                s3=s3,
+                s3_client=s3_client
+            )
     except Exception as e:
         logger.error(f"Error in section_spec_reqs: {e}")
         return jsonify({"error": str(e)}), 400
