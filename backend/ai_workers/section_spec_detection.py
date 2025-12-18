@@ -54,7 +54,7 @@ def build_section_patterns(section_pages: list[str]) -> dict[str, list[str]]:
             patterns[f"{section}"].append(rf"(?<!\w){full}(?!\w)")
     return patterns
 
-def worker_scan_shard(spec_id: str, start_index: int, end_index: int, section_pages: list[str]) -> dict:
+def worker_scan_shard(spec_id: str, start_index: int, end_index: int, section_pages: list[str], toc_indices: list[int]) -> dict:
     async def _run():
         s3 = S3Bucket()
         compiled_patterns = build_section_patterns(section_pages)
@@ -68,10 +68,9 @@ def worker_scan_shard(spec_id: str, start_index: int, end_index: int, section_pa
             async for page in gen:
 
                 text = page.get("text") or ""
-                if not text:
-                    continue
-
                 page_index = page["page_index"]
+                if not text or page_index in toc_indices:
+                    continue
                 for section, patterns in compiled_patterns.items():
                     if any(re.search(pat, text, re.IGNORECASE) for pat in patterns):
                         detected_pages[section].append(page_index)
@@ -79,14 +78,14 @@ def worker_scan_shard(spec_id: str, start_index: int, end_index: int, section_pa
 
     return asyncio.run(_run())
 
-async def run_shards(spec_id: str, section_pages: list[str], total_pages: int) -> dict:
+async def run_shards(spec_id: str, section_pages: list[str], total_pages: int, toc_indices: list[int]) -> dict:
     divider = total_pages / 4
     shards = [(int(divider * i), int(divider * (i + 1))) for i in range(4)]
     loop = asyncio.get_running_loop()
 
     with ProcessPoolExecutor(max_workers=4) as executor:
         futures = [
-            loop.run_in_executor(executor, worker_scan_shard, spec_id, start_index, end_index, section_pages)
+            loop.run_in_executor(executor, worker_scan_shard, spec_id, start_index, end_index, section_pages, toc_indices)
             for start_index, end_index in shards
         ]
         return await asyncio.gather(*futures)
@@ -102,6 +101,7 @@ def merge_results(section_pages: list[dict]) -> dict:
 async def section_spec_detection(
     spec_id: str,
     section_numbers: list[str],
+    toc_indices: list[int],
     s3: S3Bucket,
     s3_client: any,
     start_index: int = 0,
@@ -122,10 +122,10 @@ async def section_spec_detection(
     else:
         end_index = min(end_index, page_count)
 
-    results = await run_shards(spec_id, section_numbers, page_count)
+    results = await run_shards(spec_id, section_numbers, page_count, toc_indices)
     return merge_results(results)
 
-# ---------------------------------------------------------------- Divider ------------------------------------------------------------
+# ---------------------------------------------------------------- Divider ----------------------------------------------------------------
 
 # Sort contiguous page indices into arrays by length
 def contiguous_page_divider(page_indices: dict[str, list[int]]) -> dict:
@@ -138,6 +138,8 @@ def contiguous_page_divider(page_indices: dict[str, list[int]]) -> dict:
         return dict_indices
 
     for section, indices in page_indices.items():
+        if not indices:
+            continue
         indices_list: list[list[int]] = [[indices[0]]]
         for p in indices[1:]:
             current_series = indices_list[-1]
@@ -162,15 +164,7 @@ class PageClassification(BaseModel):
         description="Brief explanation of how the decision was made"
     )
 
-async def classify_primary_or_context_segments_ai(pages_dict: dict, max_in_flight: int = 6) -> dict:
-    multi_pages: list[list[dict]] = pages_dict["multi"]
-    single_pages: list[dict] = pages_dict["single"]
-    section_number: str = pages_dict["section_number"]
-
-    primary_pages: list[dict] = []
-    context_pages: list[dict] = []
-
-    def build_messages(segment_pages: list[dict]) -> list[dict]:
+def build_block(segment_pages: list[dict], section_number: str) -> list[dict]:
         content_blocks = [
             {
                 "type": "text",
@@ -179,30 +173,42 @@ async def classify_primary_or_context_segments_ai(pages_dict: dict, max_in_fligh
                     "Each segment is a contiguous group of pages.\n\n"
                     "Classify the segment as:\n"
                     f"- PRIMARY: contains the actual section body for section {section_number} "
+                    "Some page sections are lengthy, sometimes you will only be given the first 3 pages of the section."
                     "(requirements, products, execution; often PART 1/2/3 language)\n"
                     "- CONTEXT: only references the section (TOC, cross-references, listings)\n\n"
                     "Do NOT extract data. Only classify.\n"
-                    "Return JSON that matches the schema.\n"
                 ),
             }
         ]
 
-        for page in segment_pages:
-            text = page.get("text") or ""
+        # NOTE: Tokens limit's were reached too quickly, so I'm limiting the number of pages to 3
+        iterator = range(0, 3) if len(segment_pages) > 3 else range(0, len(segment_pages))
+        for i in iterator:
+            segment = segment_pages[i]
+            text = segment.get("text") or ""
+            page_index = segment["page_index"]
             # Optional: truncate to avoid huge prompts
             # text = text[:8000]
             content_blocks.append(
                 {
                     "type": "text",
                     "text": (
-                        f"===== PAGE {page['page_index']} START =====\n"
+                        f"===== PAGE {page_index} START =====\n"
                         f"{text}\n"
-                        f"===== PAGE {page['page_index']} END =====\n"
+                        f"===== PAGE {page_index} END =====\n"
                     ),
                 }
             )
 
         return [{"role": "user", "content": content_blocks}]
+
+async def classify_primary_or_context_segments_ai(pages_dict: dict, max_in_flight: int = 6) -> dict:
+    multi_pages: list[list[dict]] = pages_dict["multi"]
+    single_pages: list[dict] = pages_dict["single"]
+    section_number: str = pages_dict["section_number"]
+
+    primary_pages: list[dict] = []
+    context_pages: list[dict] = []
 
     sem = asyncio.Semaphore(max_in_flight)
     async def classify_segment(segment_pages: list[dict]) -> tuple[bool, list[dict]]:
@@ -211,14 +217,19 @@ async def classify_primary_or_context_segments_ai(pages_dict: dict, max_in_fligh
                 model="gpt-4.1",
                 # model="gpt-4.1-mini",
                 response_format=PageClassification,
-                messages=build_messages(segment_pages),
-                temperature=0.0,
+                messages=build_block(segment_pages, section_number),
+                temperature=0.0
             )
             parsed = res.choices[0].message.parsed
             return parsed.is_primary, segment_pages
 
     # Classify multi segments concurrently
     if not multi_pages:
+        if len(single_pages) == 1:
+            return {
+                "primary": [single_pages[0]['page_index']],
+                "context": []
+        }
         single_results = await asyncio.gather(*[classify_segment([p]) for p in single_pages])
 
         for is_primary, seg_pages in single_results:
@@ -233,6 +244,11 @@ async def classify_primary_or_context_segments_ai(pages_dict: dict, max_in_fligh
             "context": context_pages
         }
     else:
+        if len(multi_pages) == 1:
+            return {
+                "primary": [page['page_index'] for page in multi_pages[0]],
+                "context": []
+            }
         multi_results = await asyncio.gather(*[classify_segment(seg) for seg in multi_pages])
 
         for is_primary, seg_pages in multi_results:
@@ -316,14 +332,3 @@ async def primary_context_classification(
         results[section] = await classify_primary_or_context_segments_ai(res, max_in_flight=ai_max_in_flight)
 
     return division_parser(results)
-
-# if __name__ == "__main__":
-#     import asyncio
-#     async def main():
-#         s3 = S3Bucket()
-#         spec_id = "1ca7077a-ac58-4f5a-9b40-f6847ff235e2"
-#         section_number = "013113"
-#         section_pages = [76, 89, 90, 91, 92, 93, 94, 95, 96, 103]
-#         async with s3.s3_client() as s3_client:
-#             print(await primary_context_classification(spec_id, section_pages, s3_client, section_number))
-#     asyncio.run(main())

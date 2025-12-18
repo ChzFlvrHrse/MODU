@@ -14,6 +14,7 @@ async def section_spec_pages():
 
     spec_id = data.get("spec_id")
     section_numbers = data.get("section_numbers")
+    toc_indices = data.get("toc_indices", [])
     start_index = data.get("start_index", 0)
     end_index = data.get("end_index", None)
 
@@ -46,6 +47,7 @@ async def section_spec_pages():
             section_spec_page_indices = await section_spec_detection(
                 spec_id=spec_id,
                 section_numbers=section_numbers,
+                toc_indices=toc_indices,
                 s3=s3,
                 s3_client=s3_client,
                 start_index=start_index,
