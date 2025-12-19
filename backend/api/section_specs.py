@@ -77,15 +77,14 @@ async def section_spec_reqs():
     s3 = S3Bucket()
 
     spec_id = data.get("spec_id")
-    primary_context = data.get("primary_context")
-    primary_pages = primary_context["primary"]
+    division_section_pages = data.get("division_section_pages")
     section_number = data.get("section_number")
 
     if spec_id is None:
         return jsonify({"error": "Spec ID is required"}), 400
 
-    if primary_pages is None or len(primary_pages) == 0:
-        return jsonify({"error": "Section pages are required"}), 400
+    if division_section_pages is None or len(division_section_pages) == 0:
+        return jsonify({"error": "Division section pages are required"}), 400
 
     try:
         async with s3.s3_client() as s3_client:
@@ -93,12 +92,9 @@ async def section_spec_reqs():
             if spec_check["status_code"] != 200:
                 return jsonify({"error": "Spec ID is invalid"}), 400
 
-            logger.info(f"Primary pages: {primary_pages}")
-            # logger.info(f"Context pages: {context_pages}")
-
             section_spec_reqs = await section_spec_requirements(
                 spec_id=spec_id,
-                section_pages=primary_context,
+                division_section_pages=division_section_pages,
                 section_number=section_number,
                 s3=s3,
                 s3_client=s3_client

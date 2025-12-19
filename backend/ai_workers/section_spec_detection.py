@@ -275,13 +275,13 @@ async def classify_primary_or_context_segments_ai(pages_dict: dict, max_in_fligh
 def division_parser(section_pages: dict) -> dict:
     sections = section_pages.keys()
     divisions: set[str] = set([sec[0:2] for sec in sections])
-    div_sec_pages = {div: [] for div in divisions}
+    div_sec_pages = {div: {} for div in divisions}
 
     for sec in sections:
         div_key = sec[0:2]
-        div_sec_pages[div_key].append({f"{sec}": section_pages[sec]})
+        div_sec_pages[div_key][f"{sec}"] = section_pages[sec]
 
-    return div_sec_pages
+    return {"section_pages": div_sec_pages}
 
 async def primary_context_classification(
     spec_id: str,
@@ -311,22 +311,24 @@ async def primary_context_classification(
         # ---- Singles ----
         single_pages_text: list[dict] = []
         if single_pages:
-            single_texts = await asyncio.gather(*[get_text(p) for p in single_pages])
-            single_pages_text = [{"page_index": p, "text": t} for p, t in zip(single_pages, single_texts)]
+            single_pages_texts = await asyncio.gather(*[get_text(p) for p in single_pages])
+            sorted_single_pages_text = sorted(single_pages_texts, key=lambda x: x["page_index"])
+            # single_pages_text = [{"page_index": p, "text": t} for p, t in zip(single_pages, single_texts)]
 
         # ---- Multi runs ----
-        multi_pages_text: list[list[dict]] = []
+        # multi_pages_text: list[list[dict]] = []
         if multi_pages:
-            run_texts = await asyncio.gather(
+            multi_pages_text = await asyncio.gather(
                 *[asyncio.gather(*[get_text(p) for p in run]) for run in multi_pages]
             )
-            for run_pages, texts in zip(multi_pages, run_texts):
-                multi_pages_text.append([{"page_index": p, "text": t} for p, t in zip(run_pages, texts)])
+            sorted_multi_pages_text = sorted(multi_pages_text, key=lambda x: x["page_index"])
+            # for run_pages, texts in zip(multi_pages, run_texts):
+            #     multi_pages_text.append([{"page_index": p, "text": t} for p, t in zip(run_pages, texts)])
 
         res = {
-            "multi": multi_pages_text,
-            "single": single_pages_text,
-            "section_number": section,
+            "multi": sorted_multi_pages_text,
+            "single": sorted_single_pages_text,
+            "section_number": section
         }
 
         results[section] = await classify_primary_or_context_segments_ai(res, max_in_flight=ai_max_in_flight)

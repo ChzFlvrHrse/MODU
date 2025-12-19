@@ -226,7 +226,9 @@ class SpecReqs(BaseModel):
         description="General notes or uncertainties about the extraction.",
     )
 
-async def extract_section_requirements_from_pages_ai(pages: list[dict]) -> dict:
+async def extract_section_requirements_from_pages_ai(pages: list[dict], ai_max_in_flight: int = 3) -> dict:
+    sem = asyncio.Semaphore(ai_max_in_flight)
+
     content_blocks = []
     for page in pages:
         text = (page.get("text") or "").strip()
@@ -264,41 +266,37 @@ Treat ALL pages below as the section body (PRIMARY).
 
     return specs.model_dump()
 
-async def section_spec_requirements(spec_id: str, section_pages: list[dict], section_number: str, s3: S3Bucket, s3_client: any) -> dict:
-    primary_pages = section_pages["primary"]
-    # context_pages = section_pages["context"]
+# TODO: Run by division section pages
+# TODO: Need to look into optimizing (batching, throttling, etc.)
+async def section_spec_requirements(
+    spec_id: str,
+    division_section_pages: dict,
+    s3: S3Bucket,
+    s3_client: any,
+    s3_max_in_flight: int = 25,
+    ai_max_in_flight: int = 3
+) -> dict:
+    sem = asyncio.Semaphore(s3_max_in_flight)
 
-    primary_pages_text: list[dict] = []
-    if not primary_pages:
-        return {
-            "spec_section": None,
-            "project_name": None,
-            "general_requirements": [],
-            "products": [],
-            "execution_requirements": [],
-            "notes": f"No primary pages detected for section {section_number}"
-        }
+    async def get_text(page_index: int) -> str:
+        async with sem:
+            return await s3.get_text_page_with_client(
+                spec_id=spec_id,
+                index=page_index,
+                s3_client=s3_client,
+            )
 
-    primary_pages_text = await asyncio.gather(
-        *[s3.get_text_page_with_client(spec_id=spec_id, index=page, s3_client=s3_client)
-        for page in primary_pages]
-    )
+    for key in division_section_pages.keys():
+        div_sec_pages = division_section_pages[key]
+        for section_number in div_sec_pages:
+            primary_pages = div_sec_pages[section_number].get("primary", [])
+            if not primary_pages:
+                continue
 
-    primary_pages_text = [
-        {"page_index": page, "text": text}
-        for page, text in zip(primary_pages, primary_pages_text)
-        if text
-    ]
+            texts = await asyncio.gather(*[(get_text(page)) for page in primary_pages])
+            sorted_texts = sorted(texts, key=lambda x: x["page_index"])
+            specs = await extract_section_requirements_from_pages_ai(sorted_texts, ai_max_in_flight)
 
-    primary_pages_text.sort(key=lambda x: x["page_index"])
+            div_sec_pages[section_number]["spec_reqs"] = specs
 
-    return await extract_section_requirements_from_pages_ai(primary_pages_text)
-
-# if __name__ == "__main__":
-#     async def main():
-#         s3 = S3Bucket()
-#         spec_id = "1ca7077a-ac58-4f5a-9b40-f6847ff235e2"
-#         section_pages = [2, 76, 89, 90, 91, 92, 93, 94, 95, 96, 103]
-#         async with s3.s3_client() as s3_client:
-#             print(await section_spec_requirements(spec_id, section_pages, s3_client))
-#     asyncio.run(main())
+    return {"section_pages": division_section_pages}

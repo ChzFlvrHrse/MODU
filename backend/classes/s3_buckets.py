@@ -45,10 +45,10 @@ class S3Bucket(PDFPageConverter):
         key = f"{spec_id}/converted/{index}/TEXT.txt"
         try:
             text = await self.get_object(key)
-            return text.decode("utf-8", errors="replace")
+            return {"text": text.decode("utf-8", errors="replace"), "page_index": index}
         except Exception as e:
             logger.error(f"Error getting text page {index}: {e}")
-            return None
+            return {"text": None, "page_index": index}
 
     async def get_image_page(self, spec_id: str, index: int):
         key = f"{spec_id}/converted/{index}/IMAGE.png"
@@ -57,27 +57,27 @@ class S3Bucket(PDFPageConverter):
             return fitz.open(stream=image, filetype="png")
         except Exception as e:
             logger.error(f"Error getting image page {index}: {e}")
-            return None
+            return {"bytes": None, "page_index": index}
 
     async def get_text_page_with_client(self, spec_id: str, index: int, s3_client: any):
         key = f"{spec_id}/converted/{index}/TEXT.txt"
         try:
             text = await self.get_object_with_client(key, s3_client)
             logger.info(f"Text page {index} found")
-            return text.decode("utf-8", errors="replace")
+            return {"text": text.decode("utf-8", errors="replace"), "page_index": index}
         except Exception as e:
             logger.error(f"Error getting text page {index}: {e}")
-            return None
+            return {"text": None, "page_index": index}
 
     async def get_image_page_with_client(self, spec_id: str, index: int, s3_client: any):
         key = f"{spec_id}/converted/{index}/IMAGE.png"
         try:
             image = await self.get_object_with_client(key, s3_client)
             logger.info(f"Image page {index} found")
-            return fitz.open(stream=image, filetype="png") if image else None
+            return {"bytes": fitz.open(stream=image, filetype="png"), "page_index": index} if image else None
         except Exception as e:
             logger.error(f"Error getting image page {index}: {e}")
-            return None
+            return {"bytes": None, "page_index": index}
 
     async def get_objects_gen(self, prefix: str = "") -> AsyncGenerator[list[dict], None]:
         async with self.s3_client() as s3:
@@ -618,8 +618,8 @@ class S3Bucket(PDFPageConverter):
 
             yield {
                 "page_index": i,
-                "text": text,
-                "bytes": bytes_data
+                "text": text["text"],
+                "bytes": bytes_data["bytes"]
             }
 
     async def get_single_page(self, spec_id: str, page_index: int) -> HybridPage:

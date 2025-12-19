@@ -33,7 +33,7 @@ async def table_of_contents_detection_ai(spec_page: bytes) -> bool:
                     "Determine whether or not this page is part of a table-of-contents style listing of divisions/sections. "
                     "Division numbers are always in CSI Master Format. "
                     "Divison numbers are always in the format '03', '09', '12', '21', etc. "
-                    "Sections are always in the format '220505', '262913.03', '013300a', etc. "
+                    "Sections are always in the format '00003', '220505', '262913.03', '013300a', etc. "
                     "If you see the word 'Table of Contents', assume it's True. "
                     "If you are unsure, return False."
                 )
@@ -49,12 +49,12 @@ async def table_of_contents_detection_ai(spec_page: bytes) -> bool:
     )
     return json.loads(json.dumps(response.choices[0].message.parsed.model_dump()))
 
-async def table_of_contents_detection(spec_id: str) -> list[int]:
+async def table_of_contents_detection(spec_id: str, s3_client: any) -> list[int]:
     try:
         s3 = S3Bucket()
         pdf_page_converter = PDFPageConverter()
 
-        original_pdf = s3.get_original_pdf(spec_id)
+        original_pdf = await s3.get_original_pdf_with_client(spec_id, s3_client)
 
         if original_pdf['status_code'] != 200:
             raise ValueError(original_pdf['data'])
@@ -62,12 +62,12 @@ async def table_of_contents_detection(spec_id: str) -> list[int]:
         doc = fitz.open(stream=original_pdf['data'], filetype="pdf")
 
         toc_indices: list[int] = []
-        for page in s3.get_converted_pages_generator(spec_id):
+        async for page in s3.get_converted_pages_generator_with_client(spec_id, s3_client):
             if page['bytes']:
                 res = await table_of_contents_detection_ai(page['bytes'])
                 is_toc = res['is_toc_page']
-            else:
-                bytes = pdf_page_converter.rasterize_page(doc, page['page_index'])
+            elif page['text']:
+                bytes = pdf_page_converter.rasterize_page(page=doc.load_page(page['page_index']), total_pages=1, page_index=page['page_index'])
                 res = await table_of_contents_detection_ai(bytes)
                 is_toc = res['is_toc_page']
 
@@ -93,8 +93,13 @@ async def table_of_contents_detection(spec_id: str) -> list[int]:
             "error": str(e)
         }
 
-# import asyncio
-# if __name__ == "__main__":
-#     # spec_id = "c3dbbba7-b6c8-4046-95d8-64d18edf90bf"
-#     spec_id = "eac1e6d2-119c-4add-afdc-b42405f944a9"
-#     print(asyncio.run(table_of_contents_detection(spec_id)))
+import asyncio
+if __name__ == "__main__":
+    s3 = S3Bucket()
+    spec_id = "1ca7077a-ac58-4f5a-9b40-f6847ff235e2"
+    async def main():
+        async with s3.s3_client() as s3_client:
+            toc_indices = await table_of_contents_detection(spec_id, s3_client)
+            print(toc_indices)
+
+    asyncio.run(main())

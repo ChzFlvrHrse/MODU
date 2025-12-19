@@ -7,22 +7,24 @@ division_breakdown_bp = Blueprint("division_breakdown", __name__)
 
 @division_breakdown_bp.route("/table_of_contents", methods=["POST"])
 async def table_of_contents():
-    data = await request.json
+    data = await request.get_json()
 
     spec_id = data.get("spec_id")
     if spec_id is None:
         return jsonify({"error": "Spec ID is required"}), 400
 
-    table_of_contents = await table_of_contents_detection(spec_id)
+    s3 = S3Bucket()
+    async with s3.s3_client() as s3_client:
+        table_of_contents = await table_of_contents_detection(spec_id, s3_client)
 
-    if table_of_contents["status_code"] != 200:
-        return jsonify({"error": table_of_contents["error"]}), table_of_contents["status_code"]
-    else:
-        return jsonify({"toc_indices": table_of_contents["toc_indices"]}), table_of_contents["status_code"]
+        if table_of_contents["status_code"] != 200:
+            return jsonify({"error": table_of_contents["error"]}), table_of_contents["status_code"]
+        else:
+            return jsonify({"toc_indices": table_of_contents["toc_indices"]}), table_of_contents["status_code"]
 
 @division_breakdown_bp.route("/divisions_and_sections", methods=["POST"])
 async def divisions_and_sections():
-    data = await request.json
+    data = await request.get_json()
 
     spec_id = data.get("spec_id")
     toc_indices = data.get("toc_indices", [])
