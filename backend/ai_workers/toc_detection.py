@@ -21,7 +21,7 @@ class TableOfContentsDetection(BaseModel):
         default=False
     )
 
-# I'm unsure if this is needed, I'm hoping it will increase accuracy
+# I know this is not ideal, working on a regex solution instead
 async def toc_detection_ai(spec_page: bytes) -> TableOfContentsDetection:
     response = await client.beta.chat.completions.parse(
         model="gpt-4.1",
