@@ -22,7 +22,7 @@ class TableOfContentsDetection(BaseModel):
     )
 
 # I'm unsure if this is needed, I'm hoping it will increase accuracy
-async def table_of_contents_detection_ai(spec_page: bytes) -> bool:
+async def toc_detection_ai(spec_page: bytes) -> TableOfContentsDetection:
     response = await client.beta.chat.completions.parse(
         model="gpt-4.1",
         response_format=TableOfContentsDetection,
@@ -64,11 +64,11 @@ async def table_of_contents_detection(spec_id: str, s3_client: any) -> list[int]
         toc_indices: list[int] = []
         async for page in s3.get_converted_pages_generator_with_client(spec_id, s3_client):
             if page['bytes']:
-                res = await table_of_contents_detection_ai(page['bytes'])
+                res = await toc_detection_ai(page['bytes'])
                 is_toc = res['is_toc_page']
             elif page['text']:
                 bytes = pdf_page_converter.rasterize_page(page=doc.load_page(page['page_index']), total_pages=1, page_index=page['page_index'])
-                res = await table_of_contents_detection_ai(bytes)
+                res = await toc_detection_ai(bytes)
                 is_toc = res['is_toc_page']
 
             if not is_toc and len(toc_indices) == 0:
