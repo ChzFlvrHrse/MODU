@@ -1,4 +1,4 @@
-import os, uuid, asyncio, logging
+import uuid, logging
 from classes import S3Bucket
 from quart import Blueprint, request, jsonify
 

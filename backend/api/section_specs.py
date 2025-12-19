@@ -1,7 +1,7 @@
 import logging, datetime
 from classes import S3Bucket
 from quart import Blueprint, request, jsonify
-from ai_workers import section_spec_detection, section_spec_requirements, primary_context_classification
+from functions import section_spec_detection, section_spec_requirements, primary_context_classification
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

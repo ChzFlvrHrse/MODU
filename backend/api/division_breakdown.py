@@ -1,7 +1,7 @@
 from classes import S3Bucket
-from ai_workers import division_breakdown
+from functions import division_breakdown
 from quart import Blueprint, request, jsonify
-from ai_workers import table_of_contents_detection
+from functions import table_of_contents_detection
 
 division_breakdown_bp = Blueprint("division_breakdown", __name__)
 

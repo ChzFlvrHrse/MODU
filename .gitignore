@@ -20,7 +20,7 @@ build/
 *.egg
 
 # test files
-test/
+# test/
 
 # Node.js / Frontend
 node_modules/
