@@ -49,11 +49,11 @@ async def run_shards(spec_id: str, s3, s3_client, workers: int = 4) -> list[str]
         ]
         return await asyncio.gather(*futures)
 
-if __name__ == "__main__":
-    s3 = S3Bucket()
-    spec_id = "1ca7077a-ac58-4f5a-9b40-f6847ff235e2"
-    async def main():
-        async with s3.s3_client() as s3_client:
-            results = await run_shards(spec_id, s3, s3_client, workers=50)
-        return results
-    print(asyncio.run(main()))
+# if __name__ == "__main__":
+#     s3 = S3Bucket()
+#     spec_id = "1ca7077a-ac58-4f5a-9b40-f6847ff235e2"
+#     async def main():
+#         async with s3.s3_client() as s3_client:
+#             results = await run_shards(spec_id, s3, s3_client, workers=50)
+#         return results
+#     print(asyncio.run(main()))
