@@ -11,8 +11,12 @@ def flatten(section_numbers: list[list[str]]):
 def worker_scan_shard(spec_id: str, start_index: int, end_index: int) -> list[dict]:
     async def _run():
         s3 = S3Bucket()
+        # NOTE: This patern is less strict
         # regex_pattern = r"(?<![\d.-])(?:(?:0[0-9]|[1-4][0-9]|50)(?:[\s.-]?\d{2}){2}|(?:0[0-9]|[1-4][0-9]|50)\d{3})(?:\.\d+)?[A-Za-z]?(?!\d)"
-        regex_pattern = r"(?<![\d.-])(?!\d{4}[./-]\d{2}[./-]\d{2})(?:(?:0[0-9]|[1-4][0-9]|50)(?:[\s.-]?\d{2}){2}|(?:0[0-9]|[1-4][0-9]|50)\d{3})(?:\.\d+)?[A-Za-z]?(?!\d)"
+
+        # NOTE: Excludes date-like strings such as YYYY-MM, YYYY.MM, YYYY-MM-DD, YYYY.MM.DD
+        # e.g. 1992-01, 2023.06.15, 2023-06-15
+        regex_pattern = r"(?<![\d.-])(?!\b(?:19|20)\d{2}[-./]\d{2}(?:[-./]\d{2})?\b)(?:(?:(?:0[0-9]|[1-4][0-9]|50)(?:[\s.-]?\d{2}){2})|(?:(?:0[0-9]|[1-4][0-9]|50)\d{3}))(?:\.\d+)?[A-Za-z]?(?!\d)"
         section_numbers: dict = {page_index: [] for page_index in range(start_index, end_index)}
 
         async with s3.s3_client() as s3_client:
@@ -29,7 +33,6 @@ def worker_scan_shard(spec_id: str, start_index: int, end_index: int) -> list[di
 
                 for match in re.finditer(regex_pattern, text):
                     if match.group(0):
-                        # section_numbers.append(match.group(0))
                         section_numbers[page_index].append(match.group(0))
 
             return section_numbers
@@ -43,7 +46,7 @@ async def run_shards(spec_id: str, s3, s3_client, workers: int = 4) -> list[str]
     shards = [(int(divider * i), int(divider * (i + 1))) for i in range(workers)]
     loop = asyncio.get_running_loop()
 
-# NOTE: I'm only using 50 workers because for time. Will not be used in production.
+    # NOTE: I'm only using 50 workers because for time. Will not be used in production.
     with ProcessPoolExecutor(max_workers=50) as executor:
         futures = [
             loop.run_in_executor(executor, worker_scan_shard, spec_id, start_index, end_index)
