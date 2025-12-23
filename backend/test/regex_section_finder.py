@@ -11,7 +11,8 @@ def flatten(section_numbers: list[list[str]]):
 def worker_scan_shard(spec_id: str, start_index: int, end_index: int) -> list[dict]:
     async def _run():
         s3 = S3Bucket()
-        regex_pattern = r"(?<![\d.-])(?:(?:0[0-9]|[1-4][0-9]|50)(?:[\s.-]?\d{2}){2}|(?:0[0-9]|[1-4][0-9]|50)\d{3})(?:\.\d+)?[A-Za-z]?(?!\d)"
+        # regex_pattern = r"(?<![\d.-])(?:(?:0[0-9]|[1-4][0-9]|50)(?:[\s.-]?\d{2}){2}|(?:0[0-9]|[1-4][0-9]|50)\d{3})(?:\.\d+)?[A-Za-z]?(?!\d)"
+        regex_pattern = r"(?<![\d.-])(?!\d{4}[./-]\d{2}[./-]\d{2})(?:(?:0[0-9]|[1-4][0-9]|50)(?:[\s.-]?\d{2}){2}|(?:0[0-9]|[1-4][0-9]|50)\d{3})(?:\.\d+)?[A-Za-z]?(?!\d)"
         section_numbers: dict = {page_index: [] for page_index in range(start_index, end_index)}
 
         async with s3.s3_client() as s3_client:
@@ -42,6 +43,7 @@ async def run_shards(spec_id: str, s3, s3_client, workers: int = 4) -> list[str]
     shards = [(int(divider * i), int(divider * (i + 1))) for i in range(workers)]
     loop = asyncio.get_running_loop()
 
+# NOTE: I'm only using 50 workers because for time. Will not be used in production.
     with ProcessPoolExecutor(max_workers=50) as executor:
         futures = [
             loop.run_in_executor(executor, worker_scan_shard, spec_id, start_index, end_index)
@@ -49,11 +51,11 @@ async def run_shards(spec_id: str, s3, s3_client, workers: int = 4) -> list[str]
         ]
         return await asyncio.gather(*futures)
 
-# if __name__ == "__main__":
-#     s3 = S3Bucket()
-#     spec_id = "1ca7077a-ac58-4f5a-9b40-f6847ff235e2"
-#     async def main():
-#         async with s3.s3_client() as s3_client:
-#             results = await run_shards(spec_id, s3, s3_client, workers=50)
-#         return results
-#     print(asyncio.run(main()))
+if __name__ == "__main__":
+    s3 = S3Bucket()
+    spec_id = "1ca7077a-ac58-4f5a-9b40-f6847ff235e2"
+    async def main():
+        async with s3.s3_client() as s3_client:
+            results = await run_shards(spec_id, s3, s3_client, workers=4)
+        return results
+    print(asyncio.run(main()))
