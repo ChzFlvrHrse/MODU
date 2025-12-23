@@ -3,7 +3,6 @@
 cd into backend folder
 
 CLI Commands:
-
 pip install -r requirements.txt
 python app.py (ran locally)
 
