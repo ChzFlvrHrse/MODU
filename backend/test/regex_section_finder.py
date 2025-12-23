@@ -14,9 +14,17 @@ def worker_scan_shard(spec_id: str, start_index: int, end_index: int) -> list[di
         # NOTE: This patern is less strict
         # regex_pattern = r"(?<![\d.-])(?:(?:0[0-9]|[1-4][0-9]|50)(?:[\s.-]?\d{2}){2}|(?:0[0-9]|[1-4][0-9]|50)\d{3})(?:\.\d+)?[A-Za-z]?(?!\d)"
 
-        # NOTE: Excludes date-like strings such as YYYY-MM, YYYY.MM, YYYY-MM-DD, YYYY.MM.DD
-        # e.g. 1992-01, 2023.06.15, 2023-06-15
-        regex_pattern = r"(?<![\d.-])(?!\b(?:19|20)\d{2}[-./]\d{2}(?:[-./]\d{2})?\b)(?:(?:(?:0[0-9]|[1-4][0-9]|50)(?:[\s.-]?\d{2}){2})|(?:(?:0[0-9]|[1-4][0-9]|50)\d{3}))(?:\.\d+)?[A-Za-z]?(?!\d)"
+        # NOTE: Excludes date formats containing a 4-digit year
+        # e.g. 2023-06-15, 2023.06, 10-10-2019, 10.10.2019
+        regex_pattern = (
+            r"(?<![\d.-])"
+            r"(?!\b(?:19|20)\d{2}[-./]\d{2}(?:[-./]\d{2})?\b)"   # YYYY-MM or YYYY-MM-DD
+            r"(?!\b\d{2}[-./]\d{2}[-./](?:19|20)\d{2}\b)"        # MM-DD-YYYY
+            r"(?:(?:(?:0[0-9]|[1-4][0-9]|50)(?:[\s.-]?\d{2}){2})|"
+            r"(?:(?:0[0-9]|[1-4][0-9]|50)\d{3}))"
+            r"(?:\.\d+)?[A-Za-z]?(?!\d)"
+        )
+
         section_numbers: dict = {page_index: [] for page_index in range(start_index, end_index)}
 
         async with s3.s3_client() as s3_client:
