@@ -1,5 +1,6 @@
 import os, logging, asyncio
 from openai import AsyncOpenAI
+from anthropic import AsyncAnthropic
 from dotenv import load_dotenv
 from typing import Optional, List
 from pydantic import BaseModel, Field
@@ -10,7 +11,8 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 AI_MAX_IN_FLIGHT = 6
 S3_MAX_IN_FLIGHT = 25
@@ -227,7 +229,7 @@ class SpecReqs(BaseModel):
     )
 
 async def extract_section_requirements_from_pages_ai(pages: list[dict], ai_max_in_flight: int = 3) -> dict:
-    sem = asyncio.Semaphore(ai_max_in_flight)
+    # sem = asyncio.Semaphore(ai_max_in_flight)
 
     content_blocks = []
     for page in pages:
@@ -246,25 +248,32 @@ async def extract_section_requirements_from_pages_ai(pages: list[dict], ai_max_i
             }
         )
 
-    prompt = """
-You are reading a construction SPECIFICATION SECTION that may be spread across multiple pages.
-
-Treat ALL pages below as the section body (PRIMARY).
-- Extract all requirements/products and return a single JSON object in the given schema.
-- Merge duplicates across pages.
-- Only return valid JSON.
-""".strip()
-
-    res = await client.beta.chat.completions.parse(
-        model="gpt-4.1",
-        response_format=SpecReqs,
-        messages=[{"role": "user", "content": [{"type": "text", "text": prompt}, *content_blocks]}],
-        temperature=0.0,
+    res = await client.beta.messages.parse(
+        model="claude-sonnet-4-5",
+        max_tokens=20000,  # MAX TOKENS - 64000
+        timeout=None,
+        betas=["structured-outputs-2025-11-13"],
+        output_format=SpecReqs,
+        system=(
+            "You are reading a construction SPECIFICATION SECTION that may be spread across multiple pages. "
+            "Treat ALL pages below as the section body (PRIMARY). "
+            "Extract all requirements/products and return a single JSON object in the given schema. "
+        ),
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Extract all requirements/products and return a single JSON object in the given schema. Merge duplicates across pages. Only return valid JSON."},
+                    *content_blocks
+                ]
+            }
+        ]
     )
 
-    specs = res.choices[0].message.parsed
+    # specs = res.choices[0].message.parsed
 
-    return specs.model_dump()
+    # return specs.model_dump()
+    return res.parsed_output.model_dump()
 
 # TODO: Run by division section pages
 # TODO: Need to look into optimizing (batching, throttling, etc.)

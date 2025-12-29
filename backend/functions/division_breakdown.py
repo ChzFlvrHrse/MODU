@@ -1,6 +1,6 @@
-from pathlib import Path
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
+from anthropic import AsyncAnthropic
 from pydantic import BaseModel, Field
 import os, json, logging, sys, base64, asyncio
 
@@ -13,7 +13,8 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 pdf_page_converter = PDFPageConverter()
 
 class DivisionSource(BaseModel):
@@ -28,7 +29,7 @@ class Division(BaseModel):
     sources: DivisionSource = Field(description="A source for this division", default=None)
     division_code: str = Field(description="CSI division code (e.g., '03')")
     division_title: str = Field(description="Name of the division (e.g., 'Concrete')")
-    page_range: list[int] = Field(description="start page and end page numbers", default=[])
+    # page_range: list[int] = Field(description="start page and end page numbers", default=[])
     section: list[DivisionSectionNumbers] = Field(description="Section numbers for this division", default=[])
     scope_summary: str = Field(description="Summary of the scope for this division", default="")
     assumptions_or_risks: list[str] = Field(description="List of assumptions or risks identified", default=[])
@@ -58,29 +59,24 @@ async def division_detection_ai(spec_pages: list[HybridPage], previous_divisions
 
     formatted_spec_pages = format_spec_pages(spec_pages)
 
-    response = await client.beta.chat.completions.parse(
-        model="gpt-4.1",
+    response = await client.beta.messages.parse(
+        model="claude-sonnet-4-5",
+        max_tokens=10000,  # MAX TOKENS - 64000
+        timeout=None,  # Bypass 10-minute timeout check
+        betas=["structured-outputs-2025-11-13"],
+        output_format=DivisionBreakdown,
+        system=(
+            "You are an expert division breakdown analyst. "
+            "Given a section of a spec sheet, your job is to detect which CSI divisions are present. "
+            "Divisions are always in CSI Master Format. "
+            "Analyze the text and identify divisions by their CSI codes (e.g., '03' for Concrete, '09' for Finishes)."
+            f"Divisions already detected in previous pages: {previous_divisions_detected}."
+            "If the first page in this batch begins only with section numbers and no new division header, "
+            f"assume those sections belong to the most recently detected division: {most_recent_division}, "
+            "unless the text clearly indicates a new division. "
+            "Never invent a division or section that is not present in the spec."
+        ),
         messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You are an expert division breakdown analyst. "
-                    "Given a section of a spec sheet, your job is to detect which CSI divisions are present. "
-                    "Divisions are always in CSI Master Format. "
-                    "Analyze the text and identify divisions by their CSI codes (e.g., '03' for Concrete, '09' for Finishes)."
-                    f"Divisions already detected in previous pages: {previous_divisions_detected}."
-                    "If the first page in this batch begins only with section numbers and no new division header, "
-                    f"assume those sections belong to the most recently detected division: {most_recent_division}, "
-                    "unless the text clearly indicates a new division. "
-                    "Never invent a division or section that is not present in the spec. "
-                    # "If the page is not part of a table-of-contents style listing of divisions/sections, "
-                    # "do not include it as a division or section. "
-                    # "If you see a page that clearly indicates the end of the table-of-contents style listing of divisions/sections, return False. "
-                    # "Return True if the listing appears to be part of a continuing table-of-contents style listing of divisions/sections, otherwise return False. "
-                    # "If the listing appears to have ended and later pages are the body of specification sections rather than TOC rows, return False. "
-                    # "If you are unsure, return True."
-                )
-            },
             {
                 "role": "user",
                 "content": [
@@ -88,11 +84,10 @@ async def division_detection_ai(spec_pages: list[HybridPage], previous_divisions
                     *formatted_spec_pages
                 ]
             }
-        ],
-        response_format=DivisionBreakdown
+        ]
     )
 
-    return json.loads(json.dumps({**response.choices[0].message.parsed.model_dump()}))
+    return response.parsed_output.model_dump()
 
 def division_duplication_check(divisions_detected: list[dict]) -> list[dict]:
     i = 0
@@ -125,13 +120,14 @@ def division_duplication_check(divisions_detected: list[dict]) -> list[dict]:
 async def division_breakdown(
     spec_id: str,
     toc_indices: list[int],
+    s3_client: any,
     # batch_size: int = 10,
     start_index: int = 0,
     end_index: int = None
 ) -> list[dict]:
     s3 = S3Bucket()
     if end_index is None:
-        end_index = s3.get_original_page_count(spec_id)
+        end_index = await s3.get_original_page_count_with_client(spec_id, s3_client)
 
     detected_divisions: list[dict] = []
     batch: list[HybridPage] = []
@@ -145,11 +141,12 @@ async def division_breakdown(
     logger.info(f"Starting scan from page {start_index} to page {end_index}")
 
     # for page in s3.get_converted_pages_generator(spec_id, start_index=start_index, end_index=end_index):
-    toc_pages = s3.get_pages(spec_id, toc_indices)
-    for page in toc_pages:
-        batch.append(page)
+    # toc_pages = await s3.get_object_with_client(spec_id, toc_indices, s3_client)
+    for page in toc_indices:
+        page_data = await s3.get_single_page_with_client(spec_id, page, s3_client=s3_client)
+        batch.append(page_data)
         if len(batch) >= batch_size:
-            div = await division_detection_ai(batch, divisions_detected, toc_indices)
+            div = await division_detection_ai(batch, divisions_detected)
             div_dict = div.get("divisions_detected", [])
 
             logger.info(f"Divisions: {' | '.join(divisions_detected)}")
@@ -176,6 +173,10 @@ async def division_breakdown(
     return division_duplication_check(detected_divisions)
 
 # if __name__ == "__main__":
-#     spec_id = "eac1e6d2-119c-4add-afdc-b42405f944a9"
+#     spec_id = "1ca7077a-ac58-4f5a-9b40-f6847ff235e2"
 #     toc_indices = [2, 3, 4, 5, 6, 7]
-#     print(asyncio.run(division_breakdown(spec_id, toc_indices)))
+#     s3 = S3Bucket()
+#     async def main():
+#         async with s3.s3_client() as s3_client:
+#             return await division_breakdown(spec_id, toc_indices, s3_client)
+#     print(asyncio.run(main()))

@@ -1,5 +1,6 @@
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
+from anthropic import AsyncAnthropic
 import os, logging, re, asyncio
 from pydantic import BaseModel, Field
 from concurrent.futures import ProcessPoolExecutor
@@ -11,10 +12,12 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-client = AsyncOpenAI(
-    api_key=os.getenv("OPENAI_API_KEY"),
-    max_retries=10,  # Retry more on 429 rate limits
-)
+# client = AsyncOpenAI(
+#     api_key=os.getenv("OPENAI_API_KEY"),
+#     max_retries=10,  # Retry more on 429 rate limits
+# )
+client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
 
 def split_section(section: str) -> tuple[str, str]:
     section = section.strip()
@@ -166,19 +169,19 @@ class PageClassification(BaseModel):
 
 def build_block(segment_pages: list[dict], section_number: str) -> list[dict]:
         content_blocks = [
-            {
-                "type": "text",
-                "text": (
-                    "You are classifying page SEGMENTS from a construction specification.\n\n"
-                    "Each segment is a contiguous group of pages.\n\n"
-                    "Classify the segment as:\n"
-                    f"- PRIMARY: contains the actual section body for section {section_number} "
-                    "Some page sections are lengthy, sometimes you will only be given the first 3 pages of the section."
-                    "(requirements, products, execution; often PART 1/2/3 language)\n"
-                    "- CONTEXT: only references the section (TOC, cross-references, listings)\n\n"
-                    "Do NOT extract data. Only classify.\n"
-                ),
-            }
+            # {
+            #     "type": "text",
+            #     "text": (
+            #         "You are classifying page SEGMENTS from a construction specification.\n\n"
+            #         "Each segment is a contiguous group of pages.\n\n"
+            #         "Classify the segment as:\n"
+            #         f"- PRIMARY: contains the actual section body for section {section_number} "
+            #         "Some page sections are lengthy, sometimes you will only be given the first 3 pages of the section."
+            #         "(requirements, products, execution; often PART 1/2/3 language)\n"
+            #         "- CONTEXT: only references the section (TOC, cross-references, listings)\n\n"
+            #         "Do NOT extract data. Only classify.\n"
+            #     ),
+            # }
         ]
 
         # NOTE: Tokens limit's were reached too quickly, so I'm limiting the number of pages to 3
@@ -200,7 +203,7 @@ def build_block(segment_pages: list[dict], section_number: str) -> list[dict]:
                 }
             )
 
-        return [{"role": "user", "content": content_blocks}]
+        return content_blocks
 
 async def classify_primary_or_context_segments_ai(pages_dict: dict, max_in_flight: int = 6) -> dict:
     multi_pages: list[list[dict]] = pages_dict["multi"]
@@ -213,15 +216,30 @@ async def classify_primary_or_context_segments_ai(pages_dict: dict, max_in_fligh
     sem = asyncio.Semaphore(max_in_flight)
     async def classify_segment(segment_pages: list[dict]) -> tuple[bool, list[dict]]:
         async with sem:
-            res = await client.beta.chat.completions.parse(
-                model="gpt-4.1",
-                # model="gpt-4.1-mini",
-                response_format=PageClassification,
-                messages=build_block(segment_pages, section_number),
-                temperature=0.0
+            res = await client.beta.messages.parse(
+                model="claude-sonnet-4-5",
+                max_tokens=2048,  # MAX TOKENS - 64000
+                timeout=None,
+                betas=["structured-outputs-2025-11-13"],
+                output_format=PageClassification,
+                system=(
+                    "You are classifying page SEGMENTS from a construction specification.\n\n"
+                    "Each segment is a contiguous group of pages.\n\n"
+                    "Classify the segment as:\n"
+                    f"- PRIMARY: contains the actual section body for section {section_number} "
+                    "Some page sections are lengthy, sometimes you will only be given the first 3 pages of the section."
+                    "(requirements, products, execution; often PART 1/2/3 language)\n"
+                    "- CONTEXT: only references the section (TOC, cross-references, listings)\n\n"
+                    "Do NOT extract data. Only classify.\n"
+                ),
+                messages=[
+                    {
+                        "role": "user",
+                        "content": build_block(segment_pages, section_number)
+                    }
+                ]
             )
-            parsed = res.choices[0].message.parsed
-            return parsed.is_primary, segment_pages
+            return res.parsed_output.model_dump().get("is_primary"), segment_pages
 
     # Classify multi segments concurrently
     if not multi_pages:

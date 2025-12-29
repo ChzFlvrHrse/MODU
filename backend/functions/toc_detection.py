@@ -1,5 +1,6 @@
 import base64, json, os, fitz, logging
 from openai import AsyncOpenAI
+from anthropic import AsyncAnthropic
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from classes.s3_buckets import S3Bucket
@@ -10,7 +11,8 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 class TableOfContentsDetection(BaseModel):
     is_toc_page: bool = Field(
@@ -23,21 +25,21 @@ class TableOfContentsDetection(BaseModel):
 
 # I know this is not ideal, working on a regex solution instead
 async def toc_detection_ai(spec_page: bytes) -> TableOfContentsDetection:
-    response = await client.beta.chat.completions.parse(
-        model="gpt-4.1",
-        response_format=TableOfContentsDetection,
+    response = await client.beta.messages.parse(
+        model="claude-sonnet-4-5",
+        max_tokens=10000,  # MAX TOKENS - 64000
+        timeout=None,
+        betas=["structured-outputs-2025-11-13"],
+        output_format=TableOfContentsDetection,
+        system=(
+            "Determine whether or not this page is part of a table-of-contents style listing of divisions/sections. "
+            "Division numbers are always in CSI Master Format. "
+            "Divison numbers are always in the format '03', '09', '12', '21', etc. "
+            "Sections are always in the format '00003', '220505', '262913.03', '013300a', etc. "
+            "If you see the word 'Table of Contents', assume it's True. "
+            "If you are unsure, return False."
+        ),
         messages=[
-            {
-                "role": "system",
-                "content": (
-                    "Determine whether or not this page is part of a table-of-contents style listing of divisions/sections. "
-                    "Division numbers are always in CSI Master Format. "
-                    "Divison numbers are always in the format '03', '09', '12', '21', etc. "
-                    "Sections are always in the format '00003', '220505', '262913.03', '013300a', etc. "
-                    "If you see the word 'Table of Contents', assume it's True. "
-                    "If you are unsure, return False."
-                )
-            },
             {
                 "role": "user",
                 "content": [
@@ -47,7 +49,7 @@ async def toc_detection_ai(spec_page: bytes) -> TableOfContentsDetection:
             }
         ]
     )
-    return json.loads(json.dumps(response.choices[0].message.parsed.model_dump()))
+    return response.parsed_output.model_dump()
 
 async def table_of_contents_detection(spec_id: str, s3_client: any) -> list[int]:
     try:
