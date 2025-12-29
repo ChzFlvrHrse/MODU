@@ -34,8 +34,8 @@ class S3Bucket(PDFPageConverter):
             body.close()
             return data
 
-    async def get_object_with_client(self, key: str, s3: any):
-        response = await s3.get_object(Bucket=self.bucket_name, Key=key)
+    async def get_object_with_client(self, key: str, s3_client: any):
+        response = await s3_client.get_object(Bucket=self.bucket_name, Key=key)
         body = response["Body"]
         data = await body.read()
         body.close()
@@ -671,9 +671,10 @@ class S3Bucket(PDFPageConverter):
             raise ValueError(spec_check["data"])
 
         try:
-            tex_response = await s3_client.get_object(Bucket=self.bucket_name, Key=f"{spec_id}/converted/{page_index}.txt")
+            tex_response = await s3_client.get_object(Bucket=self.bucket_name, Key=f"{spec_id}/converted/{page_index}/TEXT.txt")
             if tex_response:
-                text = tex_response["Body"].read().decode("utf-8")
+                text = await tex_response["Body"].read()
+                text = text.decode("utf-8")
             else:
                 logger.debug(f"No text for page {page_index}")
                 text = None
@@ -682,9 +683,9 @@ class S3Bucket(PDFPageConverter):
             text = None
 
         try:
-            bytes_response = await s3_client.get_object(Bucket=self.bucket_name, Key=f"{spec_id}/converted/{page_index}.png")
+            bytes_response = await s3_client.get_object(Bucket=self.bucket_name, Key=f"{spec_id}/converted/{page_index}/IMAGE.png")
             if bytes_response:
-                bytes = bytes_response["Body"].read()
+                bytes = await bytes_response["Body"].read()
             else:
                 logger.debug(f"No image for page {page_index}")
                 bytes = None

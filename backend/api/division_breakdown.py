@@ -46,16 +46,18 @@ async def divisions_and_sections():
         return jsonify({"error": "End index must be greater than or equal to start index"}), 400
 
     s3 = S3Bucket()
+    s3_client = s3.s3_client()
 
-    spec_check = s3.get_original_pdf(spec_id)
-    if spec_check["status_code"] != 200:
-        return jsonify({"error": "Spec ID is invalid"}), 400
+    async with s3.s3_client() as s3_client:
+        spec_check = await s3.get_original_pdf_with_client(spec_id, s3_client)
+        if spec_check["status_code"] != 200:
+            return jsonify({"error": "Spec ID is invalid"}), 400
 
-    divisions_and_sections = await division_breakdown(
-        spec_id=spec_id,
-        toc_indices=toc_indices,
-        # batch_size=batch_size,
-        start_index=start_index,
-        end_index=end_index
-    )
+        divisions_and_sections = await division_breakdown(
+            spec_id=spec_id,
+            toc_indices=toc_indices,
+            s3_client=s3_client,
+            start_index=start_index,
+            end_index=end_index
+        )
     return jsonify(divisions_and_sections), 200
