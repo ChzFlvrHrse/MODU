@@ -111,7 +111,8 @@ def section_page_dict(section_numbers: dict):
             else:
                 section_page_dict[normalized_section_number] = [page_index]
 
-    return contiguous_page_divider(section_page_dict)
+    results = contiguous_page_divider(section_page_dict)
+    return results
 
 async def run_shards(spec_id: str, s3, s3_client, workers: int = 4) -> list[str]:
     total_pages = await s3.get_original_page_count_with_client(spec_id, s3_client)
@@ -130,7 +131,6 @@ async def run_shards(spec_id: str, s3, s3_client, workers: int = 4) -> list[str]
         results = await asyncio.gather(*futures)
         flattened_results = {k: v for d in results for k, v in d.items()}
         return section_page_dict(flattened_results)
-        # return results
 
 if __name__ == "__main__":
     s3 = S3Bucket()
