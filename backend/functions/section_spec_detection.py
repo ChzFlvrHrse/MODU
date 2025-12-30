@@ -352,3 +352,13 @@ async def primary_context_classification(
         results[section] = await classify_primary_or_context_segments_ai(res, max_in_flight=ai_max_in_flight)
 
     return division_parser(results)
+
+if __name__ == "__main__":
+    spec_id = "1ca7077a-ac58-4f5a-9b40-f6847ff235e2"
+    section_numbers = ["00003", "220505", "262913.03", "013300a"]
+    toc_indices = [2, 3, 4, 5, 6, 7]
+    s3 = S3Bucket()
+    async def main():
+        async with s3.s3_client() as s3_client:
+            return await section_spec_detection(spec_id, section_numbers, toc_indices, s3, s3_client)
+    print(asyncio.run(main()))

@@ -95,13 +95,13 @@ async def table_of_contents_detection(spec_id: str, s3_client: any) -> list[int]
             "error": str(e)
         }
 
-import asyncio
-if __name__ == "__main__":
-    s3 = S3Bucket()
-    spec_id = "1ca7077a-ac58-4f5a-9b40-f6847ff235e2"
-    async def main():
-        async with s3.s3_client() as s3_client:
-            toc_indices = await table_of_contents_detection(spec_id, s3_client)
-            print(toc_indices)
+# import asyncio
+# if __name__ == "__main__":
+#     s3 = S3Bucket()
+#     spec_id = "1ca7077a-ac58-4f5a-9b40-f6847ff235e2"
+#     async def main():
+#         async with s3.s3_client() as s3_client:
+#             toc_indices = await table_of_contents_detection(spec_id, s3_client)
+#             print(toc_indices)
 
-    asyncio.run(main())
+#     asyncio.run(main())
