@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, Iterator, AsyncGenerator
 from classes.pdf_page_converter import PDFPageConverter
 from classes.typed_dicts import HybridPage, PdfPageConverterResult
-import aioboto3, os, dotenv, logging, datetime, fitz, asyncio, threading
+import aioboto3, os, dotenv, logging, datetime, fitz, asyncio, threading, base64
 
 dotenv.load_dotenv()
 
@@ -74,7 +74,8 @@ class S3Bucket(PDFPageConverter):
         try:
             image = await self.get_object_with_client(key, s3_client)
             logger.info(f"Image page {index} found")
-            return {"bytes": fitz.open(stream=image, filetype="png"), "page_index": index} if image else None
+            # return {"bytes": fitz.open(stream=image, filetype="png"), "page_index": index} if image else None
+            return {"bytes": base64.b64encode(image).decode('utf-8'), "page_index": index} if image else None
         except Exception as e:
             logger.error(f"Error getting image page {index}: {e}")
             return {"bytes": None, "page_index": index}

@@ -117,9 +117,9 @@ async def upload_and_convert_pdf():
         section_page_dict = await detect_section_pages(spec_id, s3, s3_client)
 
     return jsonify({
+        "run_time": f"{datetime.datetime.now() - start_time}",
         "text_and_rasterize": text_and_rasterize,
-        "section_page_index": section_page_dict,
-        "run_time": f"{datetime.datetime.now() - start_time}"
+        "section_page_index": section_page_dict
     }), text_and_rasterize["status_code"]
 
 @upload_routes_bp.route("/get_original_pdf/<spec_id>", methods=["GET"])
