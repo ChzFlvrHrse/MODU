@@ -1,6 +1,7 @@
-import uuid, logging
+import uuid, logging, datetime
 from classes import S3Bucket
 from quart import Blueprint, request, jsonify
+from functions import section_pages_detection as detect_section_pages
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -70,6 +71,7 @@ async def text_and_rasterize():
 @upload_routes_bp.route("/upload_and_convert_pdf", methods=["POST"])
 async def upload_and_convert_pdf():
     s3 = S3Bucket()
+    start_time = datetime.datetime.now()
 
     # Consider switching to request.form instead of request.files
     files = await request.files
@@ -112,7 +114,13 @@ async def upload_and_convert_pdf():
             end_index=end_index
         )
 
-    return jsonify(text_and_rasterize), text_and_rasterize["status_code"]
+        section_page_dict = await detect_section_pages(spec_id, s3, s3_client)
+
+    return jsonify({
+        "text_and_rasterize": text_and_rasterize,
+        "section_page_index": section_page_dict,
+        "run_time": f"{datetime.datetime.now() - start_time}"
+    }), text_and_rasterize["status_code"]
 
 @upload_routes_bp.route("/get_original_pdf/<spec_id>", methods=["GET"])
 async def get_original_pdf(spec_id: str):
