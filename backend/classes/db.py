@@ -1,6 +1,8 @@
 # database.py
-import aiosqlite, json
+import aiosqlite
+import json
 from typing import Optional, List, Dict
+
 
 class ModuDB:
     def __init__(self, db_path: str = "modu_db.db"):
@@ -75,14 +77,14 @@ class ModuDB:
         return spec_id
 
     async def update_project(self,
-                       spec_id: str,
-                       status: str,
-                       total_divisions: int = 0,
-                       total_sections: int = 0,
-                       sections_with_primary: int = 0,
-                       sections_reference_only: int = 0,
-                       errors: int = 0
-                       ):
+                             spec_id: str,
+                             status: str,
+                             total_divisions: int = 0,
+                             total_sections: int = 0,
+                             sections_with_primary: int = 0,
+                             sections_reference_only: int = 0,
+                             errors: int = 0
+                             ):
         """Update project record"""
         async with aiosqlite.connect(self.db_path) as conn:
             await conn.execute("""
@@ -99,29 +101,43 @@ class ModuDB:
             await conn.commit()
 
     async def save_section(self, spec_id: str, division: str, section_number: str,
-                     section_name: str, primary_pages: List[int], reference_pages: List[int]) -> int:
+                           section_name: str, primary_pages: List[int], reference_pages: List[int]) -> int:
         """Save section data and return section_id"""
         async with aiosqlite.connect(self.db_path) as conn:
+            # First, try to get existing section
             cursor = await conn.execute("""
-                INSERT INTO sections (spec_id, division, section_number, section_name,
-                                     primary_pages, reference_pages)
-                VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT(spec_id, section_number) DO UPDATE SET
-                    division = ?,
-                    section_name = ?,
-                    primary_pages = ?,
-                    reference_pages = ?
-                RETURNING id
-            """, (
-                spec_id, division, section_number, section_name,
-                json.dumps(primary_pages), json.dumps(reference_pages),
-                division, section_name,
-                json.dumps(primary_pages), json.dumps(reference_pages)
-            ))
+                SELECT id FROM sections
+                WHERE spec_id = ? AND section_number = ?
+            """, (spec_id, section_number))
 
-            section_id = (await cursor.fetchone())[0]
+            existing = await cursor.fetchone()
+
+            if existing:
+                await conn.execute("""
+                    UPDATE sections
+                    SET division = ?,
+                        section_name = ?,
+                        primary_pages = ?,
+                        reference_pages = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """, (division, section_name,
+                      json.dumps(primary_pages), json.dumps(reference_pages),
+                      existing[0]))
+                section_id = existing[0]
+            else:
+                await conn.execute("""
+                    INSERT INTO sections (spec_id, division, section_number, section_name,
+                                         primary_pages, reference_pages)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (spec_id, division, section_number, section_name,
+                      json.dumps(primary_pages), json.dumps(reference_pages)))
+
+                cursor = await conn.execute("SELECT last_insert_rowid()")
+                section_id = (await cursor.fetchone())[0]
+
             await conn.commit()
-            return section_id
+        return section_id
 
     async def save_classification_result(self, section_id: int, result: Dict):
         """Save individual classification result"""
@@ -137,7 +153,8 @@ class ModuDB:
                 result.get('reasoning'),
                 json.dumps(result.get('pages_analyzed', [])),
                 result.get('block_type'),
-                json.dumps(result.get('full_block')) if result.get('full_block') else None
+                json.dumps(result.get('full_block')) if result.get(
+                    'full_block') else None
             ))
             await conn.commit()
 
@@ -196,5 +213,6 @@ class ModuDB:
             if row:
                 return dict(row)
             return None
+
 
 db = ModuDB()

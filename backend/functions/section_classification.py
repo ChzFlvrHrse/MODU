@@ -75,7 +75,7 @@ Note: You may only see the first 2-3 pages of a longer section. If those pages s
     content = []
     for page_num in sorted(pages_to_analyze):
         page = pages_dict[page_num]
-        text = page.get("text", "").strip()
+        text = page.get("text", "")
         image_bytes = page.get("bytes")
 
         if text:
@@ -183,10 +183,45 @@ async def classify_section(
 
     return results
 
+
+async def save_section_results(spec_id: str, division: str, section_results: dict):
+    """Save section results to database"""
+    saved_count = 0
+    error_count = 0
+
+    for section_num, section_info in section_results.items():
+        try:
+            logger.info(f"Saving section {section_num} for {spec_id}")
+            section_id = await db.save_section(
+                spec_id=spec_id,
+                division=division,
+                section_number=section_num,
+                section_name=section_info["section_name"],
+                primary_pages=section_info["primary_pages"],
+                reference_pages=section_info["reference_pages"]
+            )
+
+            if section_id:
+                for result in section_info["classification_results"]:
+                    await db.save_classification_result(
+                        section_id=section_id,
+                        result=result
+                    )
+                saved_count += 1
+            else:
+                logger.error(
+                    f"Failed to save section {section_num} - no section_id returned")
+                error_count += 1
+
+        except Exception as e:
+            logger.error(f"Error saving section {section_num}: {e}")
+            error_count += 1
+
+    logger.info(f"Saved {saved_count} sections, {error_count} errors")
+    return saved_count, error_count
+
 # Classifies all sections for a specification into primary, referential, or other
 # Each division is ran one at a time. i.e. run through division 01 first and wait for it to complete before running division 02.
-
-
 async def classify_all_sections_by_division(
     spec_id: str,
     divisions_and_sections: dict,
@@ -352,6 +387,14 @@ async def classify_all_sections_by_division(
                     logger.info(
                         f"✓ {section_num} (retried): {len(primary_pages)} primary, {len(reference_pages)} reference")
 
+        # Save section results to database
+        saved, errors = await save_section_results(spec_id, division, all_results[division])
+
+        if errors > 0:
+            logger.info(f"Classification incomplete for {spec_id}: {errors} errors")
+        else:
+            logger.info(f"Classification complete for {spec_id}")
+
         logger.info(f"\nDivision {division} complete")
 
         # Delay before next division
@@ -362,43 +405,6 @@ async def classify_all_sections_by_division(
 
     return all_results
 
-
-async def save_section_results(spec_id: str, all_sections_by_division: dict):
-    """Save section results to database"""
-    saved_count = 0
-    error_count = 0
-
-    for division, sections in all_sections_by_division.items():
-        for section_num, section_info in sections.items():
-            try:
-                logger.info(f"Saving section {section_num} for {spec_id}")
-                section_id = await db.save_section(
-                    spec_id=spec_id,
-                    division=division,
-                    section_number=section_num,
-                    section_name=section_info["section_name"],
-                    primary_pages=section_info["primary_pages"],
-                    reference_pages=section_info["reference_pages"]
-                )
-
-                if section_id:
-                    for result in section_info["classification_results"]:
-                        await db.save_classification_result(
-                            section_id=section_id,
-                            result=result
-                        )
-                    saved_count += 1
-                else:
-                    logger.error(
-                        f"Failed to save section {section_num} - no section_id returned")
-                    error_count += 1
-
-            except Exception as e:
-                logger.error(f"Error saving section {section_num}: {e}")
-                error_count += 1
-
-    logger.info(f"Saved {saved_count} sections, {error_count} errors")
-    return saved_count, error_count
 
 async def run_classification_background(spec_id: str, divisions_and_sections: dict):
     """Background task to classify all sections"""
@@ -415,22 +421,21 @@ async def run_classification_background(spec_id: str, divisions_and_sections: di
                 s3_client=s3_client
             )
 
-        # Save results to database
-        saved, errors = await save_section_results(spec_id, results)
+        await db.update_project_summary(spec_id)
 
-        # # Update project summary
-        # await db.update_project_summary(spec_id)
+        logger.info(
+            f"Classification complete for {spec_id}")
 
-        logger.info(f"Classification complete for {spec_id}: {saved} sections saved, {errors} errors")
+        return results
 
     except Exception as e:
         logger.error(f"Classification failed for {spec_id}: {e}")
-        await db.update_project(spec_id, status="classification_failed", errors=1)
+        return {"error": f"Classification failed for {spec_id}: {e}"}, 500
 
 # async def main():
 #     """Run full classification"""
 
-#     spec_id = "af0762c9-64a7-4f06-a996-922d1d39fcb1"
+#     spec_id = "a6a02fcb-84e5-41bf-bb56-f44c1a8ef290"
 #     s3 = S3Bucket()
 
 #     async with s3.s3_client() as s3_client:
@@ -441,7 +446,7 @@ async def run_classification_background(spec_id: str, divisions_and_sections: di
 
 #         results = await classify_all_sections_by_division(
 #             spec_id=spec_id,
-#             section_data=dict_of_sections_and_pages,
+#             divisions_and_sections=divisions_and_sections,
 #             s3=s3,
 #             s3_client=s3_client,
 #             delay_between_calls=5.0,
@@ -450,6 +455,7 @@ async def run_classification_background(spec_id: str, divisions_and_sections: di
 #         )
 
 #         # Save results
+#         import json
 #         output_file = f"classification_results_{spec_id}.json"
 #         with open(output_file, "w") as f:
 #             json.dump(results, f, indent=2)

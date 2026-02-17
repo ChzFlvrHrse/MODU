@@ -1,7 +1,7 @@
 import re, asyncio
-from classes.s3_buckets import S3Bucket
+from classes import S3Bucket
 from concurrent.futures import ProcessPoolExecutor
-from csi_masterformat.section_numbers import divisions_and_sections
+from csi_masterformat import divisions_and_sections
 import logging
 
 logger = logging.getLogger(__name__)

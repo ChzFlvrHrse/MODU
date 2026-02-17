@@ -93,7 +93,7 @@ async def upload_and_convert_pdf():
 
     spec_id = str(uuid.uuid4())
 
-    await db.save_project(spec_id, "in_progress")
+    # await db.save_project(spec_id, "in_progress")
 
     async with s3.s3_client() as s3_client:
         original_pdf_upload_result = await s3.upload_original_pdf_with_client(files=pdf, spec_id=spec_id, s3=s3_client)
@@ -119,6 +119,8 @@ async def upload_and_convert_pdf():
             start_index=start_index,
             end_index=end_index
         )
+
+        await db.save_project(spec_id, "in_progress")
 
         section_page_dict = await detect_section_pages(spec_id, s3, s3_client)
 
