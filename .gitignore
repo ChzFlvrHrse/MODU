@@ -22,6 +22,9 @@ build/
 # test files
 # test/
 
+# Database
+modu_db.db
+
 # Node.js / Frontend
 node_modules/
 npm-debug.log*
