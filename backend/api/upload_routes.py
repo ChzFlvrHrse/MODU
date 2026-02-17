@@ -1,7 +1,8 @@
-import uuid, logging, datetime
-from classes import S3Bucket
-from quart import Blueprint, request, jsonify
+import uuid, logging, datetime, asyncio
+from classes import S3Bucket, db
+from quart import Blueprint, request, jsonify, current_app
 from functions import section_pages_detection as detect_section_pages
+from functions import run_classification_background
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -26,6 +27,8 @@ async def upload_to_s3():
     return jsonify(original_pdf_upload_result), original_pdf_upload_result["status_code"]
 
 # Upload and convert PDF to text or rasterize
+
+
 @upload_routes_bp.route("/text_and_rasterize", methods=["POST"])
 async def text_and_rasterize():
     data = await request.get_json()
@@ -90,12 +93,15 @@ async def upload_and_convert_pdf():
 
     spec_id = str(uuid.uuid4())
 
+    await db.save_project(spec_id, "in_progress")
+
     async with s3.s3_client() as s3_client:
         original_pdf_upload_result = await s3.upload_original_pdf_with_client(files=pdf, spec_id=spec_id, s3=s3_client)
         if original_pdf_upload_result["status_code"] != 200:
             return jsonify({"error": original_pdf_upload_result["data"]}), original_pdf_upload_result["status_code"]
         else:
-            logger.info(f"Original PDF uploaded successfully to S3 bucket: {spec_id}")
+            logger.info(
+                f"Original PDF uploaded successfully to S3 bucket: {spec_id}")
 
         pdf_result = await s3.get_original_pdf_with_client(spec_id=spec_id, s3_client=s3_client)
         if pdf_result["status_code"] != 200:
@@ -116,11 +122,25 @@ async def upload_and_convert_pdf():
 
         section_page_dict = await detect_section_pages(spec_id, s3, s3_client)
 
+    await db.update_project(
+        spec_id=spec_id,
+        status="complete",
+        total_sections=section_page_dict["total_sections"],
+        total_divisions=section_page_dict["total_divisions"],
+    )
+
+    current_app.add_background_task(
+        run_classification_background,
+        spec_id,
+        section_page_dict["divisions_and_sections"]
+    )
+
     return jsonify({
         "run_time": f"{datetime.datetime.now() - start_time}",
         "text_and_rasterize": text_and_rasterize,
         "section_page_index": section_page_dict
     }), text_and_rasterize["status_code"]
+
 
 @upload_routes_bp.route("/get_original_pdf/<spec_id>", methods=["GET"])
 async def get_original_pdf(spec_id: str):

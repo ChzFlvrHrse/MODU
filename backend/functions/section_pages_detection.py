@@ -165,7 +165,16 @@ async def section_pages_detection(spec_id: str, s3, s3_client, workers: int = 6)
         # flatten into a single dict
         results = await asyncio.gather(*futures)
         flattened_results = {k: v for d in results for k, v in d.items()}
-        return division_parser(section_page_dict(flattened_results))
+
+        divisions_and_sections = division_parser(section_page_dict(flattened_results))
+        total_divisions = len(divisions_and_sections.keys())
+        total_sections = len(flattened_results.keys())
+
+        return {
+            "total_divisions": total_divisions,
+            "total_sections": total_sections,
+            "divisions_and_sections": divisions_and_sections
+        }
 
 # if __name__ == "__main__":
 #     s3 = S3Bucket()

@@ -1,8 +1,11 @@
 from classes.s3_buckets import S3Bucket
 from anthropic import AsyncAnthropic, RateLimitError
 from dotenv import load_dotenv
-import os,logging, asyncio
+import os
+import logging
+import asyncio
 from pydantic import BaseModel, Field
+from classes import db
 
 load_dotenv()
 
@@ -10,6 +13,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
 
 class PageClassification(BaseModel):
     is_primary: bool = Field(
@@ -100,7 +104,8 @@ Note: You may only see the first 2-3 pages of a longer section. If those pages s
         res = await client.beta.messages.parse(
             model="claude-sonnet-4-5-20250929",
             max_tokens=1024,
-            betas=["structured-outputs-2025-11-13", "prompt-caching-2024-07-31"],
+            betas=["structured-outputs-2025-11-13",
+                   "prompt-caching-2024-07-31"],
             output_format=PageClassification,
             system=[{
                 "type": "text",
@@ -180,9 +185,11 @@ async def classify_section(
 
 # Classifies all sections for a specification into primary, referential, or other
 # Each division is ran one at a time. i.e. run through division 01 first and wait for it to complete before running division 02.
+
+
 async def classify_all_sections_by_division(
     spec_id: str,
-    section_data: dict,
+    divisions_and_sections: dict,
     s3: S3Bucket,
     s3_client: any,
     batch_size: int = 5,  # Process this many sections at a time
@@ -190,13 +197,9 @@ async def classify_all_sections_by_division(
     delay_between_divisions: float = 10.0,
     rate_limit_pause: float = 5.0
 ) -> dict:
-    """
-    Classify all sections with rate limiting.
-    Processes sections in small batches to avoid TPM bursts.
-    """
 
     all_results = {}
-    divisions = list(section_data["section_page_index"].keys())
+    divisions = list(divisions_and_sections.keys())
 
     logger.info(f"Total divisions to process: {len(divisions)}")
     logger.info(f"Batch size: {batch_size}")
@@ -224,7 +227,7 @@ async def classify_all_sections_by_division(
 
     # Process each division sequentially
     for div_idx, division in enumerate(divisions, 1):
-        div_sections = section_data["section_page_index"][division]
+        div_sections = divisions_and_sections[division]
 
         logger.info(f"\n{'='*60}")
         logger.info(f"Division {div_idx}/{len(divisions)}: {division}")
@@ -358,6 +361,71 @@ async def classify_all_sections_by_division(
             await asyncio.sleep(delay_between_divisions)
 
     return all_results
+
+
+async def save_section_results(spec_id: str, all_sections_by_division: dict):
+    """Save section results to database"""
+    saved_count = 0
+    error_count = 0
+
+    for division, sections in all_sections_by_division.items():
+        for section_num, section_info in sections.items():
+            try:
+                logger.info(f"Saving section {section_num} for {spec_id}")
+                section_id = await db.save_section(
+                    spec_id=spec_id,
+                    division=division,
+                    section_number=section_num,
+                    section_name=section_info["section_name"],
+                    primary_pages=section_info["primary_pages"],
+                    reference_pages=section_info["reference_pages"]
+                )
+
+                if section_id:
+                    for result in section_info["classification_results"]:
+                        await db.save_classification_result(
+                            section_id=section_id,
+                            result=result
+                        )
+                    saved_count += 1
+                else:
+                    logger.error(
+                        f"Failed to save section {section_num} - no section_id returned")
+                    error_count += 1
+
+            except Exception as e:
+                logger.error(f"Error saving section {section_num}: {e}")
+                error_count += 1
+
+    logger.info(f"Saved {saved_count} sections, {error_count} errors")
+    return saved_count, error_count
+
+async def run_classification_background(spec_id: str, divisions_and_sections: dict):
+    """Background task to classify all sections"""
+    s3 = S3Bucket()
+
+    try:
+        logger.info(f"Starting background classification for {spec_id}")
+
+        async with s3.s3_client() as s3_client:
+            results = await classify_all_sections_by_division(
+                spec_id=spec_id,
+                divisions_and_sections=divisions_and_sections,
+                s3=s3,
+                s3_client=s3_client
+            )
+
+        # Save results to database
+        saved, errors = await save_section_results(spec_id, results)
+
+        # # Update project summary
+        # await db.update_project_summary(spec_id)
+
+        logger.info(f"Classification complete for {spec_id}: {saved} sections saved, {errors} errors")
+
+    except Exception as e:
+        logger.error(f"Classification failed for {spec_id}: {e}")
+        await db.update_project(spec_id, status="classification_failed", errors=1)
 
 # async def main():
 #     """Run full classification"""
