@@ -1,5 +1,7 @@
 export interface Project {
+    id: number;
     spec_id: string;
+    project_name: string;
     total_divisions: number;
     total_sections: number;
     sections_with_primary: number;

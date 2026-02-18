@@ -4,15 +4,22 @@ import { CircularProgress } from '@mui/material'
 import { Project } from '../../../types/types';
 import './Projects.css';
 
+import UploadSpec from '../UploadSpec/UploadSpec';
+
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
 export default function Projects() {
   const [projects, setProjects] = useState<Project[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [projectName, setProjectName] = useState("");
+  const [projectNameError, setProjectNameError] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [error, setError] = useState("");
 
   const fetchProjects = async () => {
     const response = await fetch(`${BACKEND_URL}/api/spec/projects`);
     const data = await response.json();
-    setProjects(data.projects);
+    setProjects(data.projects ?? []);
   };
 
   function formatDate(iso: string) {
@@ -28,17 +35,29 @@ export default function Projects() {
     return `${id.slice(0, 8)}…${id.slice(-4)}`;
   }
 
-  useEffect(() => {
-    fetchProjects();
-  }, []);
+  const handleUpload = async (files: File[]) => {
+    setIsUploading(true);
+    const formData = new FormData();
+    files.forEach((f) => formData.append("pdf", f, f.name));
 
-  // if (projects.length === 1) {
-  //   return (
-  //     <div className="Projects-loading">
-  //       <CircularProgress />
-  //     </div>)
-  //     ;
-  // }
+    const response = await fetch(`${BACKEND_URL}/api/spec/upload`, {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) throw new Error(await response.text());
+    console.log("upload response", await response.json());
+    setIsUploading(false);
+  };
+
+  useEffect(() => {
+    // Run fetchProjects every 10 seconds
+    const interval = setInterval(() => {
+      fetchProjects();
+      console.log("projects", projects);
+    }, 10000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="projects-page">
@@ -48,16 +67,19 @@ export default function Projects() {
       </div>
 
       <div className="projects-grid">
-        {projects.map((p) => (
+        {projects?.map((p) => (
           <Link
             key={p.spec_id}
             to={`/projects/${p.spec_id}`}
             className="project-card"
           >
             <div className="project-card-top">
-              <span className={`pill pill-${p.status || "unknown"}`}>
-                {p.status || "unknown"}
+              <span className={`pill pill-${p.status}`}>
+                {p.status.toUpperCase()}
               </span>
+              <div className="project-card-header">
+                <span className="project-name">{p.project_name}</span>
+              </div>
               <span className="project-id" title={p.spec_id}>
                 {shortId(p.spec_id)}
               </span>
@@ -98,6 +120,8 @@ export default function Projects() {
           <div className="empty-subtitle">Run your first spec parse to see it here.</div>
         </div>
       )}
+
+      <UploadSpec handleUpload={handleUpload} isUploading={isUploading} />
     </div>
   );
 }

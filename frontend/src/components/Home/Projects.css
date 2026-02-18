@@ -75,7 +75,7 @@
   border-color: rgba(46, 204, 113, 0.35);
 }
 
-.pill-running {
+.pill-in-progress {
   background: rgba(52, 152, 219, 0.12);
   border-color: rgba(52, 152, 219, 0.35);
 }
@@ -155,4 +155,13 @@
 .empty-subtitle {
   margin-top: 6px;
   color: rgba(255,255,255,0.7);
+}
+
+/* .upload-button-container {
+  display: flex;
+} */
+
+.upload-button-text {
+  font-size: 13px;
+  color: rgba(166, 166, 166, 0.85);
 }
