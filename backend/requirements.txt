@@ -1,9 +1,10 @@
 aioboto3==15.5.0
-botocore==1.35.96
+aiosqlite==0.22.1
+anthropic==0.80.0
+botocore==1.40.61
 fitz==0.0.1.dev2
-helper_functions==2.0.11
-openai==2.14.0
-Pillow==12.0.0
+openai==2.21.0
+Pillow==12.1.1
 pydantic==2.12.5
 pytesseract==0.3.13
 python-dotenv==1.2.1

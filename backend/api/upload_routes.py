@@ -27,8 +27,6 @@ async def upload_to_s3():
     return jsonify(original_pdf_upload_result), original_pdf_upload_result["status_code"]
 
 # Upload and convert PDF to text or rasterize
-
-
 @upload_routes_bp.route("/text_and_rasterize", methods=["POST"])
 async def text_and_rasterize():
     data = await request.get_json()
@@ -94,7 +92,6 @@ async def upload_and_convert_pdf():
     spec_id = str(uuid.uuid4())
 
     # await db.save_project(spec_id, "in_progress")
-
     async with s3.s3_client() as s3_client:
         original_pdf_upload_result = await s3.upload_original_pdf_with_client(files=pdf, spec_id=spec_id, s3=s3_client)
         if original_pdf_upload_result["status_code"] != 200:

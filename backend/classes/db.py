@@ -100,6 +100,39 @@ class ModuDB:
             """, (status, total_divisions, total_sections, sections_with_primary, sections_reference_only, errors, spec_id))
             await conn.commit()
 
+    async def get_projects(self) -> List[Dict]:
+        """Get project data"""
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute("""
+                SELECT * FROM projects
+            """)
+
+            rows = await cursor.fetchall()
+            projects = []
+            for row in rows:
+                projects.append({
+                    "spec_id": row['spec_id'],
+                    "total_divisions": row['total_divisions'],
+                    "total_sections": row['total_sections'],
+                    "sections_with_primary": row['sections_with_primary'],
+                    "sections_reference_only": row['sections_reference_only'],
+                    "errors": row['errors'],
+                    "created_at": row['created_at'],
+                    "updated_at": row['updated_at'],
+                    "status": row['status']
+                })
+            return projects
+
+    async def get_section(self, section_id: int) -> Optional[Dict]:
+        """Get section data"""
+        async with aiosqlite.connect(self.db_path) as conn:
+            cursor = await conn.execute("""
+                SELECT * FROM sections WHERE id = ?
+            """, (section_id,))
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
     async def save_section(self, spec_id: str, division: str, section_number: str,
                            section_name: str, primary_pages: List[int], reference_pages: List[int]) -> int:
         """Save section data and return section_id"""
@@ -138,6 +171,73 @@ class ModuDB:
 
             await conn.commit()
         return section_id
+
+    async def get_all_spec_sections(self, spec_id: str) -> List[Dict]:
+        """Get all sections for a spec"""
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute("""
+                SELECT * FROM
+                sections WHERE spec_id = ?
+                ORDER BY section_number ASC
+            """, (spec_id,))
+
+            rows = await cursor.fetchall()
+            sections_by_division = {}
+            for row in rows:
+                division = row['division']
+
+                if division not in sections_by_division:
+                    sections_by_division[division] = []
+
+                sections_by_division[division].append({
+                    "id": row['id'],
+                    "spec_id": row['spec_id'],
+                    "division": row['division'],
+                    "section_number": row['section_number'],
+                    "section_name": row['section_name'],
+                    "primary_pages": json.loads(row['primary_pages'] or '[]'),
+                    "reference_pages": json.loads(row['reference_pages'] or '[]'),
+                    "summary": row['summary'],
+                    "summary_status": row['summary_status'],
+                    "created_at": row['created_at'],
+                    "updated_at": row['updated_at']
+                })
+            return sections_by_division
+
+    async def get_all_specs_with_primary_pages(self, spec_id: str) -> List[Dict]:
+        """Get all sections with primary pages for a spec"""
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute("""
+                SELECT * FROM
+                sections WHERE spec_id = ?
+                AND primary_pages != '[]'
+                ORDER BY section_number ASC
+            """, (spec_id,))
+
+            rows = await cursor.fetchall()
+            sections_by_division = {}
+            for row in rows:
+                division = row['division']
+
+                if division not in sections_by_division:
+                    sections_by_division[division] = []
+
+                sections_by_division[division].append({
+                    "id": row['id'],
+                    "spec_id": row['spec_id'],
+                    "division": row['division'],
+                    "section_number": row['section_number'],
+                    "section_name": row['section_name'],
+                    "primary_pages": json.loads(row['primary_pages'] or '[]'),
+                    "reference_pages": json.loads(row['reference_pages'] or '[]'),
+                    "summary": row['summary'],
+                    "summary_status": row['summary_status'],
+                    "created_at": row['created_at'],
+                    "updated_at": row['updated_at']
+                })
+            return sections_by_division
 
     async def save_classification_result(self, section_id: int, result: Dict):
         """Save individual classification result"""
