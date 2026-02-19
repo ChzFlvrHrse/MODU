@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-// import { test_payload } from "./test_payload";
 import type { Section } from "../../../types/types";
 import { ArrowBackIosNew } from '@mui/icons-material';
 import "./Sections.css";
@@ -104,8 +103,8 @@ export default function Sections() {
         <div className="sections-page">
             <div className="sections-header">
                 <div>
-                    <button className="back-projects-button" onClick={() => navigate(-1)}>
-                        <ArrowBackIosNew fontSize="large" />
+                    <button className="back-projects-button" onClick={() => navigate('/projects')}>
+                        <ArrowBackIosNew fontSize="large" className="back-projects-button-icon"/>
                     </button>
                     <h1 className="sections-title">Sections</h1>
                     <p className="sections-subtitle">
