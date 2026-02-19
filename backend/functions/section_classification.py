@@ -74,7 +74,12 @@ Note: You may only see the first 2-3 pages of a longer section. If those pages s
     # Build content blocks
     content = []
     for page_num in sorted(pages_to_analyze):
-        page = pages_dict[page_num]
+        page = pages_dict.get(page_num)
+
+        if not page:
+            logger.warning(f"Page {page_num} not found in pages_dict")
+            continue
+
         text = page.get("text", "")
         image_bytes = page.get("bytes")
 
@@ -93,6 +98,15 @@ Note: You may only see the first 2-3 pages of a longer section. If those pages s
                     "data": image_bytes
                 }
             })
+
+    if not content:
+        logger.warning(f"No content found for section {section_number}")
+        return {
+            "is_primary": False,
+            "confidence": 0.0,
+            "reasoning": "No content found for section",
+            "pages_analyzed": pages_to_analyze
+        }
 
     content.append({
         "type": "text",
@@ -157,7 +171,7 @@ async def classify_section(
         if not block:
             continue
 
-        pages_to_analyze = block[:3]  # Get the first 3 pages of the block
+        pages_to_analyze = block[:2]  # Get the first 2 pages of the block
         result = await classify_block_ai(
             pages_to_analyze=pages_to_analyze,
             section_number=section_number,
@@ -184,41 +198,59 @@ async def classify_section(
     return results
 
 
-async def save_section_results(spec_id: str, division: str, section_results: dict):
+async def update_section_pages(spec_id: str, division: str, section_results: dict):
     """Save section results to database"""
-    saved_count = 0
+    update_count = 0
     error_count = 0
 
     for section_num, section_info in section_results.items():
         try:
-            logger.info(f"Saving section {section_num} for {spec_id}")
-            section_id = await db.save_section(
+            # Check if this section had a classification error
+            if section_info.get("error"):
+                logger.warning(f"Section {section_num} had classification error: {section_info['error']}")
+                status = "failed"
+                primary_pages = []
+                reference_pages = []
+                classification_results = []
+                error_count += 1
+            else:
+                status = "complete"
+                primary_pages = section_info.get("primary_pages", [])
+                reference_pages = section_info.get("reference_pages", [])
+                classification_results = section_info.get("classification_results", [])
+
+            logger.info(f"Updating section {section_num} for {spec_id}")
+            section_id = await db.update_section_pages(
                 spec_id=spec_id,
                 division=division,
                 section_number=section_num,
                 section_name=section_info["section_name"],
-                primary_pages=section_info["primary_pages"],
-                reference_pages=section_info["reference_pages"]
+                status=status,
+                primary_pages=primary_pages,
+                reference_pages=reference_pages
             )
 
             if section_id:
-                for result in section_info["classification_results"]:
-                    await db.save_classification_result(
-                        section_id=section_id,
-                        result=result
-                    )
-                saved_count += 1
+                for result in classification_results:
+                    try:
+                        await db.save_classification_result(
+                            section_id=section_id,
+                            result=result
+                        )
+                    except Exception as e:
+                        logger.error(f"Error saving classification result for section {section_num}: {e}")
+                        error_count += 1
+                update_count += 1
             else:
-                logger.error(
-                    f"Failed to save section {section_num} - no section_id returned")
+                logger.error(f"Failed to update section {section_num} - no section_id returned")
                 error_count += 1
 
         except Exception as e:
-            logger.error(f"Error saving section {section_num}: {e}")
+            logger.error(f"Error updating section {section_num}: {e}")
             error_count += 1
 
-    logger.info(f"Saved {saved_count} sections, {error_count} errors")
-    return saved_count, error_count
+    logger.info(f"Updated {update_count} sections, {error_count} errors")
+    return update_count, error_count
 
 # Classifies all sections for a specification into primary, referential, or other
 # Each division is ran one at a time. i.e. run through division 01 first and wait for it to complete before running division 02.
@@ -388,10 +420,11 @@ async def classify_all_sections_by_division(
                         f"✓ {section_num} (retried): {len(primary_pages)} primary, {len(reference_pages)} reference")
 
         # Save section results to database
-        saved, errors = await save_section_results(spec_id, division, all_results[division])
+        updated, errors = await update_section_pages(spec_id, division, all_results[division])
 
         if errors > 0:
-            logger.info(f"Classification incomplete for {spec_id}: {errors} errors")
+            logger.info(
+                f"Classification incomplete for {spec_id}: {errors} errors")
         else:
             logger.info(f"Classification complete for {spec_id}")
 
@@ -421,7 +454,32 @@ async def run_classification_background(spec_id: str, divisions_and_sections: di
                 s3_client=s3_client
             )
 
-        await db.update_project_summary(spec_id)
+        logger.info(f"Classification complete for {spec_id}")
+
+        total_sections = 0
+        sections_with_primary = 0
+        sections_reference_only = 0
+        errors = 0
+
+        for _, sections in results.items():
+            for _, section_info in sections.items():
+                if section_info.get("primary_pages"):
+                    sections_with_primary += 1
+                if section_info.get("reference_pages"):
+                    sections_reference_only += 1
+                if section_info.get("error"):
+                    errors += 1
+                total_sections += 1
+
+        await db.update_project(
+            spec_id=spec_id,
+            status="complete",
+            total_divisions=len(divisions_and_sections),
+            total_sections=total_sections,
+            sections_with_primary=sections_with_primary,
+            sections_reference_only=sections_reference_only,
+            errors=errors
+        )
 
         logger.info(
             f"Classification complete for {spec_id}")
