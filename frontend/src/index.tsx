@@ -6,8 +6,8 @@ import reportWebVitals from './reportWebVitals';
 
 // Components
 import Nav from './components/Nav/Nav';
-import Projects from './components/Home/Projects';
-import './components/Nav/Nav.css';
+import Projects from './components/Projects/Projects';
+import Sections from './components/Sections/Sections';
 
 const root = ReactDOM.createRoot(
   document.getElementById('root') as HTMLElement
@@ -21,6 +21,7 @@ root.render(
           <Routes>
             <Route path="/" element={<Navigate to="/projects" />} />
             <Route path="/projects" element={<Projects />} />
+            <Route path="/projects/:spec_id" element={<Sections />} />
           </Routes>
         </div>
       </div>

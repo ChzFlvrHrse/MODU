@@ -59,6 +59,10 @@ export default function Projects() {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    fetchProjects();
+  }, []);
+
   return (
     <div className="projects-page">
       <div className="projects-header">

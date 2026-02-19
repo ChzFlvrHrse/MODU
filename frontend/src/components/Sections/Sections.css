@@ -1,0 +1,301 @@
+.sections-page {
+    padding: 48px 56px;
+    color: #fff;
+}
+
+.sections-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.back-projects-button {
+    background: none;
+    border: none;
+    color: #fff;
+    cursor: pointer;
+}
+
+.sections-title {
+    font-size: 44px;
+    line-height: 1.1;
+    margin: 0;
+    font-weight: 700;
+}
+
+.sections-subtitle {
+    margin: 10px 0 0;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 16px;
+}
+
+.sections-controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.sections-search {
+    width: 340px;
+    max-width: 50vw;
+    background: rgba(0, 0, 0, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    color: #fff;
+    border-radius: 12px;
+    padding: 10px 12px;
+    outline: none;
+}
+
+.sections-search:focus {
+    border-color: rgba(92, 120, 255, 0.6);
+}
+
+.sections-select {
+    background: rgba(0, 0, 0, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    color: #fff;
+    border-radius: 12px;
+    padding: 10px 12px;
+    outline: none;
+}
+
+.sections-select option {
+    background-color: #20232c;
+}
+
+.sections-layout {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    gap: 16px;
+    align-items: start;
+}
+
+.division-panel {
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.03);
+    padding: 14px;
+    position: sticky;
+    top: 18px;
+}
+
+.division-panel-title {
+    font-weight: 700;
+    margin-bottom: 10px;
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.division-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    height: 70vh;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.division-item {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: rgba(0, 0, 0, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: #fff;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.division-item:hover {
+    background: rgba(0, 0, 0, 0.24);
+    border-color: rgba(255, 255, 255, 0.14);
+    transform: translateY(-1px);
+}
+
+.division-item.active {
+    border-color: rgba(92, 120, 255, 0.55);
+    background: rgba(92, 120, 255, 0.10);
+}
+
+.division-code {
+    font-weight: 700;
+}
+
+.division-count {
+    color: rgba(255, 255, 255, 0.7);
+    font-variant-numeric: tabular-nums;
+}
+
+.section-panel {
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.03);
+    padding: 14px;
+}
+
+.section-panel-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    margin-bottom: 14px;
+}
+
+.section-panel-title {
+    font-weight: 700;
+    font-size: 16px;
+}
+
+.section-panel-meta {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 13px;
+}
+
+.section-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 12px;
+}
+
+.section-card {
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(0, 0, 0, 0.18);
+    padding: 14px;
+    transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.section-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(255, 255, 255, 0.14);
+    background: rgba(0, 0, 0, 0.24);
+}
+
+.section-card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.section-number {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.7);
+    padding: 6px 10px;
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.section-name {
+    font-weight: 700;
+    margin-bottom: 12px;
+    line-height: 1.25;
+}
+
+.section-badges {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.badge {
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.04);
+    padding: 10px 12px;
+}
+
+.badge-label {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.65);
+    margin-right: 8px;
+}
+
+.badge-value {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.90);
+}
+
+.section-footer {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.section-footer-col .meta-label {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.55);
+}
+
+.section-footer-col .meta-value {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.sections-empty {
+    padding: 18px;
+    border-radius: 14px;
+    border: 1px dashed rgba(255, 255, 255, 0.16);
+    color: rgba(255, 255, 255, 0.75);
+}
+
+/* ---------------------------------------------------- PILLS ---------------------------------------------------- */
+
+.section-pill-complete {
+    background: rgba(46, 204, 113, 0.12);
+    border-color: rgba(46, 204, 113, 0.35);
+}
+
+.section-pill-pending {
+    background: rgba(52, 152, 219, 0.12);
+    border-color: rgba(52, 152, 219, 0.35);
+}
+
+.section-pill-failed {
+    background: rgba(231, 76, 60, 0.12);
+    border-color: rgba(231, 76, 60, 0.35);
+}
+
+.section-pill-none {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.18);
+}
+
+.division-left {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .division-right {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .division-check {
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 900;
+
+    color: rgba(46, 204, 113, 0.95);
+    background: rgba(46, 204, 113, 0.14);
+    border: 1px solid rgba(46, 204, 113, 0.35);
+  }
