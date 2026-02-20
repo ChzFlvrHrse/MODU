@@ -1,97 +1,118 @@
 .upload-container {
-    margin-top: 26px;
-    padding: 18px;
-    border-radius: 14px;
-    border: 1px solid rgba(255,255,255,0.08);
-    background: rgba(255,255,255,0.03);
-  }
+  position: fixed;
+  /* or sticky */
+  bottom: 24px;
+  right: 24px;
+  width: 250px;
+  /* Fixed width */
+  margin-top: 26px;
+  padding: 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  /* Add shadow for floating effect */
+  backdrop-filter: blur(10px);
+  /* Optional: glass effect */
+}
 
-  .upload-title {
-    font-weight: 700;
-    font-size: 16px;
-  }
+.upload-container-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
 
-  .upload-subtitle {
-    margin-top: 6px;
-    color: rgba(255,255,255,0.7);
-    font-size: 13px;
-  }
+.close-icon:hover {
+  cursor: pointer;
+  transform: scale(1.1);
+}
 
-  .dropzone {
-    margin-top: 14px;
-    border-radius: 14px;
-    border: 1px dashed rgba(255,255,255,0.18);
-    background: rgba(0,0,0,0.18);
-    padding: 16px;
-    cursor: pointer;
-    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
-  }
+.upload-title {
+  font-weight: 700;
+  font-size: 16px;
+}
 
-  .dropzone:hover {
-    background: rgba(0,0,0,0.24);
-    border-color: rgba(255,255,255,0.28);
-  }
+.upload-subtitle {
+  margin-top: 6px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 13px;
+}
 
-  .dropzone-dragging {
-    border-color: rgba(92, 120, 255, 0.7);
-    background: rgba(92, 120, 255, 0.10);
-    transform: translateY(-1px);
-  }
+.dropzone {
+  margin-top: 14px;
+  border-radius: 14px;
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.18);
+  padding: 16px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
 
-  .dropzone-inner {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
+.dropzone:hover {
+  background: rgba(0, 0, 0, 0.24);
+  border-color: rgba(255, 255, 255, 0.28);
+}
 
-  .dropzone-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 12px;
-    display: grid;
-    place-items: center;
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.10);
-  }
+.dropzone-dragging {
+  border-color: rgba(92, 120, 255, 0.7);
+  background: rgba(92, 120, 255, 0.10);
+  transform: translateY(-1px);
+}
 
-  .dropzone-primary {
-    font-weight: 700;
-  }
+.dropzone-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
 
-  .dropzone-file {
-    font-weight: 700;
-    word-break: break-word;
-  }
+.dropzone-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+}
 
-  .dropzone-hint {
-    margin-top: 2px;
-    font-size: 12px;
-    color: rgba(255,255,255,0.65);
-  }
+.dropzone-primary {
+  font-weight: 700;
+}
 
-  .upload-error {
-    margin-top: 10px;
-    color: rgba(231, 76, 60, 0.95);
-    font-size: 13px;
-  }
+.dropzone-file {
+  font-weight: 700;
+  word-break: break-word;
+}
 
-  .upload-button {
-    margin-top: 12px;
-    background: #4f6df5;
-    color: #fff;
-    border: none;
-    padding: 10px 16px;
-    border-radius: 10px;
-    font-weight: 700;
-    cursor: pointer;
-    transition: transform 0.15s ease, background 0.15s ease;
-  }
+.dropzone-hint {
+  margin-top: 2px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.65);
+}
 
-  .upload-button:hover {
-    background: #5c78ff;
-    transform: translateY(-1px);
-  }
+.upload-error {
+  margin-top: 10px;
+  color: rgba(231, 76, 60, 0.95);
+  font-size: 13px;
+}
 
-  .upload-button:active {
-    transform: translateY(0);
-  }
+.upload-button {
+  margin-top: 12px;
+  background: #4f6df5;
+  color: #fff;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.upload-button:hover {
+  background: #5c78ff;
+  transform: translateY(-1px);
+}
+
+.upload-button:active {
+  transform: translateY(0);
+}

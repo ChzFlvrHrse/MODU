@@ -1,0 +1,120 @@
+.cube-outer-container {
+    position: fixed;
+    bottom: 100px;
+    right: 100px;
+    width: 100px;
+    height: 100px;
+    perspective: 1000px;
+    animation: fadeIn 1s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.cube-inner-container {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    transform-style: preserve-3d;
+    /* transform: rotateX(25deg) rotateY(25deg);  Starting angle */
+}
+
+.cube-outer-container:hover .cube-inner-container {
+    animation: rotate 10s infinite linear;
+}
+
+.cube-outer-container:hover .face {
+    box-shadow: 0 0 20px rgba(79, 109, 245, 0.3);
+}
+
+.box-card {
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    transform-style: preserve-3d;
+}
+
+.face {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    width: 100px;
+    /* Reduced from 250px */
+    height: 100px;
+    /* Reduced from 250px */
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    /* Slightly smaller text */
+    font-weight: 600;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+    transition: background 0.3s ease;
+    padding: 8px;
+    /* Add padding so text doesn't touch edges */
+    text-align: center;
+}
+
+.face svg {
+    width: 32px;
+    height: 32px;
+    opacity: 0.9;
+}
+
+.face:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+/* Translate Z should be half the width and height of the face */
+.front  {
+    transform: translateZ(50px);
+    background: linear-gradient(135deg, rgba(79, 109, 245, 0.15), rgba(92, 120, 255, 0.05));
+}
+
+.back   {
+    transform: rotateY(180deg) translateZ(50px);
+    background: linear-gradient(135deg, rgba(155, 89, 182, 0.15), rgba(142, 68, 173, 0.05));
+}
+
+.right  {
+    transform: rotateY(90deg) translateZ(50px);
+    background: linear-gradient(135deg, rgba(52, 211, 153, 0.15), rgba(16, 185, 129, 0.05));
+}
+
+.left   {
+    transform: rotateY(-90deg) translateZ(50px);
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.15), rgba(245, 158, 11, 0.05));
+}
+
+.top    {
+    transform: rotateX(90deg) translateZ(50px);
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(220, 38, 38, 0.05));
+}
+
+.bottom {
+    transform: rotateX(-90deg) translateZ(50px);
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(37, 99, 235, 0.05));
+}
+
+@keyframes rotate {
+    from {
+        transform: rotateX(0deg) rotateY(0deg);  /* Start from static angle */
+    }
+    to {
+        transform: rotateX(385deg) rotateY(385deg);  /* 25 + 360 = 385 */
+    }
+}

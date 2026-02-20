@@ -35,20 +35,20 @@ export default function Projects() {
     return `${id.slice(0, 8)}…${id.slice(-4)}`;
   }
 
-  const handleUpload = async (files: File[]) => {
-    setIsUploading(true);
-    const formData = new FormData();
-    files.forEach((f) => formData.append("pdf", f, f.name));
+  // const handleUpload = async (files: File[]) => {
+  //   setIsUploading(true);
+  //   const formData = new FormData();
+  //   files.forEach((f) => formData.append("pdf", f, f.name));
 
-    const response = await fetch(`${BACKEND_URL}/api/spec/upload`, {
-      method: "POST",
-      body: formData,
-    });
+  //   const response = await fetch(`${BACKEND_URL}/api/spec/upload`, {
+  //     method: "POST",
+  //     body: formData,
+  //   });
 
-    if (!response.ok) throw new Error(await response.text());
-    console.log("upload response", await response.json());
-    setIsUploading(false);
-  };
+  //   if (!response.ok) throw new Error(await response.text());
+  //   console.log("upload response", await response.json());
+  //   setIsUploading(false);
+  // };
 
   useEffect(() => {
     // Run fetchProjects every 10 seconds
@@ -125,7 +125,9 @@ export default function Projects() {
         </div>
       )}
 
-      <UploadSpec handleUpload={handleUpload} isUploading={isUploading} />
+      {/* <div className="projects-upload">
+        <UploadSpec handleUpload={handleUpload} isUploading={isUploading} />
+      </div> */}
     </div>
   );
 }

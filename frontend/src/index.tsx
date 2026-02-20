@@ -8,6 +8,7 @@ import reportWebVitals from './reportWebVitals';
 import Nav from './components/Nav/Nav';
 import Projects from './components/Projects/Projects';
 import Sections from './components/Sections/Sections';
+import UploadSpec from './components/UploadSpec/UploadSpec';
 
 const root = ReactDOM.createRoot(
   document.getElementById('root') as HTMLElement
@@ -24,6 +25,7 @@ root.render(
             <Route path="/projects/:spec_id" element={<Sections />} />
           </Routes>
         </div>
+        <UploadSpec />
       </div>
     </BrowserRouter>
   </React.StrictMode>
