@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import type { DragEvent, ChangeEvent } from "react";
 import { useLocation } from "react-router-dom";
 import ThreeDCube from "../../animations/ThreeDCube/ThreeDCube";
@@ -15,6 +15,7 @@ export default function UploadSpec() {
     const inputRef = useRef<HTMLInputElement>(null);
     const [isDragging, setIsDragging] = useState(false);
     const [show, setShow] = useState(false);
+    const uploadContainerRef = useRef<HTMLDivElement>(null);
 
     // keep these if you plan to use them later
     const [projectName, setProjectName] = useState("");
@@ -110,73 +111,86 @@ export default function UploadSpec() {
         return;
     };
 
+    useEffect(() => {
+        if (!show) return;
+
+        const handleClickOutside = (event: MouseEvent) => {
+            if (uploadContainerRef.current &&
+                !uploadContainerRef.current.contains(event.target as Node)) {
+                setShow(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [show]);
+
+    if (!show) {
+        return <ThreeDCube setShow={setShow} />;
+    }
+
     return (
-        <>
-            {!show && <ThreeDCube show={show} setShow={setShow} />}
-            {show && (
-                <div className="upload-container">
-                    <div className="upload-container-header">
-                        <div className="upload-title">Upload a new spec</div>
-                        <CloseIcon className="close-icon" onClick={handleClose} />
-                    </div>
-                    <div className="upload-subtitle">Drop PDF(s) here or click to browse.</div>
+        <div className="upload-container" ref={uploadContainerRef}>
+            <div className="upload-container-header">
+                <div className="upload-title">Upload a new spec</div>
+                <CloseIcon className="close-icon" onClick={handleClose} />
+            </div>
+            <div className="upload-subtitle">Drop PDF(s) here or click to browse.</div>
 
-                    <div
-                        className={`dropzone ${isDragging ? "dropzone-dragging" : ""}`}
-                        onClick={pickFile}
-                        onDrop={onDrop}
-                        onDragOver={onDragOver}
-                        onDragLeave={onDragLeave}
-                        role="button"
-                        tabIndex={0}
-                    >
-                        <div className="dropzone-inner">
-                            <div className="dropzone-icon">⬆️</div>
+            <div
+                className={`dropzone ${isDragging ? "dropzone-dragging" : ""}`}
+                onClick={pickFile}
+                onDrop={onDrop}
+                onDragOver={onDragOver}
+                onDragLeave={onDragLeave}
+                role="button"
+                tabIndex={0}
+            >
+                <div className="dropzone-inner">
+                    <div className="dropzone-icon">⬆️</div>
 
-                            <div className="dropzone-text">
-                                {files.length ? (
-                                    <>
-                                        <div className="dropzone-file">
-                                            {files.length === 1 ? files[0].name : `${files.length} PDFs selected`}
-                                        </div>
+                    <div className="dropzone-text">
+                        {files.length ? (
+                            <>
+                                <div className="dropzone-file">
+                                    {files.length === 1 ? files[0].name : `${files.length} PDFs selected`}
+                                </div>
 
-                                        <div className="dropzone-hint">
-                                            {files.length <= 3
-                                                ? files.map((f) => f.name).join(", ")
-                                                : `${files.slice(0, 3).map((f) => f.name).join(", ")} +${files.length - 3} more`}
-                                        </div>
+                                <div className="dropzone-hint">
+                                    {files.length <= 3
+                                        ? files.map((f) => f.name).join(", ")
+                                        : `${files.slice(0, 3).map((f) => f.name).join(", ")} +${files.length - 3} more`}
+                                </div>
 
-                                        <div className="dropzone-hint">Click to replace</div>
-                                    </>
-                                ) : (
-                                    <>
-                                        <div className="dropzone-primary">Drag & drop PDF(s)</div>
-                                        <div className="dropzone-hint">or click to choose files</div>
-                                    </>
-                                )}
-                            </div>
-                        </div>
-
-                        <input
-                            ref={inputRef}
-                            type="file"
-                            accept="application/pdf"
-                            multiple
-                            onChange={onChange}
-                            style={{ display: "none" }}
-                        />
-                    </div>
-
-                    {error && <div className="upload-error">{error}</div>}
-
-                    <div className="upload-button-container">
-                        <button className="upload-button" onClick={onUploadClick} disabled={isUploading}>
-                            {isUploading ? <CircularProgress size={20} color="inherit" /> : "Upload"}
-                        </button>
-                        {isUploading && <h5 className="upload-button-text">Uploading {files.length} PDF(s). This may take a few minutes.</h5>}
+                                <div className="dropzone-hint">Click to replace</div>
+                            </>
+                        ) : (
+                            <>
+                                <div className="dropzone-primary">Drag & drop PDF(s)</div>
+                                <div className="dropzone-hint">or click to choose files</div>
+                            </>
+                        )}
                     </div>
                 </div>
-            )}
-        </>
+
+                <input
+                    ref={inputRef}
+                    type="file"
+                    accept="application/pdf"
+                    multiple
+                    onChange={onChange}
+                    style={{ display: "none" }}
+                />
+            </div>
+
+            {error && <div className="upload-error">{error}</div>}
+
+            <div className="upload-button-container">
+                <button className="upload-button" onClick={onUploadClick} disabled={isUploading}>
+                    {isUploading ? <CircularProgress size={20} color="inherit" /> : "Upload"}
+                </button>
+                {isUploading && <h5 className="upload-button-text">Uploading {files.length} PDF(s). This may take a few minutes.</h5>}
+            </div>
+        </div>
     );
 }

@@ -2,13 +2,12 @@ import UploadIcon from '@mui/icons-material/Upload';
 import "./ThreeDCube.css";
 
 interface ThreeDCubeProps {
-    show: boolean;
     setShow: (show: boolean) => void;
 }
 
-export default function ThreeDCube({ show, setShow }: ThreeDCubeProps) {
+export default function ThreeDCube({ setShow }: ThreeDCubeProps) {
     const handleClick = () => {
-        setShow(!show);
+        setShow(true);
     };
 
     return (
