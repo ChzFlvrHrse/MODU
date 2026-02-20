@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
 import type { DragEvent, ChangeEvent } from "react";
 import { useLocation } from "react-router-dom";
-import ThreeDCube from "../../animations/ThreeDCube/ThreeDCube";
 import "./UploadSpec.css";
 
 // MUI Icons
 import { CircularProgress } from "@mui/material";
 import CloseIcon from '@mui/icons-material/Close';
+import UploadIcon from '@mui/icons-material/Upload';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -128,7 +128,12 @@ export default function UploadSpec() {
     }, [show]);
 
     if (!show) {
-        return <ThreeDCube setShow={setShow} />;
+        return (
+            <div className="upload-fab" onClick={() => setShow(true)}>
+                <UploadIcon style={{ width: 34, height: 34 }} />
+                <span className="fab-tooltip">Upload New Spec</span>
+            </div>
+        )
     }
 
     return (
