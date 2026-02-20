@@ -34,6 +34,14 @@
     font-weight: 700;
 }
 
+.sections-project-name {
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
+    width: 500px;
+    color: rgba(255, 255, 255, 0.7);
+}
+
 .sections-subtitle {
     margin: 10px 0 0;
     color: rgba(255, 255, 255, 0.7);

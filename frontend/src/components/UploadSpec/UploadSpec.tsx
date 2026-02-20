@@ -118,6 +118,8 @@ export default function UploadSpec() {
             if (uploadContainerRef.current &&
                 !uploadContainerRef.current.contains(event.target as Node)) {
                 setShow(false);
+                setFiles([]);
+                setError("");
             }
         };
 

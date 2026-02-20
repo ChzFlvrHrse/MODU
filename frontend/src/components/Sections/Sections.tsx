@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import type { Section } from "../../../types/types";
+import { CircularProgress } from "@mui/material";
 import { ArrowBackIosNew } from '@mui/icons-material';
 import "./Sections.css";
 
@@ -19,6 +20,9 @@ export default function Sections() {
     const [statusFilter, setStatusFilter] = useState<string>("all");
 
     const { spec_id } = useParams();
+    const [searchParams] = useSearchParams();
+    const project_name = searchParams.get("project_name");
+
     const navigate = useNavigate();
 
     const divisions = useMemo(() => Object.keys(sections).sort(), [sections]);
@@ -28,6 +32,13 @@ export default function Sections() {
         if (list.length === 0) return false;
 
         return list.every((s) => (s.status ?? "").toLowerCase() === "complete" || (s.status ?? "").toLowerCase() === "failed");
+    };
+
+    const isDivisionPending = (division: string) => {
+        const list = sections[division] ?? [];
+        if (list.length === 0) return false;
+
+        return list.some((s) => (s.status ?? "").toLowerCase() === "pending" || (s.status ?? "").toLowerCase() === "error");
     };
 
     const allDivisionsComplete = useMemo(() => {
@@ -60,18 +71,6 @@ export default function Sections() {
         });
     };
 
-    useEffect(() => {
-        if (allDivisionsComplete) return;
-
-        const interval = setInterval(fetchSections, 5000);
-        return () => clearInterval(interval);
-    }, [allDivisionsComplete]);
-
-
-    useEffect(() => {
-        fetchSections();
-    }, []);
-
     const activeList = useMemo(() => {
         const list = sections[activeDivision] ?? [];
 
@@ -99,14 +98,26 @@ export default function Sections() {
         [sections]
     );
 
+    useEffect(() => {
+        if (allDivisionsComplete) return;
+
+        const interval = setInterval(fetchSections, 5000);
+        return () => clearInterval(interval);
+    }, [allDivisionsComplete]);
+
+    useEffect(() => {
+        fetchSections();
+    }, []);
+
     return (
         <div className="sections-page">
             <div className="sections-header">
                 <div>
                     <button className="back-projects-button" onClick={() => navigate('/projects')}>
-                        <ArrowBackIosNew fontSize="large" className="back-projects-button-icon"/>
+                        <ArrowBackIosNew fontSize="large" className="back-projects-button-icon" />
                     </button>
                     <h1 className="sections-title">Sections</h1>
+                    <h3 className="sections-project-name">Project: {project_name}</h3>
                     <p className="sections-subtitle">
                         Browse sections by division. {totalSections} total sections.
                     </p>
@@ -143,6 +154,7 @@ export default function Sections() {
                     <div className="division-list">
                         {divisions.map((d) => {
                             const done = isDivisionComplete(d);
+                            const pending = isDivisionPending(d);
 
                             return (
                                 <button
@@ -157,6 +169,7 @@ export default function Sections() {
                                     <span className="division-right">
                                         <span className="division-count">{sections[d]?.length ?? 0} sections</span>
                                         {done && <span className="division-check" title="All sections complete">✓</span>}
+                                        {pending && <CircularProgress size={18} />}
                                     </span>
                                 </button>
                             );

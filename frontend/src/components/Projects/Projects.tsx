@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { CircularProgress } from '@mui/material'
 import { Project } from '../../../types/types';
 import './Projects.css';
 
-import UploadSpec from '../UploadSpec/UploadSpec';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -35,21 +33,6 @@ export default function Projects() {
     return `${id.slice(0, 8)}…${id.slice(-4)}`;
   }
 
-  // const handleUpload = async (files: File[]) => {
-  //   setIsUploading(true);
-  //   const formData = new FormData();
-  //   files.forEach((f) => formData.append("pdf", f, f.name));
-
-  //   const response = await fetch(`${BACKEND_URL}/api/spec/upload`, {
-  //     method: "POST",
-  //     body: formData,
-  //   });
-
-  //   if (!response.ok) throw new Error(await response.text());
-  //   console.log("upload response", await response.json());
-  //   setIsUploading(false);
-  // };
-
   useEffect(() => {
     // Run fetchProjects every 10 seconds
     const interval = setInterval(() => {
@@ -72,9 +55,11 @@ export default function Projects() {
 
       <div className="projects-grid">
         {projects?.map((p) => (
+          // thread the project name to the sections page
           <Link
             key={p.spec_id}
-            to={`/projects/${p.spec_id}`}
+            to={`/projects/${p.spec_id}?project_name=${p.project_name}`}
+            title={p.project_name}
             className="project-card"
           >
             <div className="project-card-top">
