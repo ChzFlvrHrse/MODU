@@ -1,7 +1,7 @@
 .cube-outer-container {
     position: fixed;
-    bottom: 100px;
-    right: 100px;
+    bottom: 60px;
+    right: 60px;
     width: 100px;
     height: 100px;
     perspective: 1000px;
@@ -10,11 +10,10 @@
 
 @keyframes fadeIn {
     from {
-        opacity: 0;
-        transform: scale(0.8);
+        transform: scale(0.6);
     }
+
     to {
-        opacity: 1;
         transform: scale(1);
     }
 }
@@ -28,7 +27,7 @@
 }
 
 .cube-outer-container:hover .cube-inner-container {
-    animation: rotate 10s infinite linear;
+    animation: rotateInfinite 10s infinite linear;
 }
 
 .cube-outer-container:hover .face {
@@ -43,64 +42,70 @@
 }
 
 .face {
+    position: absolute;
+    width: 100px;
+    height: 100px;
+    background: linear-gradient(135deg,
+            rgba(79, 109, 245, 0.15) 0%,
+            rgba(92, 120, 255, 0.05) 100%);
+    border: 2px solid rgba(79, 109, 245, 0.3);
+    border-radius: 16px;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    backdrop-filter: blur(20px);
+    transition: all 0.3s ease;
+}
+
+.face-content {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    position: absolute;
-    width: 100px;
-    /* Reduced from 250px */
-    height: 100px;
-    /* Reduced from 250px */
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 14px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    /* Slightly smaller text */
-    font-weight: 600;
-    cursor: pointer;
-    backdrop-filter: blur(10px);
-    transition: background 0.3s ease;
-    padding: 8px;
-    /* Add padding so text doesn't touch edges */
-    text-align: center;
+    gap: 6px;
+}
+
+.face-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.9);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 .face svg {
-    width: 32px;
-    height: 32px;
-    opacity: 0.9;
+    color: #5c78ff;
+    filter: drop-shadow(0 2px 8px rgba(92, 120, 255, 0.4));
 }
 
 .face:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: linear-gradient(135deg,
+            rgba(79, 109, 245, 0.25) 0%,
+            rgba(92, 120, 255, 0.15) 100%);
+    border-color: rgba(79, 109, 245, 0.6);
 }
 
 /* Translate Z should be half the width and height of the face */
-.front  {
+.front {
     transform: translateZ(50px);
     background: linear-gradient(135deg, rgba(79, 109, 245, 0.15), rgba(92, 120, 255, 0.05));
 }
 
-.back   {
+.back {
     transform: rotateY(180deg) translateZ(50px);
     background: linear-gradient(135deg, rgba(155, 89, 182, 0.15), rgba(142, 68, 173, 0.05));
 }
 
-.right  {
+.right {
     transform: rotateY(90deg) translateZ(50px);
     background: linear-gradient(135deg, rgba(52, 211, 153, 0.15), rgba(16, 185, 129, 0.05));
 }
 
-.left   {
+.left {
     transform: rotateY(-90deg) translateZ(50px);
     background: linear-gradient(135deg, rgba(251, 191, 36, 0.15), rgba(245, 158, 11, 0.05));
 }
 
-.top    {
+.top {
     transform: rotateX(90deg) translateZ(50px);
     background: linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(220, 38, 38, 0.05));
 }
@@ -110,11 +115,14 @@
     background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(37, 99, 235, 0.05));
 }
 
-@keyframes rotate {
+@keyframes rotateInfinite {
     from {
-        transform: rotateX(0deg) rotateY(0deg);  /* Start from static angle */
+        transform: rotateX(0deg) rotateY(0deg);
+        /* Start from static angle */
     }
+
     to {
-        transform: rotateX(385deg) rotateY(385deg);  /* 25 + 360 = 385 */
+        transform: rotateX(385deg) rotateY(385deg);
+        /* 25 + 360 = 385 */
     }
 }

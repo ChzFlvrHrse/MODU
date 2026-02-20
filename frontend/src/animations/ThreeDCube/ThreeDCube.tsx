@@ -12,32 +12,44 @@ export default function ThreeDCube({ show, setShow }: ThreeDCubeProps) {
     };
 
     return (
-        <div className="cube-outer-container">
+        <div className="cube-outer-container" onClick={handleClick}>
             <div className="cube-inner-container">
                 <div className="box-card">
-                    <div className="face front" onClick={handleClick}>
-                        <UploadIcon />
-                        <span>Upload a new spec</span>
+                    <div className="face front">
+                        <div className="face-content">
+                            <UploadIcon style={{ width: 32, height: 32 }} />
+                            <div className="face-label">New Spec</div>
+                        </div>
                     </div>
-                    <div className="face back" onClick={handleClick}>
-                        <UploadIcon />
-                        <span>Upload a new spec</span>
+                    <div className="face back">
+                        <div className="face-content">
+                            <UploadIcon style={{ width: 32, height: 32 }} />
+                            <div className="face-label">New Spec</div>
+                        </div>
                     </div>
-                    <div className="face right" onClick={handleClick}>
-                        <UploadIcon />
-                        <span>Upload a new spec</span>
+                    <div className="face right">
+                        <div className="face-content">
+                            <UploadIcon style={{ width: 32, height: 32 }} />
+                            <div className="face-label">New Spec</div>
+                        </div>
                     </div>
-                    <div className="face left" onClick={handleClick}>
-                        <UploadIcon />
-                        <span>Upload a new spec</span>
+                    <div className="face left">
+                        <div className="face-content">
+                            <UploadIcon style={{ width: 32, height: 32 }} />
+                            <div className="face-label">New Spec</div>
+                        </div>
                     </div>
-                    <div className="face top" onClick={handleClick}>
-                        <UploadIcon />
-                        <span>Upload a new spec</span>
+                    <div className="face top">
+                        <div className="face-content">
+                            <UploadIcon style={{ width: 32, height: 32 }} />
+                            <div className="face-label">New Spec</div>
+                        </div>
                     </div>
-                    <div className="face bottom" onClick={handleClick}>
-                        <UploadIcon />
-                        <span>Upload a new spec</span>
+                    <div className="face bottom">
+                        <div className="face-content">
+                            <UploadIcon style={{ width: 32, height: 32 }} />
+                            <div className="face-label">New Spec</div>
+                        </div>
                     </div>
                 </div>
             </div >
