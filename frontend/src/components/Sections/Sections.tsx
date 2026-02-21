@@ -167,7 +167,9 @@ export default function Sections() {
                                     </span>
 
                                     <span className="division-right">
-                                        <span className="division-count">{sections[d]?.length ?? 0} sections</span>
+                                        <span className="division-count">
+                                            {sections[d]?.length ?? 0} sections
+                                        </span>
                                         {done && <span className="division-check" title="All sections complete">✓</span>}
                                         {pending && <CircularProgress size={18} />}
                                     </span>
