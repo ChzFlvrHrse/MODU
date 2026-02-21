@@ -56,7 +56,7 @@ class S3Bucket(PDFPageConverter):
             image = await self.get_object(key)
             return fitz.open(stream=image, filetype="png")
         except Exception as e:
-            logger.error(f"Error getting image page {index}: {e}")
+            logger.warning(f"Error getting image page {index}: {e}")
             return {"bytes": None, "page_index": index}
 
     async def get_text_page_with_client(self, spec_id: str, index: int, s3_client: any):
@@ -66,7 +66,7 @@ class S3Bucket(PDFPageConverter):
             logger.info(f"Text page {index} found")
             return {"text": text.decode("utf-8", errors="replace"), "page_index": index}
         except Exception as e:
-            logger.error(f"Error getting text page {index}: {e}")
+            logger.warning(f"Error getting text page {index}: {e}")
             return {"text": None, "page_index": index}
 
     async def get_image_page_with_client(self, spec_id: str, index: int, s3_client: any):
@@ -77,7 +77,7 @@ class S3Bucket(PDFPageConverter):
             # return {"bytes": fitz.open(stream=image, filetype="png"), "page_index": index} if image else None
             return {"bytes": base64.b64encode(image).decode('utf-8'), "page_index": index} if image else None
         except Exception as e:
-            logger.error(f"Error getting image page {index}: {e}")
+            logger.warning(f"Error getting image page {index}: {e}")
             return {"bytes": None, "page_index": index}
 
     async def get_objects_gen(self, prefix: str = "") -> AsyncGenerator[list[dict], None]:

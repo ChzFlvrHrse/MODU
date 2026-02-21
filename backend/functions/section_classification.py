@@ -207,7 +207,8 @@ async def update_section_pages(spec_id: str, division: str, section_results: dic
         try:
             # Check if this section had a classification error
             if section_info.get("error"):
-                logger.warning(f"Section {section_num} had classification error: {section_info['error']}")
+                logger.warning(
+                    f"Section {section_num} had classification error: {section_info['error']}")
                 status = "failed"
                 primary_pages = []
                 reference_pages = []
@@ -217,7 +218,8 @@ async def update_section_pages(spec_id: str, division: str, section_results: dic
                 status = "complete"
                 primary_pages = section_info.get("primary_pages", [])
                 reference_pages = section_info.get("reference_pages", [])
-                classification_results = section_info.get("classification_results", [])
+                classification_results = section_info.get(
+                    "classification_results", [])
 
             logger.info(f"Updating section {section_num} for {spec_id}")
             section_id = await db.update_section_pages(
@@ -238,11 +240,13 @@ async def update_section_pages(spec_id: str, division: str, section_results: dic
                             result=result
                         )
                     except Exception as e:
-                        logger.error(f"Error saving classification result for section {section_num}: {e}")
+                        logger.error(
+                            f"Error saving classification result for section {section_num}: {e}")
                         error_count += 1
                 update_count += 1
             else:
-                logger.error(f"Failed to update section {section_num} - no section_id returned")
+                logger.error(
+                    f"Failed to update section {section_num} - no section_id returned")
                 error_count += 1
 
         except Exception as e:
@@ -254,6 +258,8 @@ async def update_section_pages(spec_id: str, division: str, section_results: dic
 
 # Classifies all sections for a specification into primary, referential, or other
 # Each division is ran one at a time. i.e. run through division 01 first and wait for it to complete before running division 02.
+
+
 async def classify_all_sections_by_division(
     spec_id: str,
     divisions_and_sections: dict,

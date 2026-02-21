@@ -120,3 +120,13 @@ async def sections_with_primary_pages(spec_id: str):
     except Exception as e:
         logger.error(f"Error getting sections with primary pages: {e}")
         return jsonify({"error": str(e)}), 500
+
+@spec_routes_bp.route("/spec_summary/<spec_id>", methods=["GET"])
+async def spec_summary(spec_id: str):
+    try:
+        spec_summary = await db.get_spec_summary(spec_id)
+        logger.info(f"Spec summary: {spec_summary}")
+        return jsonify({"spec_summary": spec_summary}), 200
+    except Exception as e:
+        logger.error(f"Error getting spec summary: {e}")
+        return jsonify({"error": str(e)}), 500
