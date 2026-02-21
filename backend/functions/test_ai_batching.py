@@ -304,15 +304,15 @@ async def fetch_batch_results(batch_url: str) -> dict:
                 parsed = []
                 for line in text.strip().splitlines():
                     result = json.loads(line)
+                    message = result.get("result", {}).get("message", {})
                     content_str = (
-                        result.get("result", {})
-                              .get("message", {})
-                              .get("content", [{}])[0]
-                              .get("text", "{}")
+                        message.get("content", [{}])[0].get("text", "{}")
                     )
+                    usage = message.get("usage", {})
                     parsed.append({
                         "custom_id": result.get("custom_id"),
                         "content": json.loads(content_str),
+                        "usage": usage
                     })
                 return parsed
     except Exception as e:
