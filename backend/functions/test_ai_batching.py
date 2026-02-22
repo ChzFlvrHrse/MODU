@@ -1,22 +1,22 @@
 from __future__ import annotations
-import json
-import aiohttp
-from classes.s3_buckets import S3Bucket
-from anthropic import AsyncAnthropic, RateLimitError
-from dotenv import load_dotenv
-import os
 import logging
 import asyncio
+import os
+import dotenv
+import aiohttp
+import json
+from classes.s3_buckets import S3Bucket
+from dotenv import load_dotenv
 from pydantic import BaseModel, Field
-from classes import db
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from classes.anthropic import Anthropic
 
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+anthropic = Anthropic()
+client = anthropic.client
 
 
 class PageClassification(BaseModel):
@@ -34,7 +34,8 @@ class PageClassification(BaseModel):
     )
 
 
-system_prompt = """You are classifying construction specification pages.
+system_prompt = """
+You are classifying construction specification pages.
 
 Determine if these pages contain the PRIMARY specification body for the given section number, or if they are just references/context.
 
@@ -55,270 +56,148 @@ NOT primary content:
 - Cross-references from other sections
 - Divider pages with minimal content
 
-Note: You may only see the first 2-3 pages of a longer section. If those pages show clear PRIMARY indicators, classify as primary."""
+Note: You may only see the first 2-3 pages of a longer section. If those pages show clear PRIMARY indicators, classify as primary.
+"""
 
 dict_pages = {
-    # "101110": {
-    #     "multi": [],
-    #     "single": [
-    #         43
-    #     ],
-    #     "title": "Undocumented Section Number (MSF2020)"
-    # },
-    # "102030": {
-    #     "multi": [
-    #         [
-    #             60,
-    #             61,
-    #             62,
-    #             63
-    #         ]
-    #     ],
-    #     "single": [],
-    #     "title": "Undocumented Section Number (MSF2020)"
-    # },
-    # "102236": {
-    #     "multi": [],
-    #     "single": [
-    #         4
-    #     ],
-    #     "title": "Coiling Partitions"
-    # },
-    # "102239": {
-    #     "multi": [
-    #         [
-    #             436,
-    #             437,
-    #             438,
-    #             439,
-    #             440,
-    #             441,
-    #             442
-    #         ]
-    #     ],
-    #     "single": [],
-    #     "title": "Folding Panel Partitions"
-    # },
-    "104320": {
-        "multi": [],
-        "single": [
-            63
-        ],
-        "title": "Undocumented Section Number (MSF2020)"
+    "10": {
+        "101110": {
+            "multi": [],
+            "single": [
+                43
+            ],
+            "title": "Undocumented Section Number (MSF2020)"
+        },
+        "102030": {
+            "multi": [
+                [
+                    60,
+                    61,
+                    62,
+                    63
+                ]
+            ],
+            "single": [],
+            "title": "Undocumented Section Number (MSF2020)"
+        },
+        "102236": {
+            "multi": [],
+            "single": [
+                4
+            ],
+            "title": "Coiling Partitions"
+        },
+        "102239": {
+            "multi": [
+                [
+                    436,
+                    437,
+                    438,
+                    439,
+                    440,
+                    441,
+                    442
+                ]
+            ],
+            "single": [],
+            "title": "Folding Panel Partitions"
+        },
+        "104320": {
+            "multi": [],
+            "single": [
+                63
+            ],
+            "title": "Undocumented Section Number (MSF2020)"
+        },
+        "104400": {
+            "multi": [
+                [
+                    443,
+                    444,
+                    445
+                ]
+            ],
+            "single": [
+                4
+            ],
+            "title": "Fire Protection Specialties"
+        }
     },
-    "104400": {
-        "multi": [
-            [
-                443,
-                444,
-                445
-            ]
-        ],
-        "single": [
-            4
-        ],
-        "title": "Fire Protection Specialties"
+    "12": {
+        "120039": {
+            "multi": [
+                [
+                    45,
+                    46,
+                    47,
+                    48
+                ]
+            ],
+            "single": [],
+            "title": "Undocumented Section Number (MSF2020)"
+        },
+        "121713": {
+            "multi": [],
+            "single": [
+                39
+            ],
+            "title": "Etched Glass"
+        },
+        "122413": {
+            "multi": [
+                [
+                    446,
+                    447,
+                    448,
+                    449
+                ]
+            ],
+            "single": [
+                4
+            ],
+            "title": "Roller Window Shades"
+        },
+        "123553": {
+            "multi": [
+                [
+                    450,
+                    451,
+                    452,
+                    453,
+                    454,
+                    455,
+                    456,
+                    457
+                ]
+            ],
+            "single": [
+                4
+            ],
+            "title": "Laboratory Casework"
+        }
     }
 }
 
 
-# A single page payload: (page_index, text, optional_image_bytes)
-PagePayload = Tuple[int, str, Optional[bytes]]
-
-
-def _enforce_no_additional_properties(schema: Dict[str, Any]) -> None:
-    if schema.get("type") == "object":
-        schema.setdefault("additionalProperties", False)
-    for value in schema.get("properties", {}).values():
-        if isinstance(value, dict):
-            _enforce_no_additional_properties(value)
-    for sub in schema.get("$defs", {}).values():
-        if isinstance(sub, dict):
-            _enforce_no_additional_properties(sub)
-
-
-def _page_blocks(page_index: int, text: str, image_bytes: Optional[bytes]) -> List[Dict[str, Any]]:
-    blocks: List[Dict[str, Any]] = [
-        {"type": "text", "text": f"===== PAGE {page_index} TEXT ====="},
-        {"type": "text", "text": text or ""},
-    ]
-
-    if image_bytes:
-        blocks.append({
-            "type": "image",
-            "source": {
-                "type": "base64",
-                "media_type": "image/png",
-                "data": image_bytes,
-            },
-        })
-    return blocks
-
-
-def build_claude_request(custom_id: str, section_number: str, pages: Sequence[PagePayload]) -> Dict[str, Any]:
-    # Build a single user message containing multi and single page content blocks
-    content_blocks: List[Dict[str, Any]] = []
-    pages_analyzed = []
-    for page_index, text, img in pages:
-        pages_analyzed.append(page_index)
-        content_blocks.extend(_page_blocks(page_index, text, img))
-
-    content_blocks.insert(
-        0,
-        {
-            "type": "text",
-            "text": f"Section number being analyzed: {section_number}. Pages provided: {pages_analyzed}. Set pages_analyzed exactly to this list.",
-        },
-    )
-
-    schema = PageClassification.model_json_schema()
-    if "type" not in schema:
-        schema["type"] = "object"
-    _enforce_no_additional_properties(schema)
-
-    return {
-        "custom_id": str(custom_id),
-        "params": {
-            "model": "claude-sonnet-4-5-20250929",
-            "max_tokens": 1024,
-            "system": [
-                {
-                    "type": "text",
-                    "text": system_prompt,
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ],
-            "messages": [
-                {
-                    "role": "user",
-                    "content": content_blocks,
-                }
-            ],
-            "output_config": {
-                "format": {
-                    "type": "json_schema",
-                    "schema": schema,
-                }
-            },
-        },
-    }
-
-
-async def classify_batch_ai(requests: list[dict]) -> dict:
-    try:
-        batch = await client.messages.batches.create(requests=requests)
-
-        return {
-            "batch_id": batch.id,
-            "status": batch.processing_status,
-            "request_counts": {
-                "processing": batch.request_counts.processing,
-                "succeeded": batch.request_counts.succeeded,
-                "errored": batch.request_counts.errored,
-                "canceled": batch.request_counts.canceled,
-                "expired": batch.request_counts.expired,
-            },
-        }
-
-    except Exception as e:
-        logger.error(f"Error classifying batch: {e}")
-        return {
-            "error": str(e),
-            "status": "error",
-        }
-
-
-async def batch_requests(sections: dict[int, dict], spec_id: str, s3: S3Bucket = None, s3_client: any = None) -> list[dict]:
-    requests = []
-
-    for section_number, section in sections.items():
-        for multi in section.get("multi", []):
-            start_index, end_index = multi[:2]
-            custom_id = f'{start_index}-{end_index}-{section_number}-{spec_id}'
-
-            page_payloads: List[PagePayload] = []
-
-            async for page in s3.get_converted_pages_generator_with_client(
-                spec_id, s3_client, start_index, end_index + 1
-            ):
-                page_payloads.append(
-                    (page["page_index"], page["text"], page["bytes"]))
-
-            claude_request = build_claude_request(
-                custom_id, section_number, page_payloads)
-            requests.append(claude_request)
-
-        for single in section.get("single", []):
-            custom_id = f'{single}-{section_number}-{spec_id}'
-            page_payloads: List[PagePayload] = []
-            async for page in s3.get_converted_pages_generator_with_client(
-                spec_id, s3_client, single, single + 1
-            ):
-                page_payloads.append(
-                    (page["page_index"], page["text"], page["bytes"]))
-            claude_request = build_claude_request(
-                custom_id, section_number, page_payloads)
-            requests.append(claude_request)
-
-    results = await classify_batch_ai(requests)
-    return results
-
 # ------------------------------------------------------------- batch testing -------------------------------------------------------------
 
-spec_id = "e6c9865f-7908-4eda-ad95-e1ae7b070bf8"
-s3 = S3Bucket()
+# spec_id = "e6c9865f-7908-4eda-ad95-e1ae7b070bf8"
+# s3 = S3Bucket()
 
 
-async def main():
-    async with s3.s3_client() as s3_client:
-        result = await batch_requests(dict_pages, spec_id, s3, s3_client)
-        return result["batch_id"]
+# async def main():
+#     results = []
+#     batch_ids = []
 
-batch_id = asyncio.run(main())
-
-
-async def poll_for_batch_results(batch_id: str) -> dict:
-    while True:
-        batch_results = await client.messages.batches.retrieve(batch_id)
-        logger.info(f"Batch results: {batch_results.processing_status}")
-        if batch_results.processing_status == "ended":
-            return batch_results
-        else:
-            await asyncio.sleep(1)
-
-batch_results = asyncio.run(poll_for_batch_results(batch_id))
+#     async with s3.s3_client() as s3_client:
+#         result = await anthropic.batch_requests(dict_pages, spec_id, system_prompt, s3, s3_client, schema=PageClassification)
+#         for batch in result:
+#             batch_ids.append(batch["batch_id"])
+#             results.append(batch)
 
 
-async def fetch_batch_results(batch_url: str) -> dict:
-    try:
-        headers = {
-            "x-api-key": os.getenv('ANTHROPIC_API_KEY'),
-            "anthropic-version": "2023-06-01",
-        }
+#         poll_results = await asyncio.gather(*[anthropic.poll_and_fetch_batch_results(batch_id) for batch_id in batch_ids])
+#         results.extend(poll_results)
+#     return results
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(batch_url, headers=headers) as response:
-                response.raise_for_status()
-
-                text = await response.text()
-                parsed = []
-                for line in text.strip().splitlines():
-                    result = json.loads(line)
-                    message = result.get("result", {}).get("message", {})
-                    content_str = (
-                        message.get("content", [{}])[0].get("text", "{}")
-                    )
-                    usage = message.get("usage", {})
-                    parsed.append({
-                        "custom_id": result.get("custom_id"),
-                        "content": json.loads(content_str),
-                        "usage": usage
-                    })
-                return parsed
-    except Exception as e:
-        logger.error(f"Error fetching batch results: {e}")
-        return None
-
-batch_url = batch_results.results_url
-
-print(asyncio.run(fetch_batch_results(batch_url)))
+# print(asyncio.run(main()))

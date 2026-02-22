@@ -28,10 +28,12 @@ class ModuDB:
             """)
 
             # Sections table
+            # custom_id is used to identify the section in the batch requests to anthropic
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS sections (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     spec_id TEXT NOT NULL,
+                    custom_id TEXT NOT NULL,
                     division TEXT NOT NULL,
                     section_number TEXT NOT NULL,
                     section_name TEXT,
