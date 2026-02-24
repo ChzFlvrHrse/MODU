@@ -1,20 +1,15 @@
 from pydantic import BaseModel
 from anthropic import AsyncAnthropic
-from classes.s3_buckets import S3Bucket
-import logging
-import os
-import asyncio
-import aiohttp
-import json
-import dotenv
-from typing import Any, Dict, List, Sequence, Tuple, Optional, Type
+from classes import S3Bucket
+import logging, os, asyncio, aiohttp, json, dotenv
+from typing import Any, Dict, List, Sequence, Tuple, Optional, Type, Callable
 
 dotenv.load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-PagePayload = Tuple[int, str, Optional[bytes]]
+PagePayload = Tuple[int, str, Optional[bytes], Optional[str]]
 
 CONTEXT_WINDOW = 200000
 CONTEXT_WINDOW_BUFFER = 0.9  # 90% of context window to be safe
@@ -26,7 +21,10 @@ class Anthropic:
     def __init__(self):
         self.client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
-    def page_blocks(self, page_index: int, text: str, image_bytes: Optional[bytes]) -> List[Dict[str, Any]]:
+    def prompt(self, prompt: str, **kwargs) -> str:
+        return prompt.format(**kwargs) if kwargs else prompt
+
+    def page_blocks(self, page_index: int, text: str, image_bytes: Optional[bytes], media_type: Optional[str]) -> List[Dict[str, Any]]:
         blocks: List[Dict[str, Any]] = [
             {"type": "text", "text": f"===== PAGE {page_index} TEXT ====="},
             {"type": "text", "text": text or ""},
@@ -37,7 +35,7 @@ class Anthropic:
                 "type": "image",
                 "source": {
                     "type": "base64",
-                    "media_type": "image/png",
+                    "media_type": media_type,
                     "data": image_bytes,
                 },
             })
@@ -92,7 +90,7 @@ class Anthropic:
         try:
             content = []
 
-            for text, img_bytes in content_blocks:
+            for text, img_bytes, media_type in content_blocks:
                 if text:
                     content.append({
                         "type": "text",
@@ -104,8 +102,8 @@ class Anthropic:
                         "type": "image",
                         "source": {
                             "type": "base64",
-                            "media_type": "image/png",
-                            "data": img_bytes
+                            "media_type": media_type,
+                            "data": img_bytes,
                         }
                     })
 
@@ -130,11 +128,11 @@ class Anthropic:
 
     def estimate_tokens(self, pages: Sequence[PagePayload]) -> int:
         total = 0
-        for _, text, img_bytes in pages:
+        for _, text, img_bytes, media_type in pages:
             if text:
                 total += self.ESTIMATED_TOKENS_PER_TEXT_PAGE
-            if img_bytes:
-                total += self.ESTIMATED_TOKENS_PER_IMAGE
+        if img_bytes and media_type == "image/jpeg":
+            total += self.ESTIMATED_TOKENS_PER_IMAGE
         return total
 
     async def check_tokens(
@@ -152,7 +150,7 @@ class Anthropic:
                 f"Request {custom_id} estimated at {estimate} tokens — skipping exact count")
             return True
 
-        content_blocks = [(text, img) for _, text, img in pages]
+        content_blocks = [(text, img, media_type) for _, text, img, media_type in pages]
         exact_count = await self.count_tokens(content_blocks, system_prompt, model)
 
         if isinstance(exact_count, dict) and "error" in exact_count:
@@ -242,8 +240,9 @@ class Anthropic:
         custom_id: str,
         section_number: str,
         pages: Sequence[PagePayload],
-        system_prompt: str,
+        system_prompt: Callable[[str, list[int]], str],
         schema: Dict[str, Any],
+        # prompt_kwargs: dict = None,
         max_tokens: int = 1024,
         model: str = "claude-sonnet-4-5-20250929"
     ) -> Dict[str, Any]:
@@ -259,17 +258,17 @@ class Anthropic:
         # if not within_context:
         #     return None
 
-        for page_index, text, img in pages:
+        for page_index, text, img, media_type in pages:
             pages_analyzed.append(page_index)
-            content_blocks.extend(self.page_blocks(page_index, text, img))
+            content_blocks.extend(self.page_blocks(page_index, text, img, media_type))
 
-        content_blocks.insert(
-            0,
-            {
-                "type": "text",
-                "text": f"Section number being analyzed: {section_number}. Pages provided: {pages_analyzed}. Set pages_analyzed exactly to this list.",
-            },
-        )
+        # content_blocks.insert(
+        #     0,
+        #     {
+        #         "type": "text",
+        #         "text": f"Section number being analyzed: {section_number}. Pages provided: {pages_analyzed}. Set pages_analyzed exactly to this list.",
+        #     },
+        # )
 
         schema = schema.model_json_schema()
         if "type" not in schema:
@@ -284,7 +283,7 @@ class Anthropic:
                 "system": [
                     {
                         "type": "text",
-                        "text": system_prompt,
+                        "text": system_prompt(section_number, pages_analyzed),
                         "cache_control": {"type": "ephemeral"},
                     }
                 ],
@@ -330,10 +329,11 @@ class Anthropic:
         self,
         sections: dict[int, dict],
         spec_id: str,
-        system_prompt: str,
+        system_prompt: Callable[[str, list[int]], str],
         s3: S3Bucket = None,
         s3_client: any = None,
-        schema: Type[BaseModel] = None,
+        # schema: Type[BaseModel] = None,
+        schema: Callable[[str], Type[BaseModel]] = None,
         model: str = "claude-sonnet-4-5-20250929",
         max_tokens: int = 1024
     ) -> list[dict]:
@@ -345,32 +345,51 @@ class Anthropic:
                     for multi in section.get("multi", []):
                         start_index, end_index = multi[:2]
                         last_index = multi[-1]
-                        custom_id = f'{start_index}-{last_index}-{section_number}-{division_number}-{spec_id}'
+
+                        safe_section_number = section_number.replace(".", "_")
+                        custom_id = f'{division_number}-{safe_section_number}-{spec_id}-{start_index}-{last_index}'
+                        logger.info(f"custom_id: {custom_id} ({len(custom_id)} chars)")
 
                         page_payloads: List[PagePayload] = []
-
                         async for page in s3.get_converted_pages_generator_with_client(
                             spec_id, s3_client, start_index, end_index + 1
                         ):
                             page_payloads.append(
-                                (page["page_index"], page["text"], page["bytes"]))
+                                (page["page_index"], page["text"], page["bytes"], page["media_type"]))
 
                         claude_request = await self.build_claude_request(
-                            custom_id, section_number, page_payloads, system_prompt, schema=schema, model=model, max_tokens=max_tokens)
+                            custom_id,
+                            section_number,
+                            page_payloads,
+                            system_prompt,
+                            schema=schema(section_number),
+                            model=model,
+                            max_tokens=max_tokens
+                        )
 
                         if claude_request is not None:
                             requests.append(claude_request)
 
                     for single in section.get("single", []):
-                        custom_id = f'{single}-{section_number}-{division_number}-{spec_id}'
+                        safe_section_number = section_number.replace(".", "_")
+                        custom_id = f'{division_number}-{safe_section_number}-{spec_id}-{single}'
+                        logger.info(f"custom_id: {custom_id} ({len(custom_id)} chars)")
+
                         page_payloads: List[PagePayload] = []
                         async for page in s3.get_converted_pages_generator_with_client(
                             spec_id, s3_client, single, single + 1
                         ):
                             page_payloads.append(
-                                (page["page_index"], page["text"], page["bytes"]))
+                                (page["page_index"], page["text"], page["bytes"], page["media_type"]))
                         claude_request = await self.build_claude_request(
-                            custom_id, section_number, page_payloads, system_prompt, schema=schema, model=model, max_tokens=max_tokens)
+                            custom_id,
+                            section_number,
+                            page_payloads,
+                            system_prompt,
+                            schema=schema(section_number),
+                            model=model,
+                            max_tokens=max_tokens
+                        )
 
                         if claude_request is not None:
                             requests.append(claude_request)
@@ -394,7 +413,7 @@ class Anthropic:
     async def poll_and_fetch_batch_results(self, batch_id: str) -> list[dict]:
         while True:
             batch = await self.client.messages.batches.retrieve(batch_id)
-            logger.info(f"Batch status: {batch.processing_status}")
+            logger.info(f"Batch status: {batch.processing_status}, batch_id: {batch_id}")
             if batch.processing_status == "ended":
                 break
             await asyncio.sleep(1)

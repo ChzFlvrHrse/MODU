@@ -5,12 +5,23 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, Iterator, AsyncGenerator
 from classes.pdf_page_converter import PDFPageConverter
 from classes.typed_dicts import HybridPage, PdfPageConverterResult
-import aioboto3, os, dotenv, logging, datetime, fitz, asyncio, threading, base64
+import aioboto3
+import os
+import dotenv
+import logging
+import datetime
+import fitz
+import asyncio
+import threading
+import base64
+import io
+from PIL import Image
 
 dotenv.load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 class S3Bucket(PDFPageConverter):
     def __init__(self):
@@ -50,14 +61,43 @@ class S3Bucket(PDFPageConverter):
             logger.error(f"Error getting text page {index}: {e}")
             return {"text": None, "page_index": index}
 
+    MAX_IMAGE_BYTES = 4 * 1024 * 1024  # 4MB to stay safely under 5MB limit
+    # Anthropics image limit is 5MB, so we need to compress the image to stay under 5MB
+    def compress_image(self, image_bytes: bytes, max_bytes: int = MAX_IMAGE_BYTES) -> tuple[bytes, str]:
+        """Compress image to stay under max_bytes. Returns (bytes, media_type)."""
+        img = Image.open(io.BytesIO(image_bytes))
+
+        # Convert to RGB if necessary (PNG can be RGBA)
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+
+        # Try JPEG compression first (much smaller than PNG)
+        for quality in [85, 70, 50, 30]:
+            buffer = io.BytesIO()
+            img.save(buffer, format="JPEG", quality=quality, optimize=True)
+            compressed = buffer.getvalue()
+            if len(compressed) <= max_bytes:
+                return base64.b64encode(compressed).decode("utf-8"), "image/jpeg"
+
+        # If still too large, downscale
+        while True:
+            img = img.resize((img.width // 2, img.height // 2), Image.LANCZOS)
+            buffer = io.BytesIO()
+            img.save(buffer, format="JPEG", quality=50, optimize=True)
+            compressed = buffer.getvalue()
+            if len(compressed) <= max_bytes or img.width < 100:
+                return base64.b64encode(compressed).decode("utf-8"), "image/jpeg"
+
     async def get_image_page(self, spec_id: str, index: int):
         key = f"{spec_id}/converted/{index}/IMAGE.png"
         try:
-            image = await self.get_object(key)
-            return fitz.open(stream=image, filetype="png")
+            image_bytes = await self.get_object(key)
+            compressed, media_type = self.compress_image(image_bytes)
+            return {"bytes": compressed, "media_type": media_type, 'page_index': index}
+            # return fitz.open(stream=image, filetype="png")
         except Exception as e:
             logger.warning(f"Error getting image page {index}: {e}")
-            return {"bytes": None, "page_index": index}
+            return {"bytes": None, "media_type": None, "page_index": index}
 
     async def get_text_page_with_client(self, spec_id: str, index: int, s3_client: any):
         key = f"{spec_id}/converted/{index}/TEXT.txt"
@@ -72,13 +112,12 @@ class S3Bucket(PDFPageConverter):
     async def get_image_page_with_client(self, spec_id: str, index: int, s3_client: any):
         key = f"{spec_id}/converted/{index}/IMAGE.png"
         try:
-            image = await self.get_object_with_client(key, s3_client)
-            logger.info(f"Image page {index} found")
-            # return {"bytes": fitz.open(stream=image, filetype="png"), "page_index": index} if image else None
-            return {"bytes": base64.b64encode(image).decode('utf-8'), "page_index": index} if image else None
+            image_bytes = await self.get_object_with_client(key, s3_client)
+            compressed, media_type = self.compress_image(image_bytes)
+            return {"bytes": compressed, "media_type": media_type, "page_index": index}
         except Exception as e:
             logger.warning(f"Error getting image page {index}: {e}")
-            return {"bytes": None, "page_index": index}
+            return {"bytes": None, "media_type": None, "page_index": index}
 
     async def get_objects_gen(self, prefix: str = "") -> AsyncGenerator[list[dict], None]:
         async with self.s3_client() as s3:
@@ -117,7 +156,8 @@ class S3Bucket(PDFPageConverter):
                 attempts += 1
                 successes += 1
             except Exception as e:
-                logger.error(f"Error uploading text. Spec ID: {spec_id}, page {page['page_index']}: {e}")
+                logger.error(
+                    f"Error uploading text. Spec ID: {spec_id}, page {page['page_index']}: {e}")
                 attempts += 1
                 attempt_page_index.append(page['page_index'])
 
@@ -134,7 +174,8 @@ class S3Bucket(PDFPageConverter):
                 attempts += 1
                 successes += 1
             except Exception as e:
-                logger.error(f"Error uploading image. Spec ID: {spec_id}, page {page['page_index']}: {e}")
+                logger.error(
+                    f"Error uploading image. Spec ID: {spec_id}, page {page['page_index']}: {e}")
                 attempts += 1
                 attempt_page_index.append(page['page_index'])
 
@@ -163,7 +204,8 @@ class S3Bucket(PDFPageConverter):
                 attempts += 1
                 successes += 1
             except Exception as e:
-                logger.error(f"Error uploading text. Spec ID: {spec_id}, page {page['page_index']}: {e}")
+                logger.error(
+                    f"Error uploading text. Spec ID: {spec_id}, page {page['page_index']}: {e}")
                 attempts += 1
                 attempt_page_index.append(page['page_index'])
 
@@ -180,7 +222,8 @@ class S3Bucket(PDFPageConverter):
                 attempts += 1
                 successes += 1
             except Exception as e:
-                logger.error(f"Error uploading image. Spec ID: {spec_id}, page {page['page_index']}: {e}")
+                logger.error(
+                    f"Error uploading image. Spec ID: {spec_id}, page {page['page_index']}: {e}")
                 attempts += 1
                 attempt_page_index.append(page['page_index'])
 
@@ -223,27 +266,30 @@ class S3Bucket(PDFPageConverter):
 
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 for page_result in executor.map(
-                    await self.upload_page_to_s3,
-                    await asyncio.to_thread(self.pdf_page_converter_generator,
-                        pdf=pdf,
-                        dpi=dpi,
-                        grayscale=grayscale,
-                        rasterize_all=rasterize_all,
-                        start_index=start_index,
-                        end_index=end_index,
-                    ),
-                    repeat(spec_id)):
-                        attempts += page_result["attempts"]
-                        successes += page_result["successes"]
-                        last_page_index = page_result["page_index"]
-                        attempt_page_index.extend(page_result["attempt_page_index"])
+                        await self.upload_page_to_s3,
+                        await asyncio.to_thread(self.pdf_page_converter_generator,
+                                                pdf=pdf,
+                                                dpi=dpi,
+                                                grayscale=grayscale,
+                                                rasterize_all=rasterize_all,
+                                                start_index=start_index,
+                                                end_index=end_index,
+                                                ),
+                        repeat(spec_id)):
+                    attempts += page_result["attempts"]
+                    successes += page_result["successes"]
+                    last_page_index = page_result["page_index"]
+                    attempt_page_index.extend(
+                        page_result["attempt_page_index"])
 
-                        if page_result["attempts"] == 0:
-                            indexes_with_no_text_or_image.append(page_result["page_index"])
+                    if page_result["attempts"] == 0:
+                        indexes_with_no_text_or_image.append(
+                            page_result["page_index"])
 
             end_time = datetime.datetime.now()
             elapsed = end_time - start_time
-            success_rate = (successes / attempts * 100) if attempts > 0 else 0.0
+            success_rate = (successes / attempts *
+                            100) if attempts > 0 else 0.0
 
             logger.info(
                 "Uploaded %d/%d (%.2f%%) pages to S3 bucket: %s, spec ID: %s, "
@@ -275,7 +321,7 @@ class S3Bucket(PDFPageConverter):
             }
         except Exception as e:
             logger.error(f"Error uploading PDF to S3 bucket: {e}")
-            return { "message": f"Error uploading PDF to S3 bucket: {str(e)}", "status_code": 400 }
+            return {"message": f"Error uploading PDF to S3 bucket: {str(e)}", "status_code": 400}
 
     async def bulk_upload_to_s3_with_client(
         self,
@@ -317,10 +363,12 @@ class S3Bucket(PDFPageConverter):
                         start_index=start_index,
                         end_index=end_index,
                     ):
-                        asyncio.run_coroutine_threadsafe(queue.put(page), loop).result()
+                        asyncio.run_coroutine_threadsafe(
+                            queue.put(page), loop).result()
                 finally:
                     for _ in range(max_workers):
-                        asyncio.run_coroutine_threadsafe(queue.put(STOP), loop).result()
+                        asyncio.run_coroutine_threadsafe(
+                            queue.put(STOP), loop).result()
                     logger.info(f"Producer finished")
 
             threading.Thread(target=producer, daemon=True).start()
@@ -340,9 +388,11 @@ class S3Bucket(PDFPageConverter):
                         page_result = await asyncio.wait_for(self.upload_page_to_s3_with_client(item, spec_id, s3_client), timeout=60)
                         attempts += page_result["attempts"]
                         successes += page_result["successes"]
-                        attempt_page_index.extend(page_result["attempt_page_index"])
+                        attempt_page_index.extend(
+                            page_result["attempt_page_index"])
                         if page_result["attempts"] == 0:
-                            indexes_with_no_text_or_image.append(page_result["page_index"])
+                            indexes_with_no_text_or_image.append(
+                                page_result["page_index"])
                     except Exception as e:
                         logger.error(f"Error uploading page to S3 bucket: {e}")
                         continue
@@ -353,7 +403,8 @@ class S3Bucket(PDFPageConverter):
 
             end_time = datetime.datetime.now()
             elapsed = end_time - start_time
-            success_rate = (successes / attempts * 100) if attempts > 0 else 0.0
+            success_rate = (successes / attempts *
+                            100) if attempts > 0 else 0.0
 
             logger.info(
                 "Uploaded %d/%d (%.2f%%) pages to S3 bucket: %s, spec ID: %s, "
@@ -384,7 +435,7 @@ class S3Bucket(PDFPageConverter):
             }
         except Exception as e:
             logger.error(f"Error uploading PDF to S3 bucket: {e}")
-            return { "message": f"Error uploading PDF to S3 bucket: {str(e)}", "status_code": 400 }
+            return {"message": f"Error uploading PDF to S3 bucket: {str(e)}", "status_code": 400}
 
     async def upload_original_pdf(self, files: list[FileStorage], spec_id: str) -> dict:
         successes: int = 0
@@ -400,7 +451,8 @@ class S3Bucket(PDFPageConverter):
                 logger.info(f"Uploaded original PDF {i+1} to S3 bucket")
                 successes += 1
             except Exception as e:
-                logger.error(f"Error uploading original PDF {i+1} to S3 bucket: {e}")
+                logger.error(
+                    f"Error uploading original PDF {i+1} to S3 bucket: {e}")
                 return {
                     "message": f"Error uploading original PDF {i+1} to S3 bucket: {str(e)}",
                     "status_code": 400
@@ -425,7 +477,8 @@ class S3Bucket(PDFPageConverter):
                 logger.info(f"Uploaded original PDF {i+1} to S3 bucket")
                 successes += 1
             except Exception as e:
-                logger.error(f"Error uploading original PDF {i+1} to S3 bucket: {e}")
+                logger.error(
+                    f"Error uploading original PDF {i+1} to S3 bucket: {e}")
                 return {
                     "message": f"Error uploading original PDF {i+1} to S3 bucket: {str(e)}",
                     "status_code": 400
@@ -442,10 +495,12 @@ class S3Bucket(PDFPageConverter):
 
         try:
             # Get pdf file from S3 bucket
-            response = self.s3_client().list_objects(Bucket=self.bucket_name, Prefix=f"{spec_id}/original/")
+            response = self.s3_client().list_objects(
+                Bucket=self.bucket_name, Prefix=f"{spec_id}/original/")
 
             # Sort by key to maintain order (1, 2, 3, etc.)
-            contents = sorted(response.get("Contents", []), key=lambda x: x["Key"])
+            contents = sorted(response.get("Contents", []),
+                              key=lambda x: x["Key"])
 
             if not contents:
                 return {
@@ -455,7 +510,8 @@ class S3Bucket(PDFPageConverter):
 
             # If only one PDF, return it directly
             if len(contents) == 1:
-                pdf_bytes = self.s3_client().get_object(Bucket=self.bucket_name, Key=contents[0]["Key"])["Body"].read()
+                pdf_bytes = self.s3_client().get_object(Bucket=self.bucket_name,
+                                                        Key=contents[0]["Key"])["Body"].read()
                 return {
                     "data": pdf_bytes,
                     "status_code": 200
@@ -464,7 +520,8 @@ class S3Bucket(PDFPageConverter):
             # Merge multiple PDFs using PyMuPDF
             merged_doc = fitz.open()
             for item in contents:
-                pdf_bytes = self.s3_client().get_object(Bucket=self.bucket_name, Key=item["Key"])["Body"].read()
+                pdf_bytes = self.s3_client().get_object(
+                    Bucket=self.bucket_name, Key=item["Key"])["Body"].read()
                 src_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
                 merged_doc.insert_pdf(src_doc)
                 src_doc.close()
@@ -492,7 +549,8 @@ class S3Bucket(PDFPageConverter):
             response = await s3_client.list_objects(Bucket=self.bucket_name, Prefix=f"{spec_id}/original/")
 
             # Sort by key to maintain order (1, 2, 3, etc.)
-            contents = sorted(response.get("Contents", []), key=lambda x: x["Key"])
+            contents = sorted(response.get("Contents", []),
+                              key=lambda x: x["Key"])
 
             if not contents:
                 return {
@@ -564,7 +622,8 @@ class S3Bucket(PDFPageConverter):
         if end_index < 0:
             raise ValueError("End index must be greater than or equal to 0")
         if end_index < start_index:
-            raise ValueError("End index must be greater than or equal to start index")
+            raise ValueError(
+                "End index must be greater than or equal to start index")
 
         if start_index == end_index:
             end_index = start_index + 1
@@ -572,7 +631,8 @@ class S3Bucket(PDFPageConverter):
         try:
             for i in range(start_index, end_index+1):
                 try:
-                    text_response = self.s3_client().get_object(Bucket=self.bucket_name, Key=f"{spec_id}/converted/{i}.txt")
+                    text_response = self.s3_client().get_object(
+                        Bucket=self.bucket_name, Key=f"{spec_id}/converted/{i}.txt")
                     if text_response:
                         text = text_response["Body"].read().decode("utf-8")
                     else:
@@ -583,7 +643,8 @@ class S3Bucket(PDFPageConverter):
                     text = None
 
                 try:
-                    bytes_response = self.s3_client().get_object(Bucket=self.bucket_name, Key=f"{spec_id}/converted/{i}.png")
+                    bytes_response = self.s3_client().get_object(
+                        Bucket=self.bucket_name, Key=f"{spec_id}/converted/{i}.png")
                     if bytes_response:
                         bytes_data = bytes_response["Body"].read()
                     else:
@@ -600,7 +661,8 @@ class S3Bucket(PDFPageConverter):
                 }
         except Exception as e:
             logger.error(f"Error getting converted pages from S3 bucket: {e}")
-            raise ValueError(f"Error getting converted pages from S3 bucket: {str(e)}")
+            raise ValueError(
+                f"Error getting converted pages from S3 bucket: {str(e)}")
 
     async def get_converted_pages_generator_with_client(self, spec_id: str, s3_client: any, start_index: int = 0, end_index: int = 10) -> AsyncGenerator[HybridPage, None]:
 
@@ -609,7 +671,8 @@ class S3Bucket(PDFPageConverter):
         if end_index < 0:
             raise ValueError("End index must be greater than or equal to 0")
         if end_index < start_index:
-            raise ValueError("End index must be greater than or equal to start index")
+            raise ValueError(
+                "End index must be greater than or equal to start index")
 
         for i in range(start_index, end_index):
             text, bytes_data = await asyncio.gather(
@@ -620,21 +683,24 @@ class S3Bucket(PDFPageConverter):
             yield {
                 "page_index": i,
                 "text": text["text"],
-                "bytes": bytes_data["bytes"]
+                "bytes": bytes_data["bytes"],
+                "media_type": bytes_data["media_type"]
             }
 
     async def get_single_page(self, spec_id: str, page_index: int) -> HybridPage:
         if page_index < 0:
             raise ValueError("Page index must be greater than or equal to 0")
         if page_index >= self.get_converted_page_count(spec_id):
-            raise ValueError(f"Page index {page_index} is greater than the number of converted pages: {self.get_converted_page_count(spec_id)}")
+            raise ValueError(
+                f"Page index {page_index} is greater than the number of converted pages: {self.get_converted_page_count(spec_id)}")
 
         spec_check = self.get_original_pdf(spec_id)
         if spec_check["status_code"] != 200:
             raise ValueError(spec_check["data"])
 
         try:
-            tex_response = self.s3_client().get_object(Bucket=self.bucket_name, Key=f"{spec_id}/converted/{page_index}.txt")
+            tex_response = self.s3_client().get_object(Bucket=self.bucket_name,
+                                                       Key=f"{spec_id}/converted/{page_index}.txt")
             if tex_response:
                 text = tex_response["Body"].read().decode("utf-8")
             else:
@@ -645,7 +711,8 @@ class S3Bucket(PDFPageConverter):
             text = None
 
         try:
-            bytes_response = self.s3_client().get_object(Bucket=self.bucket_name, Key=f"{spec_id}/converted/{page_index}.png")
+            bytes_response = self.s3_client().get_object(Bucket=self.bucket_name,
+                                                         Key=f"{spec_id}/converted/{page_index}.png")
             if bytes_response:
                 bytes = bytes_response["Body"].read()
             else:

@@ -67,14 +67,28 @@ async def upload():
 
         section_page_dict = await detect_section_pages(spec_id, s3, s3_client)
 
-        await db.save_project(spec_id, project_name, "in progress")
+        await db.save_project(spec_id, project_name)
 
+        total_divisions = 0
+        total_sections = 0
         for division, sections in section_page_dict["divisions_and_sections"].items():
+            total_divisions += 1
             for section_number, pages in sections.items():
+                total_sections += 1
                 section_name = pages.get("title", "Undocumented Section Number (MSF2020)")
 
-                await db.save_section(spec_id, division, section_number, section_name)
+                total_pages = 0
+                for page in pages.get("multi", []):
+                    total_pages += len(page)
+                total_pages += len(pages.get("single", []))
+                pages["total_pages"] = total_pages
+                await db.save_section(spec_id, division, section_number, section_name, total_pages)
 
+        await db.update_project(
+            spec_id,
+            total_divisions=total_divisions,
+            total_sections=total_sections,
+        )
 
     current_app.add_background_task(
         run_classification_background,
