@@ -1,13 +1,9 @@
 from typing import Dict
-from anthropic import RateLimitError
 from dotenv import load_dotenv
-import logging
-import asyncio
-import time
-import os
-import resend
 from pydantic import BaseModel, Field
+import logging, asyncio, time, os, resend
 from classes import S3Bucket, Anthropic, db
+from typing import Callable, Type, List, Tuple, Optional
 
 load_dotenv()
 
@@ -15,8 +11,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 anthropic = Anthropic()
-client = anthropic.client
 
+PagePayload = Tuple[int, str, Optional[bytes], Optional[str]]
 
 def make_classification_schema(section_number: str) -> type[BaseModel]:
     class PageClassification(BaseModel):
@@ -34,8 +30,8 @@ def make_classification_schema(section_number: str) -> type[BaseModel]:
         )
     return PageClassification
 
-def classification_prompt(section_number: str, pages_analyzed: list[int]) -> str:
-    return f"""
+
+CLASSIFICATION_PROMPT = """
 You are classifying construction specification pages.
 
 Determine if these pages contain the PRIMARY specification body for the given section number, or if they are just references/context.
@@ -65,6 +61,7 @@ IMPORTANT: Your JSON output must match your reasoning. If your reasoning conclud
 Note: You may only see the first 2-3 pages of a longer section. If those pages show clear PRIMARY indicators, classify as primary.
 """
 
+
 def send_mail(spec_id: str, completion_time: float) -> Dict:
     resend.api_key = os.getenv("RESEND_API_KEY")
     params: resend.Emails.SendParams = {
@@ -77,6 +74,15 @@ def send_mail(spec_id: str, completion_time: float) -> Dict:
     }
     email: resend.Emails.SendResponse = resend.Emails.send(params)
     return email
+
+
+def format_time(seconds: float) -> str:
+    if seconds < 60:
+        return f"{seconds:.2f} seconds"
+    elif seconds < 3600:
+        return f"{seconds/60:.2f} minutes"
+    else:
+        return f"{seconds/3600:.2f} hours"
 
 
 async def save_batch_results(spec_id: str, batch_results: list[list[dict]]):
@@ -103,10 +109,12 @@ async def save_batch_results(spec_id: str, batch_results: list[list[dict]]):
             is_primary = content.get('is_primary', False)
             pages_analyzed = content.get('pages_analyzed', [])
 
-            start_index = split_custom_id[-2] if len(pages_analyzed) > 1 else split_custom_id[-1]
+            start_index = split_custom_id[-2] if len(
+                pages_analyzed) > 1 else split_custom_id[-1]
             end_index = split_custom_id[-1]
 
-            full_range = [page for page in range(int(start_index), int(end_index) + 1)]
+            full_range = [page for page in range(
+                int(start_index), int(end_index) + 1)]
 
             if is_primary:
                 sections_with_primary += 1
@@ -152,13 +160,72 @@ async def save_batch_results(spec_id: str, batch_results: list[list[dict]]):
     return batch_results
 
 
-def format_time(seconds: float) -> str:
-    if seconds < 60:
-        return f"{seconds:.2f} seconds"
-    elif seconds < 3600:
-        return f"{seconds/60:.2f} minutes"
-    else:
-        return f"{seconds/3600:.2f} hours"
+async def build_classification_requests(
+    sections: dict[int, dict],
+    spec_id: str,
+    system_prompt: str,
+    dynamic_schema: Callable[[str], Type[BaseModel]],
+    s3: S3Bucket,
+    s3_client: any,
+    model: str = "claude-sonnet-4-5-20250929",
+    max_tokens: int = 1024
+) -> list[dict]:
+    requests = []
+
+    for division_number, division in sections.items():
+        for section_number, section in division.items():
+            for multi in section.get("multi", []):
+                start_index, end_index = multi[:2]
+                last_index = multi[-1]
+
+                safe_section_number = section_number.replace(".", "_")
+                custom_id = f'{division_number}-{safe_section_number}-{spec_id}-{start_index}-{last_index}'
+
+                page_payloads: List[PagePayload] = []
+                pages_analyzed = []
+                async for page in s3.get_converted_pages_generator_with_client(
+                    spec_id, s3_client, start_index, end_index + 1
+                ):
+                    page_payloads.append(
+                        (page["page_index"], page["text"], page["bytes"], page["media_type"]))
+                    pages_analyzed.append(page["page_index"])
+
+                request = await anthropic.build_claude_request(
+                    custom_id,
+                    page_payloads,
+                    system_prompt=anthropic.build_prompt(system_prompt, {"section_number": section_number, "pages_analyzed": pages_analyzed}),
+                    schema=dynamic_schema(section_number),
+                    model=model,
+                    max_tokens=max_tokens
+                )
+                if request is not None:
+                    requests.append(request)
+
+            for single in section.get("single", []):
+                safe_section_number = section_number.replace(".", "_")
+                custom_id = f'{division_number}-{safe_section_number}-{spec_id}-{single}'
+
+                page_payloads: List[PagePayload] = []
+                pages_analyzed = []
+                async for page in s3.get_converted_pages_generator_with_client(
+                    spec_id, s3_client, single, single + 1
+                ):
+                    page_payloads.append(
+                        (page["page_index"], page["text"], page["bytes"], page["media_type"]))
+                    pages_analyzed.append(page["page_index"])
+
+                request = await anthropic.build_claude_request(
+                    custom_id,
+                    page_payloads,
+                    system_prompt=anthropic.build_prompt(system_prompt, {"section_number": section_number, "pages_analyzed": pages_analyzed}),
+                    schema=dynamic_schema(section_number),
+                    model=model,
+                    max_tokens=max_tokens
+                )
+                if request is not None:
+                    requests.append(request)
+
+    return requests
 
 
 async def run_classification_background(spec_id: str, divisions_and_sections: dict):
@@ -173,21 +240,24 @@ async def run_classification_background(spec_id: str, divisions_and_sections: di
         batch_results = []
 
         async with s3.s3_client() as s3_client:
-            create_batch = await anthropic.batch_requests(
+            requests = await build_classification_requests(
                 sections=divisions_and_sections,
                 spec_id=spec_id,
-                system_prompt=classification_prompt,
+                system_prompt=CLASSIFICATION_PROMPT,
+                dynamic_schema=make_classification_schema,
                 s3=s3,
                 s3_client=s3_client,
-                schema=make_classification_schema
+                model="claude-sonnet-4-5-20250929",
+                max_tokens=1024
             )
-            for batch in create_batch:
-                batch_ids.append(batch["batch_id"])
+
+        batches = anthropic.split_batch(requests)
+        for batch in batches:
+            result = await anthropic.create_batch(batch)
+            batch_ids.append(result["batch_id"])
 
         poll_results = await asyncio.gather(*[anthropic.poll_and_fetch_batch_results(batch_id) for batch_id in batch_ids])
         batch_results.extend(poll_results)
-
-        logger.info(f"Classification complete for {spec_id}")
 
         await save_batch_results(spec_id, batch_results)
 
@@ -198,10 +268,3 @@ async def run_classification_background(spec_id: str, divisions_and_sections: di
         completion_time = format_time(time.time() - start_time)
         send_mail(spec_id, completion_time)
         logger.info(f"Classification complete for {spec_id}")
-
-
-# async def main():
-#     spec_id = "e1f1604c-1cf7-4ebc-a5f1-a9c62f70d835"
-#     result = classification_prompt("03.30.00", [1, 2, 3])
-#     return result
-# print(asyncio.run(main()))

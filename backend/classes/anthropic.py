@@ -1,7 +1,12 @@
 from pydantic import BaseModel
 from anthropic import AsyncAnthropic
 from classes import S3Bucket
-import logging, os, asyncio, aiohttp, json, dotenv
+import logging
+import os
+import asyncio
+import aiohttp
+import json
+import dotenv
 from typing import Any, Dict, List, Sequence, Tuple, Optional, Type, Callable
 
 dotenv.load_dotenv()
@@ -17,11 +22,12 @@ MAX_SAFE_TOKENS = int(CONTEXT_WINDOW * CONTEXT_WINDOW_BUFFER)
 ESTIMATED_TOKENS_PER_TEXT_PAGE = 1500
 ESTIMATED_TOKENS_PER_IMAGE = 1000
 
+
 class Anthropic:
     def __init__(self):
         self.client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
-    def prompt(self, prompt: str, **kwargs) -> str:
+    def build_prompt(self, prompt: str, kwargs: dict) -> str:
         return prompt.format(**kwargs) if kwargs else prompt
 
     def page_blocks(self, page_index: int, text: str, image_bytes: Optional[bytes], media_type: Optional[str]) -> List[Dict[str, Any]]:
@@ -130,9 +136,9 @@ class Anthropic:
         total = 0
         for _, text, img_bytes, media_type in pages:
             if text:
-                total += self.ESTIMATED_TOKENS_PER_TEXT_PAGE
-        if img_bytes and media_type == "image/jpeg":
-            total += self.ESTIMATED_TOKENS_PER_IMAGE
+                total += ESTIMATED_TOKENS_PER_TEXT_PAGE
+            if img_bytes and media_type == "image/jpeg":
+                total += ESTIMATED_TOKENS_PER_IMAGE
         return total
 
     async def check_tokens(
@@ -145,12 +151,13 @@ class Anthropic:
         """Returns True if request is within context window, False otherwise."""
         estimate = self.estimate_tokens(pages)
 
-        if estimate < self.MAX_SAFE_TOKENS * 0.5:
+        if estimate < MAX_SAFE_TOKENS * 0.5:
             logger.info(
                 f"Request {custom_id} estimated at {estimate} tokens — skipping exact count")
             return True
 
-        content_blocks = [(text, img, media_type) for _, text, img, media_type in pages]
+        content_blocks = [(text, img, media_type)
+                          for _, text, img, media_type in pages]
         exact_count = await self.count_tokens(content_blocks, system_prompt, model)
 
         if isinstance(exact_count, dict) and "error" in exact_count:
@@ -160,7 +167,7 @@ class Anthropic:
 
         logger.info(f"Request {custom_id} exact token count: {exact_count}")
 
-        if exact_count > self.MAX_SAFE_TOKENS:
+        if exact_count > MAX_SAFE_TOKENS:
             logger.warning(
                 f"Request {custom_id} exceeds context window: {exact_count} / {self.MAX_SAFE_TOKENS} tokens")
             return False
@@ -238,17 +245,14 @@ class Anthropic:
     async def build_claude_request(
         self,
         custom_id: str,
-        section_number: str,
         pages: Sequence[PagePayload],
-        system_prompt: Callable[[str, list[int]], str],
-        schema: Dict[str, Any],
-        # prompt_kwargs: dict = None,
+        system_prompt: str,
+        schema: Type[BaseModel],
         max_tokens: int = 1024,
         model: str = "claude-sonnet-4-5-20250929"
     ) -> Dict[str, Any]:
         # Build a single user message containing multi and single page content blocks
-        content_blocks: List[Dict[str, Any]] = []
-        pages_analyzed = []
+        content_blocks = []
 
         # Check token count before building request
         # NOTE: Develop a way to handle exceeding the context window by splitting the request into multiple requests
@@ -259,16 +263,8 @@ class Anthropic:
         #     return None
 
         for page_index, text, img, media_type in pages:
-            pages_analyzed.append(page_index)
-            content_blocks.extend(self.page_blocks(page_index, text, img, media_type))
-
-        # content_blocks.insert(
-        #     0,
-        #     {
-        #         "type": "text",
-        #         "text": f"Section number being analyzed: {section_number}. Pages provided: {pages_analyzed}. Set pages_analyzed exactly to this list.",
-        #     },
-        # )
+            content_blocks.extend(self.page_blocks(
+                page_index, text, img, media_type))
 
         schema = schema.model_json_schema()
         if "type" not in schema:
@@ -283,7 +279,7 @@ class Anthropic:
                 "system": [
                     {
                         "type": "text",
-                        "text": system_prompt(section_number, pages_analyzed),
+                        "text": system_prompt,
                         "cache_control": {"type": "ephemeral"},
                     }
                 ],
@@ -325,95 +321,11 @@ class Anthropic:
                 "status": "error",
             }
 
-    async def batch_requests(
-        self,
-        sections: dict[int, dict],
-        spec_id: str,
-        system_prompt: Callable[[str, list[int]], str],
-        s3: S3Bucket = None,
-        s3_client: any = None,
-        # schema: Type[BaseModel] = None,
-        schema: Callable[[str], Type[BaseModel]] = None,
-        model: str = "claude-sonnet-4-5-20250929",
-        max_tokens: int = 1024
-    ) -> list[dict]:
-        try:
-            requests = []
-
-            for division_number, division in sections.items():
-                for section_number, section in division.items():
-                    for multi in section.get("multi", []):
-                        start_index, end_index = multi[:2]
-                        last_index = multi[-1]
-
-                        safe_section_number = section_number.replace(".", "_")
-                        custom_id = f'{division_number}-{safe_section_number}-{spec_id}-{start_index}-{last_index}'
-                        logger.info(f"custom_id: {custom_id} ({len(custom_id)} chars)")
-
-                        page_payloads: List[PagePayload] = []
-                        async for page in s3.get_converted_pages_generator_with_client(
-                            spec_id, s3_client, start_index, end_index + 1
-                        ):
-                            page_payloads.append(
-                                (page["page_index"], page["text"], page["bytes"], page["media_type"]))
-
-                        claude_request = await self.build_claude_request(
-                            custom_id,
-                            section_number,
-                            page_payloads,
-                            system_prompt,
-                            schema=schema(section_number),
-                            model=model,
-                            max_tokens=max_tokens
-                        )
-
-                        if claude_request is not None:
-                            requests.append(claude_request)
-
-                    for single in section.get("single", []):
-                        safe_section_number = section_number.replace(".", "_")
-                        custom_id = f'{division_number}-{safe_section_number}-{spec_id}-{single}'
-                        logger.info(f"custom_id: {custom_id} ({len(custom_id)} chars)")
-
-                        page_payloads: List[PagePayload] = []
-                        async for page in s3.get_converted_pages_generator_with_client(
-                            spec_id, s3_client, single, single + 1
-                        ):
-                            page_payloads.append(
-                                (page["page_index"], page["text"], page["bytes"], page["media_type"]))
-                        claude_request = await self.build_claude_request(
-                            custom_id,
-                            section_number,
-                            page_payloads,
-                            system_prompt,
-                            schema=schema(section_number),
-                            model=model,
-                            max_tokens=max_tokens
-                        )
-
-                        if claude_request is not None:
-                            requests.append(claude_request)
-
-            # Check batch size, adjust requests if necessary
-            batches = self.split_batch(requests)
-
-            results = []
-            for request in batches:
-                result = await self.create_batch(request)
-                results.append(result)
-            return results
-
-        except Exception as e:
-            logger.error(f"Error batching requests: {e}")
-            return {
-                "error": str(e),
-                "status": "error",
-            }
-
     async def poll_and_fetch_batch_results(self, batch_id: str) -> list[dict]:
         while True:
             batch = await self.client.messages.batches.retrieve(batch_id)
-            logger.info(f"Batch status: {batch.processing_status}, batch_id: {batch_id}")
+            logger.info(
+                f"Batch status: {batch.processing_status}, batch_id: {batch_id}")
             if batch.processing_status == "ended":
                 break
             await asyncio.sleep(1)
