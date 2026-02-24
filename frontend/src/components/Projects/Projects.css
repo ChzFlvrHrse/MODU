@@ -24,13 +24,11 @@
 }
 
 .projects-grid {
-  padding-top: 16px;
   display: grid;
-  grid-auto-flow: column;
+  padding-top: 16px;
   grid-template-columns: repeat(2, 1fr);
-  grid-template-rows: repeat(auto-fill, minmax(100px, 1fr));
   gap: 16px;
-  overflow-y: auto;
+  align-content: start;
 }
 
 .project-card {

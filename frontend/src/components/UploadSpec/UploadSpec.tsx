@@ -1,16 +1,20 @@
 import React, { useEffect, useRef, useState } from "react";
 import type { DragEvent, ChangeEvent } from "react";
-import { useLocation } from "react-router-dom";
+import moduSquareLogo from './modu_square_logo.png';
 import "./UploadSpec.css";
 
 // MUI Icons
 import { CircularProgress } from "@mui/material";
 import CloseIcon from '@mui/icons-material/Close';
-import UploadIcon from '@mui/icons-material/Upload';
+// import UploadIcon from '@mui/icons-material/Upload';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
-export default function UploadSpec() {
+interface UploadSpecProps {
+    setProjectsComplete: (projectsComplete: boolean) => void;
+}
+
+export default function UploadSpec({ setProjectsComplete }: UploadSpecProps) {
     const [isUploading, setIsUploading] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
     const [isDragging, setIsDragging] = useState(false);
@@ -25,10 +29,10 @@ export default function UploadSpec() {
     const [files, setFiles] = useState<File[]>([]);
     const [error, setError] = useState("");
 
-    const pathname = useLocation().pathname;
 
     const handleUpload = async (files: File[]) => {
         setIsUploading(true);
+        setProjectsComplete(false);
         const formData = new FormData();
         files.forEach((f) => formData.append("pdf", f, f.name));
 
@@ -39,6 +43,9 @@ export default function UploadSpec() {
 
         if (!response.ok) throw new Error(await response.text());
         console.log("upload response", await response.json());
+        setShow(false);
+        setFiles([]);
+        setError("");
         setIsUploading(false);
     };
 
@@ -130,7 +137,7 @@ export default function UploadSpec() {
     if (!show) {
         return (
             <div className="upload-fab" onClick={() => setShow(true)}>
-                <UploadIcon style={{ width: 34, height: 34 }} />
+                <img src={moduSquareLogo} alt="logo" style={{ width: 34, height: 34 }} />
                 <span className="fab-tooltip">Upload New Spec</span>
             </div>
         )

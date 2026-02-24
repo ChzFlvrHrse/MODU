@@ -6,18 +6,31 @@ import './Projects.css';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
-export default function Projects() {
+interface ProjectsProps {
+  projectsComplete: boolean;
+  setProjectsComplete: (projectsComplete: boolean) => void;
+}
+
+export default function Projects({ projectsComplete, setProjectsComplete }: ProjectsProps) {
   const [projects, setProjects] = useState<Project[]>([]);
+
   const [isUploading, setIsUploading] = useState(false);
   const [projectName, setProjectName] = useState("");
   const [projectNameError, setProjectNameError] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState("");
 
+  const checkAllProjectsStatus = (projects_data: Project[]) => {
+    const allComplete = projects_data.every(project => project.status === "complete")
+    setProjectsComplete(allComplete)
+  }
+
   const fetchProjects = async () => {
     const response = await fetch(`${BACKEND_URL}/api/spec/projects`);
     const data = await response.json();
-    setProjects(data.projects ?? []);
+    const projects_data = data.projects ?? [];
+    setProjects(projects_data);
+    checkAllProjectsStatus(projects_data);
   };
 
   function formatDate(iso: string) {
@@ -34,13 +47,13 @@ export default function Projects() {
   }
 
   useEffect(() => {
-    // Run fetchProjects every 10 seconds
+    // Only run interval if all projects are not complete
+    if (projectsComplete) return;
     const interval = setInterval(() => {
       fetchProjects();
-      console.log("projects", projects);
     }, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [projectsComplete]);
 
   useEffect(() => {
     fetchProjects();
@@ -63,7 +76,7 @@ export default function Projects() {
             className="project-card"
           >
             <div className="project-card-top">
-              <span className={`pill pill-${p.status}`}>
+              <span className={`pill pill-${p.status.replace(" ", "-")}`}>
                 {p.status.toUpperCase()}
               </span>
               <div className="project-card-header">
