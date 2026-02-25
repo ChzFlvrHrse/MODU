@@ -1,12 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import type { DragEvent, ChangeEvent } from "react";
-import moduSquareLogo from './modu_square_logo.png';
 import "./UploadSpec.css";
 
 // MUI Icons
 import { CircularProgress } from "@mui/material";
 import CloseIcon from '@mui/icons-material/Close';
-// import UploadIcon from '@mui/icons-material/Upload';
+import UploadIcon from '@mui/icons-material/Upload';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -137,7 +136,7 @@ export default function UploadSpec({ setProjectsComplete }: UploadSpecProps) {
     if (!show) {
         return (
             <div className="upload-fab" onClick={() => setShow(true)}>
-                <img src={moduSquareLogo} alt="logo" style={{ width: 34, height: 34 }} />
+                <UploadIcon fontSize="large" />
                 <span className="fab-tooltip">Upload New Spec</span>
             </div>
         )

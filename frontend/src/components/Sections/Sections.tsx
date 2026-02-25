@@ -116,8 +116,11 @@ export default function Sections() {
                     <button className="back-projects-button" onClick={() => navigate('/projects')}>
                         <ArrowBackIosNew fontSize="large" className="back-projects-button-icon" />
                     </button>
-                    <h1 className="sections-title">Sections</h1>
-                    <h3 className="sections-project-name">Project: {project_name}</h3>
+                    <h1 className="sections-title" >Sections</h1>
+                    <h3 className="sections-project-name">Project: <b style={{ color: "#fff" }}>{project_name}</b></h3>
+                    <p className="sections-subtitle">
+                        Spec ID: <b style={{ color: "#fff" }}>{spec_id}</b>
+                    </p>
                     <p className="sections-subtitle">
                         Browse sections by division. {totalSections} total sections.
                     </p>
