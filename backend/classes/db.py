@@ -7,6 +7,7 @@ import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+
 class ModuDB:
     def __init__(self, db_path: str = "modu_db.db"):
         self.db_path = db_path
@@ -53,17 +54,41 @@ class ModuDB:
 
             # Classification results table
             await conn.execute("""
-                CREATE TABLE IF NOT EXISTS classification_results (
+                CREATE TABLE IF NOT EXISTS classification (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     section_id INTEGER NOT NULL,
                     custom_id TEXT NOT NULL,
-                    is_primary BOOLEAN,
-                    confidence REAL,
-                    reasoning TEXT,
-                    pages_analyzed TEXT,
+                    is_primary BOOLEAN NOT NULL,
+                    confidence REAL NOT NULL,
+                    reasoning TEXT NOT NULL,
+                    pages_analyzed TEXT DEFAULT '[]',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (section_id) REFERENCES sections(id)
-                )
+                );
+            """)
+
+            # Section summaries table
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS section_summaries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    spec_id TEXT NOT NULL,
+                    section_id INTEGER NOT NULL,
+                    section_number TEXT NOT NULL,
+                    section_title TEXT,
+                    overview TEXT,
+                    key_requirements TEXT DEFAULT '[]',
+                    materials TEXT DEFAULT '[]',
+                    submittals TEXT DEFAULT '[]',
+                    testing TEXT DEFAULT '[]',
+                    related_sections TEXT DEFAULT '[]',
+                    pages_summarized TEXT DEFAULT '[]',
+                    pages_not_summarized TEXT DEFAULT '[]',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (spec_id) REFERENCES projects(spec_id),
+                    FOREIGN KEY (section_id) REFERENCES sections(id)
+                );
             """)
 
             await conn.commit()
@@ -131,12 +156,13 @@ class ModuDB:
                 })
             return projects
 
-    async def get_section(self, section_id: int) -> Optional[Dict]:
+    async def get_section(self, spec_id: str, section_number: str) -> Optional[Dict]:
         """Get section data"""
         async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
             cursor = await conn.execute("""
-                SELECT * FROM sections WHERE id = ?
-            """, (section_id,))
+                SELECT * FROM sections WHERE spec_id = ? AND section_number = ?
+            """, (spec_id, section_number))
             row = await cursor.fetchone()
             return dict(row) if row else None
 
@@ -193,12 +219,15 @@ class ModuDB:
                 logger.info(f"Existing: {existing}")
                 if existing:
                     existing_id = existing['id']
-                    existing_primary_pages = json.loads(existing['primary_pages'] or '[]')
-                    existing_reference_pages = json.loads(existing['reference_pages'] or '[]')
+                    existing_primary_pages = json.loads(
+                        existing['primary_pages'] or '[]')
+                    existing_reference_pages = json.loads(
+                        existing['reference_pages'] or '[]')
                     new_primary_pages = existing_primary_pages + primary_pages
                     new_reference_pages = existing_reference_pages + reference_pages
 
-                    status = "complete" if len(new_primary_pages) + len(new_reference_pages) >= existing['total_pages'] else "pending"
+                    status = "complete" if len(
+                        new_primary_pages) + len(new_reference_pages) >= existing['total_pages'] else "pending"
 
                     await conn.execute("""
                         UPDATE sections
@@ -300,7 +329,7 @@ class ModuDB:
         """Save individual classification result"""
         async with aiosqlite.connect(self.db_path) as conn:
             await conn.execute("""
-                INSERT INTO classification_results
+                INSERT INTO classification
                 (section_id, custom_id, is_primary, confidence, reasoning, pages_analyzed)
                 VALUES (?, ?, ?, ?, ?, ?)
             """, (
@@ -313,15 +342,15 @@ class ModuDB:
             ))
             await conn.commit()
 
-    async def update_classification_status(self, section_id: int, status: str):
-        """Update individual classification result"""
-        async with aiosqlite.connect(self.db_path) as conn:
-            await conn.execute("""
-                UPDATE sections
-                SET status = ?
-                WHERE id = ?
-            """, (status, section_id))
-            await conn.commit()
+    # async def update_classification_status(self, section_id: int, status: str):
+    #     """Update individual classification result"""
+    #     async with aiosqlite.connect(self.db_path) as conn:
+    #         await conn.execute("""
+    #             UPDATE sections
+    #             SET status = ?
+    #             WHERE id = ?
+    #         """, (status, section_id))
+    #         await conn.commit()
 
     async def update_project_summary(self, spec_id: str):
         """Update project statistics"""
@@ -368,6 +397,39 @@ class ModuDB:
             if row:
                 return dict(row)
             return None
+
+    async def get_section_summary(self, spec_id: str, section_number: str) -> Optional[Dict]:
+        """Get section summary"""
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute("""
+                SELECT * FROM section_summaries WHERE spec_id = ? AND section_number = ?
+            """, (spec_id, section_number))
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+    async def save_section_summary(self, spec_id: str, section_summary: dict):
+        """Save section summary"""
+        async with aiosqlite.connect(self.db_path) as conn:
+            section_id = await conn.execute("""
+                INSERT INTO section_summaries (spec_id, section_id, section_number, section_title, overview, key_requirements, materials, submittals, testing, related_sections, pages_summarized, pages_not_summarized)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                spec_id,
+                section_summary['section_id'],
+                section_summary['section_number'],
+                section_summary['section_title'],
+                section_summary['overview'],
+                json.dumps(section_summary['key_requirements']),
+                json.dumps(section_summary['materials']),
+                json.dumps(section_summary['submittals']),
+                json.dumps(section_summary['testing']),
+                json.dumps(section_summary['related_sections']),
+                json.dumps(section_summary['pages_summarized']),
+                json.dumps(section_summary['pages_not_summarized'])
+            ))
+            await conn.commit()
+        return section_id
 
 
 db = ModuDB()

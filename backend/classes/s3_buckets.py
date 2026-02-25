@@ -787,6 +787,26 @@ class S3Bucket(PDFPageConverter):
     async def delete_object(self, key: str):
         await self.s3_client().delete_object(Bucket=self.bucket_name, Key=key)
 
+    def group_contiguous_pages(self, pages: list[int]) -> tuple[list[list[int]], bool]:
+        if not pages:
+            return [], True
+
+        sorted_pages = sorted(pages)
+        groups = []
+        current_group = [sorted_pages[0]]
+        all_contiguous = True
+
+        for page in sorted_pages[1:]:
+            if page == current_group[-1] + 1:
+                current_group.append(page)
+            else:
+                all_contiguous = False
+                groups.append(current_group)
+                current_group = [page]
+        groups.append(current_group)
+
+        return groups, all_contiguous
+
 # if __name__ == "__main__":
 #     async def main():
 #         s3 = S3Bucket()

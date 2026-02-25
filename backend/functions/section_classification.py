@@ -1,9 +1,14 @@
-from typing import Dict
+from typing import Any, Dict
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
-import logging, asyncio, time, os, resend
-from classes import S3Bucket, Anthropic, db
-from typing import Callable, Type, List, Tuple, Optional
+from pydantic import BaseModel
+import logging
+import asyncio
+import time
+import os
+import resend
+from prompts import CLASSIFICATION_PROMPT
+from typing import Callable, Type, List
+from classes import S3Bucket, Anthropic, db, make_classification_schema
 
 load_dotenv()
 
@@ -11,55 +16,6 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 anthropic = Anthropic()
-
-PagePayload = Tuple[int, str, Optional[bytes], Optional[str]]
-
-def make_classification_schema(section_number: str) -> type[BaseModel]:
-    class PageClassification(BaseModel):
-        reasoning: str = Field(
-            description="Brief explanation of the classification decision"
-        )
-        pages_analyzed: list[int] = Field(
-            description="List of page numbers that were analyzed"
-        )
-        confidence: float = Field(
-            description="Confidence level in the classification between 0 and 1"
-        )
-        is_primary: bool = Field(
-            description=f"True ONLY if the page contains the primary specification body for section {section_number} specifically. Must be false if reasoning concludes content belongs to a different section."
-        )
-    return PageClassification
-
-
-CLASSIFICATION_PROMPT = """
-You are classifying construction specification pages.
-
-Determine if these pages contain the PRIMARY specification body for the given section number, or if they are just references/context.
-
-PRIMARY specification content has:
-- Section title header (e.g., "SECTION {section_number}")
-- CSI structure: "PART 1 - GENERAL", "PART 2 - PRODUCTS", "PART 3 - EXECUTION"
-- Dense technical requirements, materials, installation procedures
-- Numbered subsections (1.1, 1.2, 2.1, etc.)
-- Submittal requirements, quality standards, testing procedures
-- Forms, templates, or worksheets that ARE the section deliverable (e.g., submittal forms, request forms, checklists)
-- Administrative procedures or requirements that constitute the section content
-- Any substantive content that defines what this section requires
-
-NOT primary content:
-- Table of contents pages - even if they list this section number, a TOC is NEVER primary content
-- Single-line references ("See Section {section_number}")
-- Substitution/product lists
-- Cross-references from other sections
-- Divider pages with minimal content
-- Pages whose primary content belongs to a different section number than the one being analyzed
-
-Section number being analyzed: {section_number}. Only classify as primary if this page contains specification content FOR section {section_number} specifically. Pages provided: {pages_analyzed}.
-
-IMPORTANT: Your JSON output must match your reasoning. If your reasoning concludes the page is NOT primary for the section being analyzed, is_primary MUST be false. If you identify the page belongs to a different section number, is_primary MUST be false regardless of how dense or technical the content is.
-
-Note: You may only see the first 2-3 pages of a longer section. If those pages show clear PRIMARY indicators, classify as primary.
-"""
 
 
 def send_mail(spec_id: str, completion_time: float) -> Dict:
@@ -85,32 +41,38 @@ def format_time(seconds: float) -> str:
         return f"{seconds/3600:.2f} hours"
 
 
-async def save_batch_results(spec_id: str, batch_results: list[list[dict]]):
+async def save_batch_results(spec_id: str, batch_results: list[list[dict]]) -> dict[str, Any]:
     total_sections = set()
     total_divisions = set()
     sections_with_primary = 0
     sections_reference_only = 0
     errors = 0
 
+    failed_custom_ids = set()
+
     for batch in batch_results:
         for item in batch:
             custom_id = item.get('custom_id', '')
 
-            content = item.get('content')
-            if not content:
-                logger.error(f"Missing content for {custom_id}")
+            logger.info(f"BATCH ITEM: {item}")
+            if item.get('type') == 'errored':
+                logger.error(f"Errored for {custom_id}: {item.get('error')}")
                 errors += 1
+                failed_custom_ids.add(custom_id)
                 continue
 
             split_custom_id = custom_id.split('-')
 
+            content = item.get('content')
             division = split_custom_id[0]
             section_number = split_custom_id[1].replace("_", ".")
             is_primary = content.get('is_primary', False)
             pages_analyzed = content.get('pages_analyzed', [])
 
-            start_index = split_custom_id[-2] if len(
-                pages_analyzed) > 1 else split_custom_id[-1]
+            custom_id_length = len(split_custom_id)
+
+            # If there are multiple pages analyzed, use the start and end index of the last page
+            start_index = split_custom_id[-2] if custom_id_length == 9 else split_custom_id[-1]
             end_index = split_custom_id[-1]
 
             full_range = [page for page in range(
@@ -156,8 +118,11 @@ async def save_batch_results(spec_id: str, batch_results: list[list[dict]]):
         errors=errors
     )
 
-    logger.info(f"Classification complete for {spec_id}")
-    return batch_results
+    logger.info(f"failed_custom_ids: {failed_custom_ids}")
+    return {
+        "batch_results": batch_results,
+        "failed_custom_ids": list(failed_custom_ids)
+    }
 
 
 async def build_classification_requests(
@@ -181,54 +146,88 @@ async def build_classification_requests(
                 safe_section_number = section_number.replace(".", "_")
                 custom_id = f'{division_number}-{safe_section_number}-{spec_id}-{start_index}-{last_index}'
 
-                page_payloads: List[PagePayload] = []
+                content_blocks: List[dict] = []
                 pages_analyzed = []
                 async for page in s3.get_converted_pages_generator_with_client(
                     spec_id, s3_client, start_index, end_index + 1
                 ):
-                    page_payloads.append(
-                        (page["page_index"], page["text"], page["bytes"], page["media_type"]))
+                    content_blocks.extend(
+                        anthropic.page_blocks(page["page_index"], page["text"], page["bytes"], page["media_type"]))
                     pages_analyzed.append(page["page_index"])
 
                 request = await anthropic.build_claude_request(
                     custom_id,
-                    page_payloads,
-                    system_prompt=anthropic.build_prompt(system_prompt, {"section_number": section_number, "pages_analyzed": pages_analyzed}),
+                    content_blocks,
+                    system_prompt=anthropic.build_prompt(system_prompt, {
+                                                         "section_number": section_number, "pages_analyzed": pages_analyzed}),
                     schema=dynamic_schema(section_number),
                     model=model,
                     max_tokens=max_tokens
                 )
-                if request is not None:
-                    requests.append(request)
+                requests.append(request)
 
             for single in section.get("single", []):
                 safe_section_number = section_number.replace(".", "_")
                 custom_id = f'{division_number}-{safe_section_number}-{spec_id}-{single}'
 
-                page_payloads: List[PagePayload] = []
+                content_blocks: List[dict] = []
                 pages_analyzed = []
                 async for page in s3.get_converted_pages_generator_with_client(
                     spec_id, s3_client, single, single + 1
                 ):
-                    page_payloads.append(
-                        (page["page_index"], page["text"], page["bytes"], page["media_type"]))
+                    content_blocks.extend(
+                        anthropic.page_blocks(page["page_index"], page["text"], page["bytes"], page["media_type"]))
                     pages_analyzed.append(page["page_index"])
 
                 request = await anthropic.build_claude_request(
                     custom_id,
-                    page_payloads,
-                    system_prompt=anthropic.build_prompt(system_prompt, {"section_number": section_number, "pages_analyzed": pages_analyzed}),
+                    content_blocks,
+                    system_prompt=anthropic.build_prompt(system_prompt, {
+                                                         "section_number": section_number, "pages_analyzed": pages_analyzed}),
                     schema=dynamic_schema(section_number),
                     model=model,
                     max_tokens=max_tokens
                 )
-                if request is not None:
-                    requests.append(request)
+
+                requests.append(request)
 
     return requests
 
 
-async def run_classification_background(spec_id: str, divisions_and_sections: dict):
+def structure_failed_custom_ids(failed_custom_ids: list[str]):
+    """Structure failed custom ids for background task"""
+    divisions_and_sections = {}
+
+    for failed_custom_id in failed_custom_ids:
+        split_custom_id = failed_custom_id.split('-')
+
+        division_number = split_custom_id[0]
+        section_number = split_custom_id[1].replace("_", ".")
+
+        custom_id_length = len(split_custom_id)
+
+        # If there are multiple pages analyzed, use the start and end index of the last page
+        start_index = split_custom_id[-2] if custom_id_length == 9 else split_custom_id[-1]
+        end_index = split_custom_id[-1]
+
+        if division_number not in divisions_and_sections:
+            divisions_and_sections[division_number] = {}
+
+        if section_number not in divisions_and_sections[division_number]:
+            divisions_and_sections[division_number][section_number] = {
+                "multi": [], "single": []}
+
+        if custom_id_length == 9:
+            divisions_and_sections[division_number][section_number]['multi'].append(
+                [page for page in range(int(start_index), int(end_index) + 1)])
+        else:
+            divisions_and_sections[division_number][section_number]['single'].append(
+                int(start_index))
+
+    return divisions_and_sections
+
+
+async def run_classification_background(spec_id: str, divisions_and_sections: dict, retry: int = 0, max_retries: int = 3):
     """Background task to classify all sections"""
     s3 = S3Bucket()
     start_time = time.time()
@@ -259,12 +258,26 @@ async def run_classification_background(spec_id: str, divisions_and_sections: di
         poll_results = await asyncio.gather(*[anthropic.poll_and_fetch_batch_results(batch_id) for batch_id in batch_ids])
         batch_results.extend(poll_results)
 
-        await save_batch_results(spec_id, batch_results)
+        results = await save_batch_results(spec_id, batch_results)
+        batch_results = results.get("batch_results", [])
+        failed_custom_ids = results.get("failed_custom_ids", set())
+
+        if failed_custom_ids and retry < max_retries:
+            logger.info(f"Failed custom ids found: {failed_custom_ids}, retrying...")
+            structured_failed_custom_ids = structure_failed_custom_ids(
+                failed_custom_ids)
+            asyncio.create_task(
+                run_classification_background(
+                spec_id,
+                structured_failed_custom_ids,
+                retry + 1,
+                max_retries
+            ))
+        else:
+            completion_time = format_time(time.time() - start_time)
+            send_mail(spec_id, completion_time)
+            logger.info(f"Classification complete for {spec_id}")
 
     except Exception as e:
         logger.error(f"Classification failed for {spec_id}: {e}")
         return {"error": f"Classification failed for {spec_id}: {e}"}, 500
-    finally:
-        completion_time = format_time(time.time() - start_time)
-        send_mail(spec_id, completion_time)
-        logger.info(f"Classification complete for {spec_id}")

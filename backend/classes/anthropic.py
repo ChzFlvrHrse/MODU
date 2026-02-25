@@ -1,13 +1,12 @@
 from pydantic import BaseModel
 from anthropic import AsyncAnthropic
-from classes import S3Bucket
 import logging
 import os
 import asyncio
 import aiohttp
 import json
 import dotenv
-from typing import Any, Dict, List, Sequence, Tuple, Optional, Type, Callable
+from typing import Any, Dict, List, Sequence, Tuple, Optional, Type
 
 dotenv.load_dotenv()
 
@@ -47,9 +46,9 @@ class Anthropic:
             })
         return blocks
 
-    def enforce_no_additional_properties(self, schema: Dict[str, Any]) -> None:
+    def enforce_no_additional_properties(self, schema: Any) -> None:
         if not isinstance(schema, dict):
-            return
+            return None
 
         if schema.get("type") == "object":
             schema.setdefault("additionalProperties", False)
@@ -70,6 +69,38 @@ class Anthropic:
         # defs
         for sub in (schema.get("$defs") or {}).values():
             self.enforce_no_additional_properties(sub)
+
+    async def claude(
+        self,
+        content_blocks: list[dict],
+        system_prompt: str,
+        schema: Type[BaseModel],
+        max_tokens: int = 1024,
+        model: str = "claude-sonnet-4-5-20250929"
+    ) -> dict:
+        try:
+            response = await self.client.messages.parse(
+                model=model,
+                max_tokens=max_tokens,
+                system=system_prompt,
+                output_format=schema,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": content_blocks,
+                    }
+                ]
+            )
+            return {
+                "status": "success",
+                "response": response.parsed_output.model_dump(),
+            }
+        except Exception as e:
+            logger.error(f"Error calling Claude: {e}")
+            return {
+                "status": "error",
+                "error": str(e),
+            }
 
     def split_batch(self, requests: Dict[str, Any]) -> Dict[str, Any]:
         batch_size = self.measure_batch_size(requests)
@@ -245,15 +276,13 @@ class Anthropic:
     async def build_claude_request(
         self,
         custom_id: str,
-        pages: Sequence[PagePayload],
+        # pages: Sequence[PagePayload],
+        content_blocks: list[dict],
         system_prompt: str,
         schema: Type[BaseModel],
         max_tokens: int = 1024,
         model: str = "claude-sonnet-4-5-20250929"
     ) -> Dict[str, Any]:
-        # Build a single user message containing multi and single page content blocks
-        content_blocks = []
-
         # Check token count before building request
         # NOTE: Develop a way to handle exceeding the context window by splitting the request into multiple requests
         # NOTE: Option 1: Split the request into multiple requests, custom_id will have -1, -2, -3, etc tacked on to the end, then re-run the results through claude to consolidate the results or just combine them manually
@@ -262,9 +291,9 @@ class Anthropic:
         # if not within_context:
         #     return None
 
-        for page_index, text, img, media_type in pages:
-            content_blocks.extend(self.page_blocks(
-                page_index, text, img, media_type))
+        # for page_index, text, img, media_type in pages:
+        #     content_blocks.extend(self.page_blocks(
+        #         page_index, text, img, media_type))
 
         schema = schema.model_json_schema()
         if "type" not in schema:
@@ -298,9 +327,9 @@ class Anthropic:
             },
         }
 
-    async def create_batch(self, requests: list[dict]) -> dict:
+    async def create_batch(self, claude_requests: list[dict]) -> dict:
         try:
-            batch = await self.client.messages.batches.create(requests=requests)
+            batch = await self.client.messages.batches.create(requests=claude_requests)
 
             return {
                 "batch_id": batch.id,
@@ -358,7 +387,7 @@ class Anthropic:
                     parsed.append({
                         "custom_id": custom_id,
                         "type": rtype,
-                        "error": result.get("error"),
+                        "error": result.get("error")
                     })
                     continue
 
