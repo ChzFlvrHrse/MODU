@@ -21,7 +21,7 @@ export default function Projects({ projectsComplete, setProjectsComplete }: Proj
   const [error, setError] = useState("");
 
   const checkAllProjectsStatus = (projects_data: Project[]) => {
-    const allComplete = projects_data.every(project => project.status === "complete")
+    const allComplete = projects_data.every(project => project.classification_status === "complete" && project.summary_status === "complete" && project.errors === 0)
     setProjectsComplete(allComplete)
   }
 
@@ -76,8 +76,11 @@ export default function Projects({ projectsComplete, setProjectsComplete }: Proj
             className="project-card"
           >
             <div className="project-card-top">
-              <span className={`pill pill-${p.status.replace(" ", "-")}`}>
-                {p.status.toUpperCase()}
+              <span className={`pill pill-${p.classification_status}`}>
+                Classification: {p.classification_status?.toUpperCase() ?? "UNKNOWN"}
+              </span>
+              <span className={`pill pill-${p.summary_status}`}>
+                Summary: {p.summary_status?.toUpperCase() ?? "UNKNOWN"}
               </span>
               <div className="project-card-header">
                 <span className="project-name">{p.project_name}</span>

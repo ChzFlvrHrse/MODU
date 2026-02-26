@@ -135,6 +135,7 @@
     background: rgba(0, 0, 0, 0.24);
     border-color: rgba(255, 255, 255, 0.14);
     transform: translateY(-1px);
+    cursor: pointer;
 }
 
 .division-item.active {
@@ -184,6 +185,7 @@
 }
 
 .section-card {
+    cursor: pointer;
     border-radius: 14px;
     border: 1px solid rgba(255, 255, 255, 0.08);
     background: rgba(0, 0, 0, 0.18);

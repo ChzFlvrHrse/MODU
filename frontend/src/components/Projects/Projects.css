@@ -80,7 +80,7 @@
   border-color: rgba(46, 204, 113, 0.35);
 }
 
-.pill-in-progress {
+.pill-pending {
   background: rgba(52, 152, 219, 0.12);
   border-color: rgba(52, 152, 219, 0.35);
 }

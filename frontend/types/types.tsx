@@ -5,8 +5,9 @@ export interface Project {
     total_divisions: number;
     total_sections: number;
     sections_with_primary: number;
-    sections_reference_only: number;
-    status: string;
+    sections_with_reference: number;
+    classification_status: string;
+    summary_status: string;
     errors: number;
     created_at: string;
     updated_at: string;
@@ -20,8 +21,8 @@ export interface Section {
     section_name: string;
     primary_pages: number[];
     reference_pages: number[];
-    summary: string | null;
-    status: string | null;
+    classification_status: string;
+    summary_status: string;
     created_at: string;
     updated_at: string | null;
 }
