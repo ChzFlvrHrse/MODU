@@ -20,19 +20,19 @@ class ModuDB:
                 CREATE TABLE IF NOT EXISTS projects (
                     spec_id TEXT PRIMARY KEY,
                     project_name TEXT,
-                    total_divisions INTEGER,
-                    total_sections INTEGER,
-                    sections_with_primary INTEGER,
-                    sections_reference_only INTEGER,
-                    errors INTEGER,
+                    total_divisions INTEGER DEFAULT 0,
+                    total_sections INTEGER DEFAULT 0,
+                    sections_with_primary INTEGER DEFAULT 0,
+                    sections_with_reference INTEGER DEFAULT 0,
+                    errors INTEGER DEFAULT 0,
+                    classification_status TEXT DEFAULT 'pending',
+                    summary_status TEXT DEFAULT 'pending',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP,
-                    status TEXT DEFAULT 'pending'
+                    updated_at TIMESTAMP
                 )
             """)
 
             # Sections table
-            # custom_id is used to identify the section in the batch requests to anthropic
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS sections (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,8 +43,8 @@ class ModuDB:
                     primary_pages TEXT,
                     reference_pages TEXT,
                     total_pages INTEGER,
-                    summary TEXT,
-                    status TEXT,
+                    classification_status TEXT DEFAULT 'pending',
+                    summary_status TEXT DEFAULT 'pending',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP,
                     FOREIGN KEY (spec_id) REFERENCES projects(spec_id),
@@ -93,42 +93,85 @@ class ModuDB:
 
             await conn.commit()
 
-    async def save_project(self, spec_id: str, project_name: str, status: str = 'in progress'):
+    async def save_project(
+        self,
+        spec_id: str,
+        project_name: str,
+        classification_status: str = None,
+        summary_status: str = None,
+        total_divisions: int = None,
+        total_sections: int = None,
+        sections_with_primary: int = None,
+        sections_with_reference: int = None,
+        errors: int = None
+    ):
         """Initialize or update project record"""
+        fields = {
+            "project_name": project_name,
+            "classification_status": classification_status,
+            "summary_status": summary_status,
+            "total_divisions": total_divisions,
+            "total_sections": total_sections,
+            "sections_with_primary": sections_with_primary,
+            "sections_with_reference": sections_with_reference,
+            "errors": errors
+        }
+
+        updates = {k: v for k, v in fields.items() if v is not None}
+
+        columns = ", ".join(["spec_id"] + list(updates.keys()))
+        placeholders = ", ".join(["?"] * (len(updates) + 1))
+        set_clause = ", ".join(f"{k} = ?" for k in updates)
+        values = [spec_id] + list(updates.values())
+
         async with aiosqlite.connect(self.db_path) as conn:
-            await conn.execute("""
-                INSERT INTO projects (spec_id, project_name, status)
-                VALUES (?, ?, ?)
+            await conn.execute(f"""
+                INSERT INTO projects ({columns})
+                VALUES ({placeholders})
                 ON CONFLICT(spec_id) DO UPDATE SET
-                    project_name = ?,
-                    status = ?,
+                    {set_clause},
                     updated_at = CURRENT_TIMESTAMP
-            """, (spec_id, project_name, status, project_name, status))
+            """, values + list(updates.values()))
             await conn.commit()
         return spec_id
 
-    async def update_project(self,
-                             spec_id: str,
-                             status: str = 'in progress',
-                             total_divisions: int = 0,
-                             total_sections: int = 0,
-                             sections_with_primary: int = 0,
-                             sections_reference_only: int = 0,
-                             errors: int = 0
-                             ):
+    async def update_project(
+        self,
+        spec_id: str,
+        project_name: str = None,
+        classification_status: str = None,
+        summary_status: str = None,
+        total_divisions: int = None,
+        total_sections: int = None,
+        sections_with_primary: int = None,
+        sections_with_reference: int = None,
+        errors: int = None
+    ):
         """Update project record"""
+        fields = {
+            "project_name": project_name,
+            "classification_status": classification_status,
+            "summary_status": summary_status,
+            "total_divisions": total_divisions,
+            "total_sections": total_sections,
+            "sections_with_primary": sections_with_primary,
+            "sections_with_reference": sections_with_reference,
+            "errors": errors
+        }
+
+        updates = {k: v for k, v in fields.items() if v is not None}
+        if not updates:
+            return
+
+        set_clause = ", ".join(f"{k} = ?" for k in updates)
+        values = list(updates.values()) + [spec_id]
+
         async with aiosqlite.connect(self.db_path) as conn:
-            await conn.execute("""
+            await conn.execute(f"""
                 UPDATE projects
-                SET status = ?,
-                    updated_at = CURRENT_TIMESTAMP,
-                    total_divisions = ?,
-                    total_sections = ?,
-                    sections_with_primary = ?,
-                    sections_reference_only = ?,
-                    errors = ?
+                SET {set_clause}, updated_at = CURRENT_TIMESTAMP
                 WHERE spec_id = ?
-            """, (status, total_divisions, total_sections, sections_with_primary, sections_reference_only, errors, spec_id))
+            """, values)
             await conn.commit()
 
     async def get_projects(self) -> List[Dict]:
@@ -148,11 +191,12 @@ class ModuDB:
                     "total_divisions": row['total_divisions'],
                     "total_sections": row['total_sections'],
                     "sections_with_primary": row['sections_with_primary'],
-                    "sections_reference_only": row['sections_reference_only'],
+                    "sections_with_reference": row['sections_with_reference'],
                     "errors": row['errors'],
                     "created_at": row['created_at'],
                     "updated_at": row['updated_at'],
-                    "status": row['status']
+                    "classification_status": row['classification_status'],
+                    "summary_status": row['summary_status']
                 })
             return projects
 
@@ -166,7 +210,16 @@ class ModuDB:
             row = await cursor.fetchone()
             return dict(row) if row else None
 
-    async def save_section(self, spec_id: str, division: str, section_number: str, section_name: str, total_pages: int, status: str = "pending") -> int:
+    async def save_section(
+        self,
+        spec_id: str,
+        division: str,
+        section_number: str,
+        section_name: str,
+        total_pages: int,
+        classification_status: str = "pending",
+        summary_status: str = "pending"
+    ) -> int:
         async with aiosqlite.connect(self.db_path) as conn:
             # First, try to get existing section
             cursor = await conn.execute("""
@@ -182,18 +235,19 @@ class ModuDB:
                     SET division = ?,
                         section_name = ?,
                         total_pages = ?,
-                        status = ?,
+                        classification_status = ?,
+                        summary_status = ?,
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
                 """, (division, section_name,
-                      total_pages, status, existing[0]))
+                      total_pages, classification_status, summary_status, existing[0]))
                 section_id = existing[0]
             else:
                 await conn.execute("""
                     INSERT INTO sections (spec_id, division, section_number, section_name,
-                                         total_pages, status)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (spec_id, division, section_number, section_name, total_pages, status))
+                                         total_pages, classification_status, summary_status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (spec_id, division, section_number, section_name, total_pages, classification_status, summary_status))
 
                 cursor = await conn.execute("SELECT last_insert_rowid()")
                 section_id = (await cursor.fetchone())[0]
@@ -201,12 +255,13 @@ class ModuDB:
             await conn.commit()
         return section_id
 
-    async def update_section_pages(self, spec_id: str, section_data: dict) -> dict:
-        section_number = section_data['section_number']
-        status = section_data['status']
-        primary_pages = section_data['primary_pages']
-        reference_pages = section_data['reference_pages']
-
+    async def update_section_pages(
+        self,
+        spec_id: str,
+        section_number: str,
+        primary_pages: list,
+        reference_pages: list,
+    ) -> dict:
         try:
             async with aiosqlite.connect(self.db_path) as conn:
                 conn.row_factory = aiosqlite.Row
@@ -216,46 +271,89 @@ class ModuDB:
                 """, (spec_id, section_number))
 
                 existing = await cursor.fetchone()
-                logger.info(f"Existing: {existing}")
-                if existing:
-                    existing_id = existing['id']
-                    existing_primary_pages = json.loads(
-                        existing['primary_pages'] or '[]')
-                    existing_reference_pages = json.loads(
-                        existing['reference_pages'] or '[]')
-                    new_primary_pages = existing_primary_pages + primary_pages
-                    new_reference_pages = existing_reference_pages + reference_pages
-
-                    status = "complete" if len(
-                        new_primary_pages) + len(new_reference_pages) >= existing['total_pages'] else "pending"
-
-                    await conn.execute("""
-                        UPDATE sections
-                        SET primary_pages = ?,
-                            reference_pages = ?,
-                            status = ?,
-                            updated_at = CURRENT_TIMESTAMP
-                        WHERE id = ?
-                    """, (json.dumps(new_primary_pages), json.dumps(new_reference_pages),
-                          status, existing_id))
-                    section_id = existing_id
-                else:
+                if not existing:
                     return {
                         "error": "Section not found",
                         "section_id": None
                     }
 
+                existing_id = existing['id']
+                existing_primary_pages = json.loads(
+                    existing['primary_pages'] or '[]')
+                existing_reference_pages = json.loads(
+                    existing['reference_pages'] or '[]')
+                new_primary_pages = existing_primary_pages + primary_pages
+                new_reference_pages = existing_reference_pages + reference_pages
+
+                classification_status = "complete" if len(
+                    new_primary_pages) + len(new_reference_pages) >= existing['total_pages'] else "pending"
+
+                await conn.execute("""
+                    UPDATE sections
+                    SET primary_pages = ?,
+                        reference_pages = ?,
+                        classification_status = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """, (json.dumps(new_primary_pages), json.dumps(new_reference_pages),
+                      classification_status, existing_id))
+
                 await conn.commit()
+
             return {
-                "section_id": section_id,
-                "status": status
+                "section_id": existing_id,
+                "classification_status": classification_status
             }
+
         except Exception as e:
             logger.error(f"Error updating section pages: {e}")
             return {
                 "error": str(e),
                 "section_id": None,
-                "status": "error"
+                "classification_status": "error"
+            }
+
+    async def update_section_summary_status(
+        self,
+        spec_id: str,
+        section_number: str,
+        summary_status: str = 'complete',
+    ) -> dict:
+        try:
+            async with aiosqlite.connect(self.db_path) as conn:
+                conn.row_factory = aiosqlite.Row
+                cursor = await conn.execute("""
+                    SELECT id FROM sections
+                    WHERE spec_id = ? AND section_number = ?
+                """, (spec_id, section_number))
+
+                existing = await cursor.fetchone()
+                if not existing:
+                    return {
+                        "error": "Section not found",
+                        "section_id": None
+                    }
+
+                await conn.execute("""
+                    UPDATE sections
+                    SET summary_status = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """, (summary_status, existing['id']))
+
+                await conn.commit()
+
+            return {
+                "section_id": existing['id'],
+                "summary_status": summary_status
+            }
+
+        except Exception as e:
+            logger.error(f"Error updating section summary status: {e}")
+            return {
+                "error": str(e),
+                "section_id": None,
+                "summary_status": "error"
             }
 
     async def get_all_sections(self, spec_id: str) -> List[Dict]:
@@ -284,8 +382,8 @@ class ModuDB:
                     "section_name": row['section_name'],
                     "primary_pages": json.loads(row['primary_pages'] or '[]'),
                     "reference_pages": json.loads(row['reference_pages'] or '[]'),
-                    "summary": row['summary'],
-                    "status": row['status'],
+                    "classification_status": row['classification_status'],
+                    "summary_status": row['summary_status'],
                     "created_at": row['created_at'],
                     "updated_at": row['updated_at']
                 })
@@ -318,8 +416,8 @@ class ModuDB:
                     "section_name": row['section_name'],
                     "primary_pages": json.loads(row['primary_pages'] or '[]'),
                     "reference_pages": json.loads(row['reference_pages'] or '[]'),
-                    "summary": row['summary'],
-                    "status": row['status'],
+                    "classification_status": row['classification_status'],
+                    "summary_status": row['summary_status'],
                     "created_at": row['created_at'],
                     "updated_at": row['updated_at']
                 })
@@ -342,53 +440,13 @@ class ModuDB:
             ))
             await conn.commit()
 
-    # async def update_classification_status(self, section_id: int, status: str):
-    #     """Update individual classification result"""
-    #     async with aiosqlite.connect(self.db_path) as conn:
-    #         await conn.execute("""
-    #             UPDATE sections
-    #             SET status = ?
-    #             WHERE id = ?
-    #         """, (status, section_id))
-    #         await conn.commit()
-
-    async def update_project_summary(self, spec_id: str):
-        """Update project statistics"""
-        async with aiosqlite.connect(self.db_path) as conn:
-            # Count sections
-            cursor = await conn.execute("""
-                SELECT COUNT(*) FROM sections WHERE spec_id = ?
-            """, (spec_id,))
-            total_sections = (await cursor.fetchone())[0]
-
-            # Count sections with primary pages
-            cursor = await conn.execute("""
-                SELECT COUNT(*) FROM sections
-                WHERE spec_id = ? AND primary_pages != '[]'
-            """, (spec_id,))
-            with_primary = (await cursor.fetchone())[0]
-
-            reference_only = total_sections - with_primary
-
-            await conn.execute("""
-                UPDATE projects
-                SET total_sections = ?,
-                    sections_with_primary = ?,
-                    sections_reference_only = ?,
-                    status = 'complete',
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE spec_id = ?
-            """, (total_sections, with_primary, reference_only, spec_id))
-
-            await conn.commit()
-
     async def get_project_status(self, spec_id: str) -> Optional[Dict]:
         """Get project status"""
         async with aiosqlite.connect(self.db_path) as conn:
             conn.row_factory = aiosqlite.Row
             cursor = await conn.execute("""
                 SELECT spec_id, total_divisions, total_sections, sections_with_primary,
-                       sections_reference_only, errors, status, created_at, updated_at
+                       sections_with_reference, errors, classification_status, summary_status, created_at, updated_at
                 FROM projects
                 WHERE spec_id = ?
             """, (spec_id,))
@@ -411,7 +469,7 @@ class ModuDB:
     async def save_section_summary(self, spec_id: str, section_summary: dict):
         """Save section summary"""
         async with aiosqlite.connect(self.db_path) as conn:
-            section_id = await conn.execute("""
+            cursor = await conn.execute("""
                 INSERT INTO section_summaries (spec_id, section_id, section_number, section_title, overview, key_requirements, materials, submittals, testing, related_sections, pages_summarized, pages_not_summarized)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
@@ -429,7 +487,38 @@ class ModuDB:
                 json.dumps(section_summary['pages_not_summarized'])
             ))
             await conn.commit()
-        return section_id
+        return cursor.lastrowid
+
+    async def update_section_summary(self, spec_id: str, section_summary: dict):
+        """Update section summary"""
+        async with aiosqlite.connect(self.db_path) as conn:
+            await conn.execute("""
+                UPDATE section_summaries
+                SET section_title = ?,
+                    overview = ?,
+                    key_requirements = ?,
+                    materials = ?,
+                    submittals = ?,
+                    testing = ?,
+                    related_sections = ?,
+                    pages_summarized = ?,
+                    pages_not_summarized = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE spec_id = ? AND section_number = ?
+            """, (
+                section_summary['section_title'],
+                section_summary['overview'],
+                json.dumps(section_summary['key_requirements']),
+                json.dumps(section_summary['materials']),
+                json.dumps(section_summary['submittals']),
+                json.dumps(section_summary['testing']),
+                json.dumps(section_summary['related_sections']),
+                json.dumps(section_summary['pages_summarized']),
+                json.dumps(section_summary['pages_not_summarized']),
+                spec_id,
+                section_summary['section_number']
+            ))
+            await conn.commit()
 
 
 db = ModuDB()

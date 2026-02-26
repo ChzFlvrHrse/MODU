@@ -2,14 +2,13 @@ from typing import Any, Dict
 from dotenv import load_dotenv
 from pydantic import BaseModel
 from typing import Callable, Type, List
-from prompts import CLASSIFICATION_PROMPT
+from prompts import SUMMARY_PROMPT
 import logging
 import asyncio
 import time
 import os
 import resend
-from .section_summary import section_summaries
-from classes import S3Bucket, Anthropic, db, make_classification_schema
+from classes import S3Bucket, Anthropic, db, make_summary_schema
 
 load_dotenv()
 
@@ -25,9 +24,9 @@ def send_mail(spec_id: str, completion_time: float) -> Dict:
         # This is Resend's built-in test sender
         "from": "MODU <onboarding@resend.dev>",
         "to": ["nscott1010@gmail.com"],
-        "subject": "MODU Classification Complete",
+        "subject": "MODU Summary Complete",
         # Should be dynamic for second, minute, hour, etc.
-        "html": f"<strong>The MODU classification process has completed successfully for {spec_id} in {completion_time}.</strong>",
+        "html": f"<strong>The MODU summary process has completed successfully for {spec_id} in {completion_time}.</strong>",
     }
     email: resend.Emails.SendResponse = resend.Emails.send(params)
     return email
@@ -42,21 +41,16 @@ def format_time(seconds: float) -> str:
         return f"{seconds/3600:.2f} hours"
 
 
-async def save_classification_results(spec_id: str, batch_results: list[list[dict]]) -> dict[str, Any]:
-    total_sections: set[str] = set()
-    total_divisions: set[str] = set()
-    sections_with_primary_count: int = 0
-    sections_with_reference_count: int = 0
-    sections_with_primary: dict[str, dict[str, List[int]]] = {}
-
-    errors: int = 0
+async def save_summary_results(spec_id: str, batch_results: list[list[dict]]) -> dict[str, Any]:
+    total_summaries = 0
+    errors = 0
     failed_custom_ids = set()
+    sections: dict[str, dict] = {}
 
     for batch in batch_results:
         for item in batch:
             custom_id = item.get('custom_id', '')
 
-            logger.info(f"BATCH ITEM: {item}")
             if item.get('type') == 'errored':
                 logger.error(f"Errored for {custom_id}: {item.get('error')}")
                 errors += 1
@@ -64,86 +58,54 @@ async def save_classification_results(spec_id: str, batch_results: list[list[dic
                 continue
 
             split_custom_id = custom_id.split('-')
-
             content = item.get('content')
-            division = split_custom_id[0]
             section_number = split_custom_id[1].replace("_", ".")
-            is_primary = content.get('is_primary', False)
 
             custom_id_length = len(split_custom_id)
-
-            # If there are multiple pages analyzed, use the start and end index of the last page
             start_index = split_custom_id[-2] if custom_id_length == 9 else split_custom_id[-1]
             end_index = split_custom_id[-1]
+            pages_summarized = list(
+                range(int(start_index), int(end_index) + 1))
 
-            full_range = [page for page in range(
-                int(start_index), int(end_index) + 1)]
-
-            if is_primary:
-                sections_with_primary_count += 1
-                if division not in sections_with_primary:
-                    sections_with_primary[division] = {}
-                if section_number not in sections_with_primary[division]:
-                    sections_with_primary[division][section_number] = {
-                        "multi": [], "single": []}
-
-                if len(full_range) > 1:
-                    sections_with_primary[division][section_number]["multi"].append(
-                        full_range)
-                else:
-                    sections_with_primary[division][section_number]["single"].append(
-                        full_range[0])
+            if section_number not in sections:
+                sections[section_number] = {
+                    **content,
+                    "pages_summarized": pages_summarized,
+                    "pages_not_summarized": []
+                }
             else:
-                sections_with_reference_count += 1
+                # merge list fields
+                for field in ['key_requirements', 'materials', 'submittals', 'testing', 'related_sections']:
+                    sections[section_number][field] = sections[section_number].get(
+                        field, []) + content.get(field, [])
+                sections[section_number]['pages_summarized'] += pages_summarized
 
-            total_divisions.add(division)
-            total_sections.add(section_number)
+    # now save each consolidated section
+    for section_number, summary in sections.items():
+        section = await db.get_section(spec_id, section_number)
+        section_id = section.get('id') if section else None
 
-            section_data = {
+        if section_id:
+            await db.save_section_summary(spec_id, {
+                **summary,
+                "section_id": section_id,
                 "section_number": section_number,
-                "status": "complete",
-                "primary_pages": full_range if is_primary else [],
-                "reference_pages": full_range if not is_primary else []
-            }
-
-            logger.info(f"Section data: {section_data}")
-
-            result = await db.update_section_pages(
-                spec_id=spec_id,
-                section_number=section_number,
-                primary_pages=full_range if is_primary else [],
-                reference_pages=full_range if not is_primary else []
-            )
-            section_id = result.get('section_id')
-            if section_id:
-                await db.save_classification_result(
-                    section_id=section_id,
-                    custom_id=custom_id,
-                    result=content
-                )
-            else:
-                logger.error(
-                    f"Failed to update section pages for {section_number} - no section_id returned")
-                errors += 1
-
-    await db.update_project(
-        spec_id=spec_id,
-        classification_status="complete",
-        total_divisions=len(total_divisions),
-        total_sections=len(total_sections),
-        sections_with_primary=sections_with_primary_count,
-        sections_with_reference=sections_with_reference_count,
-        errors=errors
-    )
+            })
+            await db.update_section_summary_status(spec_id, section_number)
+            total_summaries += 1
+        else:
+            logger.error(f"Section not found for {section_number}")
+            errors += 1
 
     logger.info(f"failed_custom_ids: {failed_custom_ids}")
     return {
         "failed_custom_ids": list(failed_custom_ids),
-        "sections_with_primary": sections_with_primary,
+        "total_summaries": total_summaries,
+        "errors": errors
     }
 
 
-async def build_classification_requests(
+async def build_summary_requests(
     sections: dict[int, dict],
     spec_id: str,
     system_prompt: str,
@@ -151,7 +113,7 @@ async def build_classification_requests(
     s3: S3Bucket,
     s3_client: any,
     model: str = "claude-sonnet-4-5-20250929",
-    max_tokens: int = 1024
+    max_tokens: int = 8192
 ) -> list[dict]:
     requests = []
 
@@ -165,19 +127,17 @@ async def build_classification_requests(
                 custom_id = f'{division_number}-{safe_section_number}-{spec_id}-{start_index}-{last_index}'
 
                 content_blocks: List[dict] = []
-                pages_analyzed = []
                 async for page in s3.get_converted_pages_generator_with_client(
                     spec_id, s3_client, start_index, end_index + 1
                 ):
                     content_blocks.extend(
                         anthropic.page_blocks(page["page_index"], page["text"], page["bytes"], page["media_type"]))
-                    pages_analyzed.append(page["page_index"])
 
                 request = await anthropic.build_claude_request(
                     custom_id,
                     content_blocks,
-                    system_prompt=anthropic.build_prompt(system_prompt, {
-                                                         "section_number": section_number, "pages_analyzed": pages_analyzed}),
+                    system_prompt=anthropic.build_prompt(
+                        system_prompt, {"section_number": section_number}),
                     schema=dynamic_schema(section_number),
                     model=model,
                     max_tokens=max_tokens
@@ -189,19 +149,17 @@ async def build_classification_requests(
                 custom_id = f'{division_number}-{safe_section_number}-{spec_id}-{single}'
 
                 content_blocks: List[dict] = []
-                pages_analyzed = []
                 async for page in s3.get_converted_pages_generator_with_client(
                     spec_id, s3_client, single, single + 1
                 ):
                     content_blocks.extend(
                         anthropic.page_blocks(page["page_index"], page["text"], page["bytes"], page["media_type"]))
-                    pages_analyzed.append(page["page_index"])
 
                 request = await anthropic.build_claude_request(
                     custom_id,
                     content_blocks,
-                    system_prompt=anthropic.build_prompt(system_prompt, {
-                                                         "section_number": section_number, "pages_analyzed": pages_analyzed}),
+                    system_prompt=anthropic.build_prompt(
+                        system_prompt, {"section_number": section_number}),
                     schema=dynamic_schema(section_number),
                     model=model,
                     max_tokens=max_tokens
@@ -245,27 +203,27 @@ def structure_failed_custom_ids(failed_custom_ids: list[str]):
     return divisions_and_sections
 
 
-async def page_classification(spec_id: str, divisions_and_sections: dict[str, dict[str, List[int]]], retry: int = 0, max_retries: int = 3):
+async def section_summaries(spec_id: str, sections_with_summaries: dict[str, dict[str, List[int]]], retry: int = 0, max_retries: int = 3):
     """Background task to classify all sections"""
     s3 = S3Bucket()
     start_time = time.time()
 
     try:
-        logger.info(f"Starting background classification for {spec_id}")
+        logger.info(f"Starting background summary for {spec_id}")
 
         batch_ids = []
         batch_results = []
 
         async with s3.s3_client() as s3_client:
-            requests = await build_classification_requests(
-                sections=divisions_and_sections,
+            requests = await build_summary_requests(
+                sections=sections_with_summaries,
                 spec_id=spec_id,
-                system_prompt=CLASSIFICATION_PROMPT,
-                dynamic_schema=make_classification_schema,
+                system_prompt=SUMMARY_PROMPT,
+                dynamic_schema=make_summary_schema,
                 s3=s3,
                 s3_client=s3_client,
                 model="claude-sonnet-4-5-20250929",
-                max_tokens=1024
+                max_tokens=8192
             )
 
         batches = anthropic.split_batch(requests)
@@ -276,17 +234,8 @@ async def page_classification(spec_id: str, divisions_and_sections: dict[str, di
         poll_results = await asyncio.gather(*[anthropic.poll_and_fetch_batch_results(batch_id) for batch_id in batch_ids])
         batch_results.extend(poll_results)
 
-        results = await save_classification_results(spec_id, batch_results)
+        results = await save_summary_results(spec_id, batch_results)
         failed_custom_ids = results.get("failed_custom_ids", set())
-
-        asyncio.create_task(
-            section_summaries(
-                spec_id,
-                results.get("sections_with_primary", {}),
-                retry,
-                max_retries
-            )
-        )
 
         if failed_custom_ids and retry < max_retries:
             logger.info(
@@ -294,7 +243,7 @@ async def page_classification(spec_id: str, divisions_and_sections: dict[str, di
             structured_failed_custom_ids = structure_failed_custom_ids(
                 failed_custom_ids)
             asyncio.create_task(
-                page_classification(
+                section_summaries(
                     spec_id,
                     structured_failed_custom_ids,
                     retry + 1,
@@ -302,10 +251,11 @@ async def page_classification(spec_id: str, divisions_and_sections: dict[str, di
                 )
             )
         else:
+            await db.update_project(spec_id, summary_status="complete")
             completion_time = format_time(time.time() - start_time)
             send_mail(spec_id, completion_time)
-            logger.info(f"Classification complete for {spec_id}")
+            logger.info(f"Summary complete for {spec_id} in {completion_time}")
 
     except Exception as e:
-        logger.error(f"Classification failed for {spec_id}: {e}")
-        return {"error": f"Classification failed for {spec_id}: {e}"}, 500
+        logger.error(f"Summary failed for {spec_id}: {e} in {format_time(time.time() - start_time)}")
+        return {"error": f"Summary failed for {spec_id}: {e}"}, 500
