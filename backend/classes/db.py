@@ -423,6 +423,16 @@ class ModuDB:
                 })
             return sections_by_division
 
+    async def get_all_sections_without_primary_pages(self, spec_id: str) -> List[Dict]:
+        """Get all sections without primary pages for a spec"""
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute("""
+                SELECT * FROM sections WHERE spec_id = ? AND primary_pages = '[]' ORDER BY section_number ASC
+            """, (spec_id,))
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
     async def save_classification_result(self, section_id: int, custom_id: str, result: Dict):
         """Save individual classification result"""
         async with aiosqlite.connect(self.db_path) as conn:
