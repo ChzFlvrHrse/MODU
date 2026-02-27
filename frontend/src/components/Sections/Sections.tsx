@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { toast } from "react-toastify";
+import { toast } from "react-hot-toast";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import type { Section } from "../../../types/types";
 import "./Sections.css";
@@ -127,6 +127,11 @@ export default function Sections() {
     );
 
     const openSectionModal = (section_number: string, section_title: string) => {
+        const section = activeList.find((s) => s.section_number === section_number);
+        if (section?.summary_status === "manual") {
+            toast.error("Summary for this section is manual. Please generate it first.");
+            return;
+        }
         setSectionModalsOpen(true);
         setSectionModalSectionNumber(section_number);
         setSectionModalSectionTitle(section_title);

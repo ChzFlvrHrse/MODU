@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import ReactDOM from 'react-dom/client';
+import { Toaster } from 'react-hot-toast';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import './index.css';
 
@@ -15,6 +15,7 @@ function App() {
   return (
     <React.StrictMode>
       <BrowserRouter>
+      <Toaster position="top-right" toastOptions={{ style: { background: '#1a1d26', color: '#fff', border: '1px solid rgba(255,255,255,0.08)' } }} />
         <div className="app-layout">
           <Nav />
           <div className="content">
