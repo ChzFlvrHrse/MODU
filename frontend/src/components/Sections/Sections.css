@@ -38,17 +38,21 @@
 }
 
 .sections-project-name {
+    margin: 6px 0 4px;
+    font-size: 15px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.75);
     text-overflow: ellipsis;
     overflow: hidden;
     white-space: nowrap;
-    width: 500px;
-    color: rgba(255, 255, 255, 0.7);
+    max-width: 500px;
 }
 
+
 .sections-subtitle {
-    margin: 10px 0 0;
-    color: rgba(255, 255, 255, 0.7);
-    font-size: 16px;
+    margin: 0;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 13px;
 }
 
 .sections-controls {
@@ -66,6 +70,7 @@
     border-radius: 12px;
     padding: 10px 12px;
     outline: none;
+    font-size: 13px;
 }
 
 .sections-search:focus {
@@ -79,6 +84,7 @@
     border-radius: 12px;
     padding: 10px 12px;
     outline: none;
+    font-size: 13px;
 }
 
 .sections-select option {
@@ -91,6 +97,8 @@
     gap: 16px;
     align-items: start;
 }
+
+/* ---- Division sidebar ---- */
 
 .division-panel {
     border-radius: 14px;
@@ -105,12 +113,15 @@
     font-weight: 700;
     margin-bottom: 10px;
     color: rgba(255, 255, 255, 0.85);
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
 }
 
 .division-list {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
     height: 70vh;
     overflow-y: auto;
     scrollbar-width: thin;
@@ -123,19 +134,19 @@
     justify-content: space-between;
     gap: 12px;
     padding: 10px 12px;
-    border-radius: 12px;
+    border-radius: 10px;
     background: rgba(0, 0, 0, 0.18);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.07);
     color: #fff;
     cursor: pointer;
     transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+    font-size: 13px;
 }
 
 .division-item:hover {
     background: rgba(0, 0, 0, 0.24);
     border-color: rgba(255, 255, 255, 0.14);
     transform: translateY(-1px);
-    cursor: pointer;
 }
 
 .division-item.active {
@@ -143,14 +154,44 @@
     background: rgba(92, 120, 255, 0.10);
 }
 
+.division-left {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.division-right {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
 .division-code {
     font-weight: 700;
 }
 
 .division-count {
-    color: rgba(255, 255, 255, 0.7);
+    color: rgba(255, 255, 255, 0.5);
     font-variant-numeric: tabular-nums;
+    font-size: 12px;
 }
+
+.division-check {
+    width: 17px;
+    height: 17px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 900;
+    color: rgba(46, 204, 113, 0.95);
+    background: rgba(46, 204, 113, 0.14);
+    border: 1px solid rgba(46, 204, 113, 0.35);
+    flex-shrink: 0;
+}
+
+/* ---- Section panel ---- */
 
 .section-panel {
     border-radius: 14px;
@@ -174,15 +215,17 @@
 }
 
 .section-panel-meta {
-    color: rgba(255, 255, 255, 0.7);
+    color: rgba(255, 255, 255, 0.5);
     font-size: 13px;
 }
 
 .section-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
     gap: 12px;
 }
+
+/* ---- Section card ---- */
 
 .section-card {
     cursor: pointer;
@@ -191,6 +234,9 @@
     background: rgba(0, 0, 0, 0.18);
     padding: 14px;
     transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
 }
 
 .section-card:hover {
@@ -199,71 +245,95 @@
     background: rgba(0, 0, 0, 0.24);
 }
 
-.section-card-top {
+/* Row 1: Number + name */
+.section-card-header {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    align-items: baseline;
     gap: 10px;
     margin-bottom: 10px;
 }
 
 .section-number {
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-    font-size: 12px;
-    color: rgba(255, 255, 255, 0.7);
-    padding: 6px 10px;
-    border-radius: 10px;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.45);
+    padding: 3px 7px;
+    border-radius: 6px;
     background: rgba(0, 0, 0, 0.25);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    flex-shrink: 0;
 }
 
 .section-name {
-    font-weight: 700;
-    margin-bottom: 12px;
-    line-height: 1.25;
+    font-weight: 600;
+    font-size: 13px;
+    line-height: 1.3;
+    color: rgba(255, 255, 255, 0.95);
 }
 
-.section-badges {
-    display: grid;
-    grid-template-columns: 1fr;
+/* Row 2: Status pills */
+.section-card-status {
+    display: flex;
+    align-items: center;
     gap: 8px;
+    margin-bottom: 14px;
+}
+
+/* Row 3: Metrics */
+.section-metrics {
+    display: flex;
+    align-items: center;
+    padding: 10px 0;
     margin-bottom: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
 }
 
-.badge {
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(255, 255, 255, 0.04);
-    padding: 10px 12px;
+.section-metric {
+    flex: 1;
+    text-align: center;
 }
 
-.badge-label {
-    font-size: 12px;
-    color: rgba(255, 255, 255, 0.65);
-    margin-right: 8px;
+.section-metric-value {
+    font-size: 18px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.95);
+    line-height: 1;
 }
 
-.badge-value {
-    font-size: 12px;
-    color: rgba(255, 255, 255, 0.90);
+.section-metric-label {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.45);
+    margin-top: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
 }
 
+.section-metric-divider {
+    width: 1px;
+    height: 28px;
+    background: rgba(255, 255, 255, 0.09);
+    flex-shrink: 0;
+}
+
+/* Row 4: Footer */
 .section-footer {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+    display: flex;
+    justify-content: space-between;
     gap: 10px;
-    padding-top: 10px;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .section-footer-col .meta-label {
-    font-size: 11px;
-    color: rgba(255, 255, 255, 0.55);
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.45);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
 }
 
 .section-footer-col .meta-value {
     font-size: 12px;
-    color: rgba(255, 255, 255, 0.85);
+    color: rgba(255, 255, 255, 0.75);
+    margin-top: 2px;
 }
 
 .sections-empty {
@@ -273,51 +343,64 @@
     color: rgba(255, 255, 255, 0.75);
 }
 
-/* ---------------------------------------------------- PILLS ---------------------------------------------------- */
+/* ---- Pills ---- */
+
+.pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 9px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    letter-spacing: 0.01em;
+}
 
 .section-pill-complete {
     background: rgba(46, 204, 113, 0.12);
     border-color: rgba(46, 204, 113, 0.35);
+    color: rgba(46, 204, 113, 0.95);
 }
 
 .section-pill-pending {
     background: rgba(52, 152, 219, 0.12);
     border-color: rgba(52, 152, 219, 0.35);
+    color: rgba(52, 152, 219, 0.95);
 }
 
 .section-pill-failed {
     background: rgba(231, 76, 60, 0.12);
     border-color: rgba(231, 76, 60, 0.35);
+    color: rgba(231, 76, 60, 0.95);
 }
 
 .section-pill-none {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.14);
+    color: rgba(255, 255, 255, 0.45);
 }
 
-.division-left {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-  }
+.section-pill-in_progress {
+    background: rgba(241, 196, 15, 0.12);
+    border-color: rgba(241, 196, 15, 0.35);
+    color: rgba(241, 196, 15, 0.95);
+}
 
-  .division-right {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-  }
+.generate-summary-btn {
+    cursor: pointer;
+    background: rgba(230, 126, 34, 0.12);
+    border-color: rgba(230, 126, 34, 0.35);
+    color: rgba(230, 126, 34, 0.95);
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
 
-  .division-check {
-    width: 18px;
-    height: 18px;
-    border-radius: 999px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    font-weight: 900;
+.generate-summary-btn:hover {
+    background: rgba(230, 126, 34, 0.22);
+    border-color: rgba(230, 126, 34, 0.6);
+    transform: translateY(-1px);
+}
 
-    color: rgba(46, 204, 113, 0.95);
-    background: rgba(46, 204, 113, 0.14);
-    border: 1px solid rgba(46, 204, 113, 0.35);
-  }
+.generate-summary-btn:active {
+    transform: translateY(0);
+}

@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { toast } from "react-toastify";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import type { Section } from "../../../types/types";
 import "./Sections.css";
 
 import { CircularProgress } from "@mui/material";
-import { ArrowBackIosNew } from '@mui/icons-material';
+import { ArrowBackIosNew, AdsClickRounded } from '@mui/icons-material';
 import SectionModal from "../../modals/SectionModal";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -25,8 +26,7 @@ export default function Sections() {
     const [sectionModalSectionNumber, setSectionModalSectionNumber] = useState<string>("");
     const [sectionModalSectionTitle, setSectionModalSectionTitle] = useState<string>("");
 
-    const [sectionClassificationStatus, setSectionClassificationStatus] = useState<string>("");
-    const [sectionSummaryStatus, setSectionSummaryStatus] = useState<string>("");
+    const [generatingSummaries, setGeneratingSummaries] = useState<Set<string>>(new Set());;
 
     const { spec_id } = useParams();
     const [searchParams] = useSearchParams();
@@ -55,11 +55,12 @@ export default function Sections() {
         return divisions.every((d) => isDivisionClassificationComplete(d));
     }, [divisions, sections]);
 
+    // Is also complete if the satus is 'manual'
     const isDivisionSummaryComplete = (division: string) => {
         const list = sections[division] ?? [];
         if (list.length === 0) return false;
 
-        return list.every((s) => (s.summary_status ?? "").toLowerCase() === "complete" || (s.summary_status ?? "").toLowerCase() === "failed");
+        return list.every((s) => (s.summary_status ?? "").toLowerCase() === "complete" || (s.summary_status ?? "").toLowerCase() === "failed" || (s.summary_status ?? "").toLowerCase() === "manual");
     };
 
     const isDivisionSummaryPending = (division: string) => {
@@ -125,10 +126,65 @@ export default function Sections() {
         [sections]
     );
 
-    const openSectionModal = (section_id: string, section_number: string, section_title: string) => {
+    const openSectionModal = (section_number: string, section_title: string) => {
         setSectionModalsOpen(true);
         setSectionModalSectionNumber(section_number);
         setSectionModalSectionTitle(section_title);
+    };
+
+    function getStatusIcon(status: string) {
+        const statusMap: Record<string, React.ReactNode> = {
+            'complete': '✓',
+            'pending': <CircularProgress size={10} sx={{ color: 'inherit' }} />,
+            'manual': <AdsClickRounded sx={{ fontSize: 15, color: 'inherit' }} />,
+            'error': '✕',
+            'unknown': '○',
+        };
+        return statusMap[status] ?? <CircularProgress size={10} sx={{ color: 'inherit' }} />;
+    }
+
+    function getStatusText(status: string) {
+        const statusTextMap: Record<string, string> = {
+            'manual': "GENERATE SUMMARY",
+            'complete': "SUMMARIZED",
+            'pending': "SUMMARIZING...",
+            'error': "ERROR SUMMARIZING",
+            'unknown': "SUMMARY UNKNOWN",
+        };
+        return statusTextMap[status] ?? "SUMMARY UNKNOWN";
+    }
+
+    const handleGenerateSummary = async (e: React.MouseEvent<HTMLButtonElement>, spec_id: string, section_number: string) => {
+        e.stopPropagation();
+        setGeneratingSummaries((prev) => new Set(prev).add(section_number));
+        try {
+            const response = await fetch(`${BACKEND_URL}/api/summary/generate_section_summary/${spec_id}/${section_number}`, {
+                method: "POST",
+            });
+            const data = await response.json();
+            if (data.error) {
+                toast.error(data.error);
+                return;
+            }
+            toast.success(`Generated summary for ${section_number}`);
+            const section = activeList.find((s) => s.section_number === section_number);
+            if (section) {
+                setSections((prev) => ({
+                    ...prev,
+                    [section.division]: prev[section.division].map((s) =>
+                        s.section_number === section_number
+                            ? { ...s, summary_status: "complete" }
+                            : s
+                    )
+                }));
+            }
+        } finally {
+            setGeneratingSummaries((prev) => {
+                const newSet = new Set(prev);
+                newSet.delete(section_number);
+                return newSet;
+            });
+        }
     };
 
     useEffect(() => {
@@ -159,14 +215,9 @@ export default function Sections() {
                         <button className="back-projects-button" onClick={() => navigate('/projects')}>
                             <ArrowBackIosNew fontSize="large" className="back-projects-button-icon" />
                         </button>
-                        <h1 className="sections-title" >Sections</h1>
-                        <h3 className="sections-project-name">Project: <b style={{ color: "#fff" }}>{project_name}</b></h3>
-                        <p className="sections-subtitle">
-                            Spec ID: <b style={{ color: "#fff" }}>{spec_id}</b>
-                        </p>
-                        <p className="sections-subtitle">
-                            Browse sections by division. {totalSections} total sections.
-                        </p>
+                        <h1 className="sections-title">Sections</h1>
+                        <p className="sections-project-name">{project_name}</p>
+                        <p className="sections-subtitle">{totalSections} sections</p>
                     </div>
 
                     <div className="sections-controls">
@@ -240,40 +291,61 @@ export default function Sections() {
 
                         <div className="section-grid">
                             {activeList.map((s) => {
-                                const classification_status = s.classification_status?.toUpperCase() ?? "NONE";
-                                const summary_status = s.summary_status?.toUpperCase() ?? "NONE";
+                                const classification_status = s.classification_status ?? "NONE";
+                                const summary_status = s.summary_status ?? "NONE";
 
                                 return (
-                                    <div key={s.id} className="section-card" onClick={() => openSectionModal(s.id.toString(), s.section_number, s.section_name)}>
-                                        <div className="section-card-top">
-                                            <span className={`pill section-pill-${classification_status.toLowerCase()}`}>
-                                                Classification: {classification_status}
-                                            </span>
-                                            <span className={`pill section-pill-${summary_status.toLowerCase()}`}>
-                                                Summary: {summary_status}
-                                            </span>
+                                    <div key={s.id} className="section-card" onClick={() => openSectionModal(s.section_number, s.section_name)}>
+
+                                        {/* Row 1: Section number + name */}
+                                        <div className="section-card-header">
                                             <span className="section-number">{s.section_number}</span>
+                                            <span className="section-name">{s.section_name}</span>
                                         </div>
 
-                                        <div className="section-name">{s.section_name}</div>
+                                        {/* Row 2: Status pills */}
+                                        <div className="section-card-status">
+                                            <span className={`pill pill-${classification_status}`}>
+                                                {getStatusIcon(classification_status)} CLASSIFICATION
+                                            </span>
+                                            {s.summary_status === 'manual' ? (
+                                                <button
+                                                    className="pill pill-manual generate-summary-btn"
+                                                    disabled={generatingSummaries.has(s.section_number)}
+                                                    onClick={(e) => handleGenerateSummary(e, spec_id ?? "", s.section_number)}
+                                                >
+                                                    {generatingSummaries.has(s.section_number)
+                                                        ? <CircularProgress size={10} sx={{ color: 'inherit' }} />
+                                                        : <AdsClickRounded sx={{ fontSize: 12 }} />
+                                                    } {generatingSummaries.has(s.section_number) ? "GENERATING..." : "GENERATE SUMMARY"}
+                                                </button>
+                                            ) : (
+                                                <span className={`pill section-pill-${summary_status.toLowerCase()}`}>
+                                                    {getStatusIcon(s.summary_status)} {getStatusText(s.summary_status)}
+                                                </span>
+                                            )}
+                                        </div>
 
-                                        <div className="section-badges">
-                                            <div className="badge">
-                                                <span className="badge-label">Primary Pages</span>
-                                                <span className="badge-value">{fmtPages(s.primary_pages)}</span>
+                                        {/* Row 3: Inline page metrics */}
+                                        <div className="section-metrics">
+                                            <div className="section-metric">
+                                                <div className="section-metric-value">{s.primary_pages?.length ?? "—"}</div>
+                                                <div className="section-metric-label">Primary Pages</div>
                                             </div>
-                                            <div className="badge">
-                                                <span className="badge-label">Reference Pages</span>
-                                                <span className="badge-value">{fmtPages(s.reference_pages)}</span>
+                                            <div className="section-metric-divider" />
+                                            <div className="section-metric">
+                                                <div className="section-metric-value">{s.reference_pages?.length ?? "—"}</div>
+                                                <div className="section-metric-label">Reference Pages</div>
                                             </div>
                                         </div>
 
+                                        {/* Row 4: Footer */}
                                         <div className="section-footer">
                                             <div className="section-footer-col">
                                                 <div className="meta-label">Created</div>
                                                 <div className="meta-value">{s.created_at ?? "—"}</div>
                                             </div>
-                                            <div className="section-footer-col">
+                                            <div className="section-footer-col" style={{ textAlign: 'right' }}>
                                                 <div className="meta-label">Updated</div>
                                                 <div className="meta-value">{s.updated_at ?? "—"}</div>
                                             </div>

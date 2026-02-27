@@ -38,7 +38,7 @@
   background: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 14px;
-  padding: 16px;
+  padding: 18px;
   transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
 }
 
@@ -48,84 +48,126 @@
   border-color: rgba(255,255,255,0.14);
 }
 
-.project-card-top {
+/* Row 1: Name + ID */
+.project-card-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
+}
+
+.project-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.95);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .project-id {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  font-size: 12px;
-  color: rgba(255,255,255,0.7);
-  padding: 6px 10px;
-  border-radius: 10px;
-  background: rgba(0,0,0,0.25);
-  border: 1px solid rgba(255,255,255,0.08);
+  font-size: 11px;
+  color: rgba(255,255,255,0.45);
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(0,0,0,0.2);
+  border: 1px solid rgba(255,255,255,0.07);
+  flex-shrink: 0;
+}
+
+/* Row 2: Pills */
+.project-card-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
 }
 
 .pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 12px;
-  font-weight: 700;
-  padding: 6px 10px;
+  font-weight: 600;
+  padding: 5px 10px;
   border-radius: 999px;
   border: 1px solid rgba(255,255,255,0.10);
-  text-transform: capitalize;
+  letter-spacing: 0.01em;
 }
 
 .pill-complete {
   background: rgba(46, 204, 113, 0.12);
   border-color: rgba(46, 204, 113, 0.35);
+  color: rgba(46, 204, 113, 0.95);
 }
 
 .pill-pending {
   background: rgba(52, 152, 219, 0.12);
   border-color: rgba(52, 152, 219, 0.35);
+  color: rgba(52, 152, 219, 0.95);
 }
 
 .pill-error {
   background: rgba(231, 76, 60, 0.12);
   border-color: rgba(231, 76, 60, 0.35);
+  color: rgba(231, 76, 60, 0.95);
 }
 
 .pill-unknown {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.14);
+  color: rgba(255,255,255,0.5);
 }
 
+/* Row 3: Inline metrics */
 .project-metrics {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
+  display: flex;
+  align-items: center;
   margin-bottom: 14px;
+  padding: 12px 0;
+  border-top: 1px solid rgba(255,255,255,0.07);
+  border-bottom: 1px solid rgba(255,255,255,0.07);
 }
 
 .metric {
-  background: rgba(0,0,0,0.18);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 12px;
-  padding: 10px 12px;
-}
-
-.metric-label {
-  font-size: 12px;
-  color: rgba(255,255,255,0.65);
-  margin-bottom: 4px;
+  flex: 1;
+  text-align: center;
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 0;
 }
 
 .metric-value {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 700;
+  color: rgba(255,255,255,0.95);
+  line-height: 1;
 }
 
+.metric-label {
+  font-size: 10px;
+  color: rgba(255,255,255,0.45);
+  margin-top: 4px;
+  margin-bottom: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.metric-divider {
+  width: 1px;
+  height: 30px;
+  background: rgba(255,255,255,0.09);
+  flex-shrink: 0;
+}
+
+/* Row 4: Bottom meta */
 .project-card-bottom {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  padding-top: 12px;
-  border-top: 1px solid rgba(255,255,255,0.08);
 }
 
 .meta {
@@ -134,9 +176,15 @@
   gap: 2px;
 }
 
+.meta-right {
+  text-align: right;
+}
+
 .meta-label {
   font-size: 11px;
-  color: rgba(255,255,255,0.55);
+  color: rgba(255,255,255,0.45);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .meta-value {
@@ -144,6 +192,7 @@
   color: rgba(255,255,255,0.85);
 }
 
+/* Empty state */
 .empty-state {
   margin-top: 30px;
   padding: 22px;
@@ -162,10 +211,6 @@
   margin-top: 6px;
   color: rgba(255,255,255,0.7);
 }
-
-/* .upload-button-container {
-  display: flex;
-} */
 
 .upload-button-text {
   font-size: 13px;
