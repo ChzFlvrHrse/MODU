@@ -311,7 +311,7 @@ export default function Sections() {
                                         {/* Row 2: Status pills */}
                                         <div className="section-card-status">
                                             <span className={`pill pill-${classification_status}`}>
-                                                {getStatusIcon(classification_status)} CLASSIFICATION
+                                                {getStatusIcon(classification_status)} {classification_status === "complete" ? "CLASSIFIED" : "CLASSIFYING..."}
                                             </span>
                                             {s.summary_status === 'manual' ? (
                                                 <button

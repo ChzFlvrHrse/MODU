@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
 import { Project } from '../../../types/types';
 import CircularProgress from '@mui/material/CircularProgress';
+import { DeleteRounded } from '@mui/icons-material';
 import './Projects.css';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -34,6 +36,20 @@ export default function Projects({ projectsComplete, setProjectsComplete }: Proj
     const projects_data = data.projects ?? [];
     setProjects(projects_data);
     checkAllProjectsStatus(projects_data);
+  };
+
+  const handleDeleteProject = async (e: React.MouseEvent<HTMLButtonElement>, spec_id: string) => {
+    e.stopPropagation();
+    const response = await fetch(`${BACKEND_URL}/api/spec/delete_project/${spec_id}`, {
+      method: "DELETE",
+    });
+    const data = await response.json();
+    if (data.error) {
+      toast.error(data.error);
+      return;
+    }
+    toast.success("Project deleted successfully");
+    fetchProjects();
   };
 
   function formatDate(iso: string) {
@@ -104,12 +120,18 @@ export default function Projects({ projectsComplete, setProjectsComplete }: Proj
               <span className="project-id" title={p.spec_id}>
                 {shortId(p.spec_id)}
               </span>
+              <button
+                className="delete-project-btn"
+                onClick={(e) => handleDeleteProject(e, p.spec_id)}
+              >
+                <DeleteRounded />
+              </button>
             </div>
 
             {/* Row 2: Status pills */}
             <div className="project-card-status">
               <span className={`pill pill-${p.classification_status}`}>
-                {getStatusIcon(p.classification_status)} CLASSIFICATION
+                {getStatusIcon(p.classification_status)} {p.classification_status === "complete" ? "CLASSIFIED" : "CLASSIFYING..."}
               </span>
               <span className={`pill pill-${p.summary_status}`}>
                 {getStatusIcon(p.summary_status)} SUMMARIES

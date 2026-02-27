@@ -216,3 +216,18 @@
   font-size: 13px;
   color: rgba(166, 166, 166, 0.85);
 }
+
+.delete-project-btn {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.45);
+  cursor: pointer;
+  padding: 0;
+  margin: 0;
+  font-size: 16px;
+  transition: color 0.2s ease;
+}
+
+.delete-project-btn:hover {
+  color: rgba(255,255,255,0.75);
+}
