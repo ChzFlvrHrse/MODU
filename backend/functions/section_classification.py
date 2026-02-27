@@ -43,8 +43,8 @@ def format_time(seconds: float) -> str:
 
 
 async def save_classification_results(spec_id: str, batch_results: list[list[dict]]) -> dict[str, Any]:
-    total_sections: set[str] = set()
     total_divisions: set[str] = set()
+    total_sections: set[str] = set()
     sections_with_primary_count: int = 0
     sections_with_reference_count: int = 0
     sections_with_primary: dict[str, dict[str, List[int]]] = {}
@@ -135,6 +135,17 @@ async def save_classification_results(spec_id: str, batch_results: list[list[dic
         sections_with_reference=sections_with_reference_count,
         errors=errors
     )
+
+    for section_number in total_sections:
+        division = section_number[:2]
+        section_numbers = sections_with_primary[division].keys()
+        if section_number not in section_numbers:
+            await db.update_section_summary_status(
+                spec_id=spec_id,
+                section_number=section_number,
+                summary_status="manual"
+            )
+
 
     logger.info(f"failed_custom_ids: {failed_custom_ids}")
     return {

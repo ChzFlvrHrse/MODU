@@ -133,3 +133,13 @@ async def sections_with_primary_pages(spec_id: str):
     except Exception as e:
         logger.error(f"Error getting sections with primary pages: {e}")
         return jsonify({"error": str(e)}), 500
+
+@spec_routes_bp.route("/delete_project/<spec_id>", methods=["DELETE"])
+async def delete_project(spec_id: str):
+    try:
+        await db.delete_project(spec_id)
+        logger.info(f"Project deleted successfully: {spec_id}")
+        return jsonify({"message": "Project deleted successfully"}), 200
+    except Exception as e:
+        logger.error(f"Error deleting project: {e}")
+        return jsonify({"error": str(e)}), 500

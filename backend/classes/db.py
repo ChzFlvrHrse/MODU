@@ -200,6 +200,14 @@ class ModuDB:
                 })
             return projects
 
+    async def delete_project(self, spec_id: str):
+        """Delete project"""
+        async with aiosqlite.connect(self.db_path) as conn:
+            await conn.execute("""
+                DELETE FROM projects WHERE spec_id = ?
+            """, (spec_id,))
+            await conn.commit()
+
     async def get_section(self, spec_id: str, section_number: str) -> Optional[Dict]:
         """Get section data"""
         async with aiosqlite.connect(self.db_path) as conn:

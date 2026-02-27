@@ -1,5 +1,3 @@
-from pydantic import BaseModel, Field
-
 CLASSIFICATION_PROMPT = """
 You are classifying construction specification pages.
 
