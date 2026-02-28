@@ -2,6 +2,9 @@ from pydantic import BaseModel, Field
 
 def make_classification_schema(section_number: str) -> type[BaseModel]:
     class PageClassification(BaseModel):
+        section_title: str = Field(
+            description=f"The title of the section being classified for section {section_number}"
+        )
         reasoning: str = Field(
             description="Brief explanation of the classification decision"
         )
@@ -23,7 +26,7 @@ def make_summary_schema(section_number: str) -> type[BaseModel]:
     class SectionSummary(BaseModel):
         section_number: str = Field(
             description=f"The section number being summarized for section {_sec}")
-        section_title: str = Field(description="The section title")
+        section_title: str = Field(description=f"The title of the section being classified for section {_sec}")
         overview: str = Field(
             description=f"Brief overview of what this section covers for section {_sec}")
         key_requirements: list[str] = Field(

@@ -5,6 +5,8 @@ from classes import db, S3Bucket
 from quart import Blueprint, jsonify
 from prompts import SUMMARY_PROMPT
 from classes import Anthropic, make_summary_schema
+from urllib.parse import unquote
+from csi_masterformat import divisions_and_sections
 
 summary_routes_bp = Blueprint("summary_routes", __name__)
 
@@ -24,7 +26,6 @@ async def section_summary(spec_id: str, section_number: str):
     except Exception as e:
         logger.error(f"Error getting spec summary: {e}")
         return jsonify({"error": str(e)}), 500
-
 
 # NOTE: Consider using 2 prompts for all_contiguous vs not all_contiguous scenarios
 @summary_routes_bp.route("/generate_section_summary/<spec_id>/<section_number>", methods=["POST"])
@@ -84,6 +85,9 @@ async def generate_section_summary(spec_id: str, section_number: str):
                 await db.update_section_summary_status(spec_id, section_number, "manual")
                 return jsonify({"error": "Failed to save section summary"}), 500
 
+            if section_number not in divisions_and_sections[section.get("division")]:
+                await db.update_section_title(section.get("id"), summary["section_title"])
+
             await db.update_section_summary_status(spec_id, section_number, "complete")
             return jsonify({"spec_summary": summary}), 200
         else:
@@ -93,6 +97,20 @@ async def generate_section_summary(spec_id: str, section_number: str):
     except Exception as e:
         await db.update_section_summary_status(spec_id, section_number, "error")
         logger.error(f"Error getting spec summary: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@summary_routes_bp.route("/delete/<spec_id>/<section_number>/<summary_id>", methods=["DELETE"])
+async def delete_section_summary(spec_id: str, section_number: str, summary_id: int):
+    try:
+        section_number = unquote(section_number)
+        result = await db.delete_section_summary(summary_id)
+        if result.get("error"):
+            return jsonify({"error": result.get("error")}), 500
+        await db.update_section_summary_status(spec_id, section_number, "manual")
+        return jsonify({"message": "Section summary deleted successfully"}), 200
+    except Exception as e:
+        logger.error(f"Error deleting section summary: {e}")
         return jsonify({"error": str(e)}), 500
 
 # NOTE: This version utilizes the batch API to generate the summary

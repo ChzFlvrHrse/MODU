@@ -99,15 +99,6 @@ async def save_classification_results(spec_id: str, batch_results: list[list[dic
             total_divisions.add(division)
             total_sections.add(section_number)
 
-            section_data = {
-                "section_number": section_number,
-                "status": "complete",
-                "primary_pages": full_range if is_primary else [],
-                "reference_pages": full_range if not is_primary else []
-            }
-
-            logger.info(f"Section data: {section_data}")
-
             result = await db.update_section_pages(
                 spec_id=spec_id,
                 section_number=section_number,
@@ -138,8 +129,7 @@ async def save_classification_results(spec_id: str, batch_results: list[list[dic
 
     for section_number in total_sections:
         division = section_number[:2]
-        section_numbers = sections_with_primary[division].keys()
-        if section_number not in section_numbers:
+        if division not in sections_with_primary or section_number not in sections_with_primary[division]:
             await db.update_section_summary_status(
                 spec_id=spec_id,
                 section_number=section_number,

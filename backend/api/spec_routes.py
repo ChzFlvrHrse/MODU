@@ -72,7 +72,7 @@ async def upload():
             total_divisions += 1
             for section_number, pages in sections.items():
                 total_sections += 1
-                section_name = pages.get(
+                section_title = pages.get(
                     "title", "Undocumented Section Number (MSF2020)")
 
                 total_pages = 0
@@ -80,7 +80,7 @@ async def upload():
                     total_pages += len(page)
                 total_pages += len(pages.get("single", []))
                 pages["total_pages"] = total_pages
-                await db.save_section(spec_id, division, section_number, section_name, total_pages)
+                await db.save_section(spec_id, division, section_number, section_title, total_pages)
 
         await db.update_project(
             spec_id,
@@ -134,7 +134,7 @@ async def sections_with_primary_pages(spec_id: str):
         logger.error(f"Error getting sections with primary pages: {e}")
         return jsonify({"error": str(e)}), 500
 
-@spec_routes_bp.route("/delete_project/<spec_id>", methods=["DELETE"])
+@spec_routes_bp.route("/delete/project/<spec_id>", methods=["DELETE"])
 async def delete_project(spec_id: str):
     try:
         await db.delete_project(spec_id)

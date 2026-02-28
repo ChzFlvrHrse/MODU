@@ -91,6 +91,7 @@ async def save_summary_results(spec_id: str, batch_results: list[list[dict]]) ->
                 "section_id": section_id,
                 "section_number": section_number,
             })
+            await db.update_section_title(section_id, summary.get('section_title', 'Undocumented Section Number (MSF2020)'))
             await db.update_section_summary_status(spec_id, section_number)
             total_summaries += 1
         else:

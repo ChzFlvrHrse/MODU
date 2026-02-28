@@ -39,7 +39,7 @@ class ModuDB:
                     spec_id TEXT NOT NULL,
                     division TEXT NOT NULL,
                     section_number TEXT NOT NULL,
-                    section_name TEXT,
+                    section_title TEXT,
                     primary_pages TEXT,
                     reference_pages TEXT,
                     total_pages INTEGER,
@@ -223,7 +223,7 @@ class ModuDB:
         spec_id: str,
         division: str,
         section_number: str,
-        section_name: str,
+        section_title: str,
         total_pages: int,
         classification_status: str = "pending",
         summary_status: str = "pending"
@@ -241,21 +241,21 @@ class ModuDB:
                 await conn.execute("""
                     UPDATE sections
                     SET division = ?,
-                        section_name = ?,
+                        section_title = ?,
                         total_pages = ?,
                         classification_status = ?,
                         summary_status = ?,
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
-                """, (division, section_name,
+                """, (division, section_title,
                       total_pages, classification_status, summary_status, existing[0]))
                 section_id = existing[0]
             else:
                 await conn.execute("""
-                    INSERT INTO sections (spec_id, division, section_number, section_name,
+                    INSERT INTO sections (spec_id, division, section_number, section_title,
                                          total_pages, classification_status, summary_status)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (spec_id, division, section_number, section_name, total_pages, classification_status, summary_status))
+                """, (spec_id, division, section_number, section_title, total_pages, classification_status, summary_status))
 
                 cursor = await conn.execute("SELECT last_insert_rowid()")
                 section_id = (await cursor.fetchone())[0]
@@ -364,6 +364,28 @@ class ModuDB:
                 "summary_status": "error"
             }
 
+    async def update_section_title(self, section_id: int, section_title: str):
+        try:
+            async with aiosqlite.connect(self.db_path) as conn:
+                await conn.execute("""
+                    UPDATE sections
+                    SET section_title = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """, (section_title, section_id))
+                await conn.commit()
+            return {
+                "section_id": section_id,
+                "section_title": section_title
+            }
+        except Exception as e:
+            logger.error(f"Error updating section title: {e}")
+            return {
+                "error": str(e),
+                "section_id": None,
+                "section_title": None
+            }
+
     async def get_all_sections(self, spec_id: str) -> List[Dict]:
         """Get all sections for a spec"""
         async with aiosqlite.connect(self.db_path) as conn:
@@ -387,7 +409,7 @@ class ModuDB:
                     "spec_id": row['spec_id'],
                     "division": row['division'],
                     "section_number": row['section_number'],
-                    "section_name": row['section_name'],
+                    "section_title": row['section_title'],
                     "primary_pages": json.loads(row['primary_pages'] or '[]'),
                     "reference_pages": json.loads(row['reference_pages'] or '[]'),
                     "classification_status": row['classification_status'],
@@ -421,7 +443,7 @@ class ModuDB:
                     "spec_id": row['spec_id'],
                     "division": row['division'],
                     "section_number": row['section_number'],
-                    "section_name": row['section_name'],
+                    "section_title": row['section_title'],
                     "primary_pages": json.loads(row['primary_pages'] or '[]'),
                     "reference_pages": json.loads(row['reference_pages'] or '[]'),
                     "classification_status": row['classification_status'],
@@ -538,5 +560,23 @@ class ModuDB:
             ))
             await conn.commit()
 
+    async def delete_section_summary(self, section_id: int):
+        """Delete section summary"""
+        try:
+            async with aiosqlite.connect(self.db_path) as conn:
+                await conn.execute("""
+                    DELETE FROM section_summaries WHERE id = ?
+                """, (section_id,))
+                await conn.commit()
+            return {
+                "section_id": section_id,
+                "message": "Section summary deleted successfully"
+            }
+        except Exception as e:
+            logger.error(f"Error deleting section summary: {e}")
+            return {
+                "error": str(e),
+                "section_id": None
+            }
 
 db = ModuDB()
