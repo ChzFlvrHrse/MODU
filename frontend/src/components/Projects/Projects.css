@@ -57,6 +57,18 @@
   margin-bottom: 10px;
 }
 
+.project-card-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.project-card-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .project-name {
   font-size: 15px;
   font-weight: 600;
@@ -222,7 +234,7 @@
   border: none;
   color: rgba(255,255,255,0.45);
   cursor: pointer;
-  padding: 0;
+  padding: 6px;
   margin: 0;
   font-size: 16px;
   transition: color 0.2s ease;
@@ -230,4 +242,6 @@
 
 .delete-project-btn:hover {
   color: rgba(255,255,255,0.75);
+  background: rgba(255,255,255,0.06);
+  border-radius: 6px;
 }

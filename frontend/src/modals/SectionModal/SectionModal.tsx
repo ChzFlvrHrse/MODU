@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { CircularProgress } from "@mui/material";
-import { Close } from '@mui/icons-material';
+import { Close, Delete } from '@mui/icons-material';
+import { toast } from 'react-hot-toast';
 import './SectionModal.css';
 
 interface SpecSummary {
@@ -89,6 +90,19 @@ export default function SectionModal({ spec_id, section_number, section_title, o
         if (e.key === 'Escape') onClose();
     }, [onClose]);
 
+    const handleDeleteSummary = async (summary_id: number) => {
+        const response = await fetch(`${BACKEND_URL}/api/summary/delete/${spec_id}/${encodeURIComponent(section_number)}/${summary_id}`, {
+            method: "DELETE",
+        });
+        const data = await response.json();
+        if (response.ok) {
+            toast.success("Section summary deleted successfully");
+            onClose();
+        } else {
+            toast.error(data.message || "Error deleting section summary");
+        }
+    };
+
     useEffect(() => { fetchSummary(); }, []);
     useEffect(() => {
         document.addEventListener('keydown', handleKeyDown);
@@ -169,6 +183,9 @@ export default function SectionModal({ spec_id, section_number, section_title, o
                     <div className="sm-header-left">
                         <span className="sm-section-number">{summary.section_number}</span>
                         <h2 className="sm-section-title">{summary.section_title}</h2>
+                        <button className="sm-delete-btn" onClick={() => handleDeleteSummary(summary.id)} aria-label="Delete">
+                            <Delete fontSize="small" />
+                        </button>
                     </div>
                     <div className="sm-header-right">
                         <span className="sm-spec-id">SPEC {summary.spec_id.slice(0, 8).toUpperCase()}</span>

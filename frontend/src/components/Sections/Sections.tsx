@@ -6,7 +6,7 @@ import "./Sections.css";
 
 import { CircularProgress } from "@mui/material";
 import { ArrowBackIosNew, AdsClickRounded } from '@mui/icons-material';
-import SectionModal from "../../modals/SectionModal";
+import SectionModal from "../../modals/SectionModal/SectionModal";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -106,7 +106,7 @@ export default function Sections() {
         const filtered = list.filter((s) => {
             const matchesQuery =
                 !q ||
-                s.section_name?.toLowerCase().includes(q) ||
+                s.section_title?.toLowerCase().includes(q) ||
                 s.section_number?.toLowerCase().includes(q);
 
             const matchesStatus =
@@ -126,7 +126,7 @@ export default function Sections() {
         [sections]
     );
 
-    const openSectionModal = (section_number: string, section_title: string) => {
+    const openSectionModal = (section_number: string, section_title?: string) => {
         const section = activeList.find((s) => s.section_number === section_number);
         if (section?.summary_status === "manual") {
             toast.error("Summary for this section is manual. Please generate it first.");
@@ -134,7 +134,7 @@ export default function Sections() {
         }
         setSectionModalsOpen(true);
         setSectionModalSectionNumber(section_number);
-        setSectionModalSectionTitle(section_title);
+        setSectionModalSectionTitle(section_title ?? "Undocumented Section Number (MSF2020)");
     };
 
     function getStatusIcon(status: string) {
@@ -148,7 +148,7 @@ export default function Sections() {
         return statusMap[status] ?? <CircularProgress size={10} sx={{ color: 'inherit' }} />;
     }
 
-    function getStatusText(status: string) {
+    function getSummaryStatusText(status: string) {
         const statusTextMap: Record<string, string> = {
             'manual': "GENERATE SUMMARY",
             'complete': "SUMMARIZED",
@@ -158,6 +158,18 @@ export default function Sections() {
         };
         return statusTextMap[status] ?? "SUMMARY UNKNOWN";
     }
+
+    function getClassificationStatusText(status: string) {
+        const statusTextMap: Record<string, string> = {
+            'complete': "CLASSIFIED",
+            'pending': "CLASSIFYING...",
+            'error': "ERROR CLASSIFYING",
+            'unknown': "CLASSIFICATION UNKNOWN",
+        };
+        return statusTextMap[status] ?? "CLASSIFICATION UNKNOWN";
+    }
+
+    console.log(activeList);
 
     const handleGenerateSummary = async (e: React.MouseEvent<HTMLButtonElement>, spec_id: string, section_number: string) => {
         e.stopPropagation();
@@ -300,18 +312,18 @@ export default function Sections() {
                                 const summary_status = s.summary_status ?? "NONE";
 
                                 return (
-                                    <div key={s.id} className="section-card" onClick={() => openSectionModal(s.section_number, s.section_name)}>
+                                    <div key={s.id} className="section-card" onClick={() => openSectionModal(s.section_number, s.section_title)}>
 
                                         {/* Row 1: Section number + name */}
                                         <div className="section-card-header">
                                             <span className="section-number">{s.section_number}</span>
-                                            <span className="section-name">{s.section_name}</span>
+                                            <span className="section-name">{s.section_title}</span>
                                         </div>
 
                                         {/* Row 2: Status pills */}
                                         <div className="section-card-status">
                                             <span className={`pill pill-${classification_status}`}>
-                                                {getStatusIcon(classification_status)} {classification_status === "complete" ? "CLASSIFIED" : "CLASSIFYING..."}
+                                                {getStatusIcon(classification_status)} {getClassificationStatusText(classification_status)}
                                             </span>
                                             {s.summary_status === 'manual' ? (
                                                 <button
@@ -326,7 +338,7 @@ export default function Sections() {
                                                 </button>
                                             ) : (
                                                 <span className={`pill section-pill-${summary_status.toLowerCase()}`}>
-                                                    {getStatusIcon(s.summary_status)} {getStatusText(s.summary_status)}
+                                                    {getStatusIcon(s.summary_status)} {getSummaryStatusText(s.summary_status)}
                                                 </span>
                                             )}
                                         </div>

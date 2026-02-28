@@ -18,7 +18,7 @@ export interface Section {
     spec_id: string;
     division: string;
     section_number: string;
-    section_name: string;
+    section_title: string;
     primary_pages: number[];
     reference_pages: number[];
     classification_status: string;
