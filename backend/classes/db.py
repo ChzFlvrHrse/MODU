@@ -15,6 +15,7 @@ class ModuDB:
     async def init_db(self):
         """Initialize database with tables"""
         async with aiosqlite.connect(self.db_path) as conn:
+
             # Projects table
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS projects (
@@ -32,11 +33,27 @@ class ModuDB:
                 )
             """)
 
+            # Divisions table
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS divisions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    spec_id TEXT NOT NULL,
+                    division TEXT NOT NULL,
+                    division_title TEXT,
+                    total_sections INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP,
+                    FOREIGN KEY (spec_id) REFERENCES projects(spec_id) ON DELETE CASCADE,
+                    UNIQUE(spec_id, division)
+                )
+            """)
+
             # Sections table
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS sections (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     spec_id TEXT NOT NULL,
+                    division_id INTEGER NOT NULL,
                     division TEXT NOT NULL,
                     section_number TEXT NOT NULL,
                     section_title TEXT,
@@ -47,7 +64,8 @@ class ModuDB:
                     summary_status TEXT DEFAULT 'pending',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP,
-                    FOREIGN KEY (spec_id) REFERENCES projects(spec_id),
+                    FOREIGN KEY (spec_id) REFERENCES projects(spec_id) ON DELETE CASCADE,
+                    FOREIGN KEY (division_id) REFERENCES divisions(id) ON DELETE CASCADE,
                     UNIQUE(spec_id, section_number)
                 )
             """)
@@ -64,8 +82,8 @@ class ModuDB:
                     pages_analyzed TEXT DEFAULT '[]',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (section_id) REFERENCES sections(id)
-                );
+                    FOREIGN KEY (section_id) REFERENCES sections(id) ON DELETE CASCADE
+                )
             """)
 
             # Section summaries table
@@ -86,14 +104,56 @@ class ModuDB:
                     pages_not_summarized TEXT DEFAULT '[]',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (spec_id) REFERENCES projects(spec_id),
-                    FOREIGN KEY (section_id) REFERENCES sections(id)
-                );
+                    FOREIGN KEY (spec_id) REFERENCES projects(spec_id) ON DELETE CASCADE,
+                    FOREIGN KEY (section_id) REFERENCES sections(id) ON DELETE CASCADE
+                )
+            """)
+
+            # Submittal packages table
+            # A package belongs to a company/contractor for a given spec
+            # division_id is always required
+            # section_id is optional — null means the package covers the whole division
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS submittal_packages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    spec_id TEXT NOT NULL,
+                    division_id INTEGER NOT NULL,
+                    section_id INTEGER,
+                    company_name TEXT NOT NULL,
+                    submitted_by TEXT,
+                    submitted_date TIMESTAMP,
+                    status TEXT DEFAULT 'pending',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP,
+                    FOREIGN KEY (spec_id) REFERENCES projects(spec_id) ON DELETE CASCADE,
+                    FOREIGN KEY (division_id) REFERENCES divisions(id) ON DELETE CASCADE,
+                    FOREIGN KEY (section_id) REFERENCES sections(id) ON DELETE CASCADE
+                )
+            """)
+
+            # Submittals table
+            # Individual documents within a submittal package
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS submittals (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    package_id INTEGER NOT NULL,
+                    file_name TEXT NOT NULL,
+                    submittal_type TEXT,
+                    s3_key TEXT,
+                    page_count INTEGER,
+                    compliance_score REAL,
+                    classification_result TEXT DEFAULT '{}',
+                    extraction_result TEXT DEFAULT '{}',
+                    status TEXT DEFAULT 'pending',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP,
+                    FOREIGN KEY (package_id) REFERENCES submittal_packages(id) ON DELETE CASCADE
+                )
             """)
 
             await conn.commit()
 
-    async def save_project(
+    async def create_project(
         self,
         spec_id: str,
         project_name: str,
@@ -208,6 +268,64 @@ class ModuDB:
             """, (spec_id,))
             await conn.commit()
 
+    async def create_division(self, spec_id: str, division: str, division_title: str):
+        """Create division or return existing id"""
+        async with aiosqlite.connect(self.db_path) as conn:
+            cursor = await conn.execute("""
+                INSERT INTO divisions (spec_id, division, division_title)
+                VALUES (?, ?, ?)
+                ON CONFLICT(spec_id, division) DO UPDATE SET
+                    division_title = excluded.division_title,
+                    updated_at = CURRENT_TIMESTAMP
+            """, (spec_id, division, division_title))
+            await conn.commit()
+            return cursor.lastrowid
+
+    async def get_division(self, spec_id: str, division: str) -> Optional[Dict]:
+        """Get division data"""
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute("""
+                SELECT * FROM divisions WHERE spec_id = ? AND division = ?
+            """, (spec_id, division))
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+    async def get_all_divisions(self, spec_id: str) -> List[Dict]:
+        """Get all divisions for a spec"""
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute("""
+                SELECT * FROM divisions WHERE spec_id = ?
+            """, (spec_id,))
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    async def update_division(self, spec_id: str, division: str, division_title: str):
+        """Update division"""
+        async with aiosqlite.connect(self.db_path) as conn:
+            await conn.execute("""
+                UPDATE divisions
+                SET division_title = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE spec_id = ? AND division = ?
+            """, (division_title, spec_id, division))
+            await conn.commit()
+            return await self.get_division(spec_id, division)
+
+    async def delete_division(self, spec_id: str, division: str):
+        """Delete division"""
+        async with aiosqlite.connect(self.db_path) as conn:
+            await conn.execute("""
+                DELETE FROM divisions WHERE spec_id = ? AND division = ?
+            """, (spec_id, division))
+            await conn.commit()
+            return {
+                "deleted": True,
+                "division": division,
+                "spec_id": spec_id
+            }
+
     async def get_section(self, spec_id: str, section_number: str) -> Optional[Dict]:
         """Get section data"""
         async with aiosqlite.connect(self.db_path) as conn:
@@ -218,10 +336,11 @@ class ModuDB:
             row = await cursor.fetchone()
             return dict(row) if row else None
 
-    async def save_section(
+    async def create_section(
         self,
         spec_id: str,
         division: str,
+        division_id: int,
         section_number: str,
         section_title: str,
         total_pages: int,
@@ -241,21 +360,22 @@ class ModuDB:
                 await conn.execute("""
                     UPDATE sections
                     SET division = ?,
+                        division_id = ?,
                         section_title = ?,
                         total_pages = ?,
                         classification_status = ?,
                         summary_status = ?,
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
-                """, (division, section_title,
+                """, (division, division_id, section_title,
                       total_pages, classification_status, summary_status, existing[0]))
                 section_id = existing[0]
             else:
                 await conn.execute("""
-                    INSERT INTO sections (spec_id, division, section_number, section_title,
+                    INSERT INTO sections (spec_id, division, division_id, section_number, section_title,
                                          total_pages, classification_status, summary_status)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (spec_id, division, section_number, section_title, total_pages, classification_status, summary_status))
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (spec_id, division, division_id, section_number, section_title, total_pages, classification_status, summary_status))
 
                 cursor = await conn.execute("SELECT last_insert_rowid()")
                 section_id = (await cursor.fetchone())[0]
@@ -578,5 +698,6 @@ class ModuDB:
                 "error": str(e),
                 "section_id": None
             }
+
 
 db = ModuDB()

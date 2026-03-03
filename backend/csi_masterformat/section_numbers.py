@@ -3,7 +3,7 @@
 
 divisions_and_sections = {
     "00": {
-        "000000": " Procurement and Contracting Requirements",
+        "000000": "Procurement and Contracting Requirements",
         "000101": "Project Title Page",
         "000103": "Project Directory",
         "000105": "Certifications Page",
@@ -2880,6 +2880,7 @@ divisions_and_sections = {
         "108800": "Scales",
     },
     "11": {
+        "110000": "Specialties",
         "110100": "Operation and Maintenance of Equipment",
         "110110": "Operation and Maintenance of Vehicle and Pedestrian Equipment",
         "110120": "Operation and Maintenance of Commercial Equipment",

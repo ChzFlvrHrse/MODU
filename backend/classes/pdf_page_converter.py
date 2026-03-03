@@ -1,4 +1,7 @@
-import fitz, logging, dotenv, re
+import fitz
+import logging
+import dotenv
+import re
 from typing import Iterator, Optional
 from classes.typed_dicts import HybridPage
 from classes.ocr import OCRQualityChecker
@@ -8,11 +11,20 @@ dotenv.load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 class PDFPageConverter(OCRQualityChecker):
     """
     Handles converting PDF pages to text/images and uploading them to S3.
     """
     # ---------- Low-level helpers ----------
+
+    def get_optimal_dpi(self, page: fitz.Page, max_pixels: int = 1568) -> int:
+        """Calculate optimal DPI targeting Anthropic's 1568px long-edge ceiling."""
+        rect = page.rect
+        long_edge_pts = max(rect.width, rect.height)
+        long_edge_inches = long_edge_pts / 72
+        optimal_dpi = int(max_pixels / long_edge_inches)
+        return max(72, optimal_dpi)
 
     def rasterize_page(self, page: fitz.Page, total_pages: int, page_index: int, dpi: int = 200, grayscale: bool = False) -> bytes:
         zoom = dpi / 72.0
@@ -45,7 +57,7 @@ class PDFPageConverter(OCRQualityChecker):
     def pdf_page_converter_generator(
         self,
         pdf: bytes,
-        dpi: int = 200,
+        dpi_override: Optional[int] = None,
         grayscale: bool = False,
         rasterize_all: bool = False,
         start_index: int = 0,
@@ -56,6 +68,7 @@ class PDFPageConverter(OCRQualityChecker):
         - Optionally rasterize all pages.
         - Otherwise, only rasterize if the page has no text or contains images.
         - Include text if present.
+        - DPI is calculated per-page targeting Anthropic's 1568px ceiling unless dpi_override is set.
         """
 
         doc = fitz.open(stream=pdf, filetype="pdf")
@@ -92,6 +105,7 @@ class PDFPageConverter(OCRQualityChecker):
             for page_index in range(start, stop + 1):
                 try:
                     page = doc.load_page(page_index)
+                    dpi = dpi_override if dpi_override is not None else self.get_optimal_dpi(page)
 
                     # If rasterize_all, immediately yield a raster-only page
                     if rasterize_all:
@@ -121,10 +135,12 @@ class PDFPageConverter(OCRQualityChecker):
 
                         alnum = sum(c.isalnum() for c in clean_text)
                         word_count = len(re.findall(r"[A-Za-z0-9]{2,}", text))
-                        has_text = (alnum >= 50 and word_count >= 10) or (word_count >= 15)
+                        has_text = (alnum >= 50 and word_count >=
+                                    10) or (word_count >= 15)
 
                         if not has_text:
-                            logger.info(f"Page {page_index} has no text, rasterizing and OCRing")
+                            logger.info(
+                                f"Page {page_index} has no text, rasterizing and OCRing")
                             rasterized_bytes = self.rasterize_page(
                                 page,
                                 num_pages,
@@ -145,9 +161,11 @@ class PDFPageConverter(OCRQualityChecker):
                                 "bytes": rasterized_bytes
                             }
                         elif has_text:
-                            logger.info(f"Page {page_index} has text, checking for images")
+                            logger.info(
+                                f"Page {page_index} has text, checking for images")
                             if self.check_pdf_for_images(page):
-                                logger.info(f"Page {page_index} has images, rasterizing")
+                                logger.info(
+                                    f"Page {page_index} has images, rasterizing")
                                 rasterized_bytes = self.rasterize_page(
                                     page,
                                     num_pages,
@@ -161,7 +179,8 @@ class PDFPageConverter(OCRQualityChecker):
                                     "bytes": rasterized_bytes
                                 }
                             else:
-                                logger.info(f"Page {page_index} has no images, yielding text")
+                                logger.info(
+                                    f"Page {page_index} has no images, yielding text")
                                 yield {
                                     "page_index": page_index,
                                     "text": text if len(text) > 0 else "",

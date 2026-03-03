@@ -3,6 +3,7 @@ from functions import page_classification
 from quart import Blueprint, request, jsonify, current_app
 from classes import S3Bucket, db, Anthropic
 from functions import section_pages_detection as detect_section_pages
+from csi_masterformat import divisions_and_sections
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -18,22 +19,22 @@ async def upload():
     s3 = S3Bucket()
     start_time = datetime.datetime.now()
 
-    # Consider switching to request.form instead of request.files
+    form = await request.form
     files = await request.files
     pdf = files.getlist("pdf")
-    # User can provide a project name or it will default to the pdf filename
-    project_name = files.get("project_name", pdf[0].filename)
 
     if len(pdf) == 0:
         return jsonify({"error": "No PDF file provided"}), 400
-    elif not pdf[0].content_type == "application/pdf" or not pdf[0].filename.endswith(".pdf"):
+    if pdf[0].content_type != "application/pdf" or not pdf[0].filename.endswith(".pdf"):
         return jsonify({"error": "Invalid PDF file"}), 400
 
-    rasterize_all = files.get("rasterize_all", False)
-    start_index = files.get("start_index", 0)
-    end_index = files.get("end_index", None)
-    dpi = files.get("dpi", 200)
-    grayscale = files.get("grayscale", False)
+    # User can provide a project name or it will default to the pdf filename
+    project_name = form.get("project_name", pdf[0].filename)
+    rasterize_all = form.get("rasterize_all", False)
+    grayscale = form.get("grayscale", False)
+    start_index = form.get("start_index", 0)
+    end_index = form.get("end_index", None)
+    dpi_override = form.get("dpi_override", 200)
 
     spec_id = str(uuid.uuid4())
 
@@ -41,46 +42,46 @@ async def upload():
         original_pdf_upload_result = await s3.upload_original_pdf_with_client(files=pdf, spec_id=spec_id, s3=s3_client)
         if original_pdf_upload_result["status_code"] != 200:
             return jsonify({"error": original_pdf_upload_result["data"]}), original_pdf_upload_result["status_code"]
-        else:
-            logger.info(
-                f"Original PDF uploaded successfully to S3 bucket: {spec_id}")
+
+        logger.info(f"Original PDF uploaded successfully to S3 bucket: {spec_id}")
 
         pdf_result = await s3.get_original_pdf_with_client(spec_id=spec_id, s3_client=s3_client)
         if pdf_result["status_code"] != 200:
             return jsonify({"error": pdf_result["data"]}), pdf_result["status_code"]
 
-        pdf_bytes = pdf_result["data"]
-
         text_and_rasterize = await s3.bulk_upload_to_s3_with_client(
-            pdf=pdf_bytes,
+            pdf=pdf_result["data"],
             spec_id=spec_id,
             s3_client=s3_client,
-            dpi=dpi,
+            dpi_override=dpi_override,
             grayscale=grayscale,
             rasterize_all=rasterize_all,
             start_index=start_index,
             end_index=end_index
         )
 
+        if text_and_rasterize["status_code"] != 200:
+            return jsonify({"error": text_and_rasterize["message"]}), text_and_rasterize["status_code"]
+
         section_page_dict = await detect_section_pages(spec_id, s3, s3_client)
 
-        await db.save_project(spec_id, project_name)
+        await db.create_project(spec_id, project_name)
 
         total_divisions = 0
         total_sections = 0
         for division, sections in section_page_dict["divisions_and_sections"].items():
             total_divisions += 1
+            division_title = divisions_and_sections[division][f"{division}0000"]
+            division_id = await db.create_division(spec_id, division, division_title)
             for section_number, pages in sections.items():
                 total_sections += 1
-                section_title = pages.get(
-                    "title", "Undocumented Section Number (MSF2020)")
+                section_title = pages.get("title", "Undocumented Section Number (MSF2020)")
 
-                total_pages = 0
-                for page in pages.get("multi", []):
-                    total_pages += len(page)
+                total_pages = sum(len(page) for page in pages.get("multi", []))
                 total_pages += len(pages.get("single", []))
                 pages["total_pages"] = total_pages
-                await db.save_section(spec_id, division, section_number, section_title, total_pages)
+
+                await db.create_section(spec_id, division, division_id, section_number, section_title, total_pages)
 
         await db.update_project(
             spec_id,
@@ -98,7 +99,7 @@ async def upload():
         "run_time": f"{datetime.datetime.now() - start_time}",
         "text_and_rasterize": text_and_rasterize,
         "section_page_index": section_page_dict
-    }), text_and_rasterize["status_code"]
+    }), 200
 
 
 @spec_routes_bp.route("/projects", methods=["GET"])
