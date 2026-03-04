@@ -1,7 +1,7 @@
 import logging, datetime, uuid
 from functions import page_classification
 from quart import Blueprint, request, jsonify, current_app
-from classes import S3Bucket, db, Anthropic
+from classes import S3Bucket, db, Anthropic, PDFPageConverter
 from functions import section_pages_detection as detect_section_pages
 from csi_masterformat import divisions_and_sections
 
@@ -30,11 +30,11 @@ async def upload():
 
     # User can provide a project name or it will default to the pdf filename
     project_name = form.get("project_name", pdf[0].filename)
-    rasterize_all = form.get("rasterize_all", False)
-    grayscale = form.get("grayscale", False)
-    start_index = form.get("start_index", 0)
-    end_index = form.get("end_index", None)
-    dpi_override = form.get("dpi_override", 200)
+    # rasterize_all = form.get("rasterize_all", False)
+    # grayscale = form.get("grayscale", False)
+    # start_index = form.get("start_index", 0)
+    # end_index = form.get("end_index", None)
+    # dpi_override = form.get("dpi_override", 200)
 
     spec_id = str(uuid.uuid4())
 
@@ -49,19 +49,21 @@ async def upload():
         if pdf_result["status_code"] != 200:
             return jsonify({"error": pdf_result["data"]}), pdf_result["status_code"]
 
-        text_and_rasterize = await s3.bulk_upload_to_s3_with_client(
-            pdf=pdf_result["data"],
-            spec_id=spec_id,
-            s3_client=s3_client,
-            dpi_override=dpi_override,
-            grayscale=grayscale,
-            rasterize_all=rasterize_all,
-            start_index=start_index,
-            end_index=end_index
-        )
+        await s3.upload_original_pdf_pages(pdf=pdf_result["data"], spec_id=spec_id, s3_client=s3_client)
 
-        if text_and_rasterize["status_code"] != 200:
-            return jsonify({"error": text_and_rasterize["message"]}), text_and_rasterize["status_code"]
+        # text_and_rasterize = await s3.bulk_upload_to_s3_with_client(
+        #     pdf=pdf_result["data"],
+        #     spec_id=spec_id,
+        #     s3_client=s3_client,
+        #     dpi_override=dpi_override,
+        #     grayscale=grayscale,
+        #     rasterize_all=rasterize_all,
+        #     start_index=start_index,
+        #     end_index=end_index
+        # )
+
+        # if text_and_rasterize["status_code"] != 200:
+        #     return jsonify({"error": text_and_rasterize["message"]}), text_and_rasterize["status_code"]
 
         section_page_dict = await detect_section_pages(spec_id, s3, s3_client)
 
@@ -97,7 +99,7 @@ async def upload():
 
     return jsonify({
         "run_time": f"{datetime.datetime.now() - start_time}",
-        "text_and_rasterize": text_and_rasterize,
+        # "text_and_rasterize": text_and_rasterize,
         "section_page_index": section_page_dict
     }), 200
 

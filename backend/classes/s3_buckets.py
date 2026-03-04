@@ -256,18 +256,41 @@ class S3Bucket(PDFPageConverter):
         self,
         spec_id: str,
         s3_client: any,
-        prefix: str = '/converted'
+        prefix: str = 'original_pages'
     ) -> int:
         paginator = s3_client.get_paginator("list_objects_v2")
         response = paginator.paginate(
             Bucket=self.bucket_name,
-            Prefix=f"{spec_id}{prefix}/",
-            Delimiter="/"
+            Prefix=f"{spec_id}/{prefix}/",
         )
         count = 0
         async for page in response:
-            count += len(page.get("CommonPrefixes", []))
+            count += len(page.get("Contents", []))
         return count
+
+    async def upload_original_pdf_pages(self, pdf: bytes, spec_id: str, s3_client) -> dict:
+        src = fitz.open(stream=pdf, filetype="pdf")
+        total_pages = src.page_count
+
+        async def upload_page(page_index: int):
+            doc = fitz.open()
+            doc.insert_pdf(src, from_page=page_index, to_page=page_index)
+            page_bytes = doc.tobytes()
+            doc.close()
+
+            key = f"{spec_id}/original_pages/page_{page_index:04d}.pdf"
+            await s3_client.put_object(
+                Bucket=self.bucket_name,
+                Key=key,
+                Body=page_bytes,
+                ContentType="application/pdf"
+            )
+            logger.info(f"Uploaded original PDF page {page_index} to S3 bucket")
+
+        await asyncio.gather(*[upload_page(page_index) for page_index in range(total_pages)])
+
+        src.close()
+        return {"total_pages": total_pages, "status_code": 200}
 
     # ---------- Page uploads ----------
 

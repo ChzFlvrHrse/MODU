@@ -1,10 +1,16 @@
+from __future__ import annotations
+
 import fitz
 import logging
 import dotenv
 import re
-from typing import Iterator, Optional
+from typing import Iterator, Optional, TYPE_CHECKING
+
 from classes.typed_dicts import HybridPage
 from classes.ocr import OCRQualityChecker
+
+if TYPE_CHECKING:
+    from classes.s3_buckets import S3Bucket
 
 dotenv.load_dotenv()
 
@@ -57,7 +63,7 @@ class PDFPageConverter(OCRQualityChecker):
     def pdf_page_converter_generator(
         self,
         pdf: bytes,
-        dpi_override: Optional[int] = None,
+        dpi_override: Optional[int] = 200,
         grayscale: bool = False,
         rasterize_all: bool = False,
         start_index: int = 0,
@@ -191,3 +197,14 @@ class PDFPageConverter(OCRQualityChecker):
                     continue
         finally:
             doc.close()
+
+    async def build_mini_pdf(self, spec_id: str, page_indices: list[int], s3: S3Bucket, s3_client) -> bytes:
+        doc = fitz.open()
+        for page_index in page_indices:
+            key = f"{spec_id}/original_pages/page_{page_index:04d}.pdf"
+            response = await s3_client.get_object(Bucket=s3.bucket_name, Key=key)
+            page_bytes = await response["Body"].read()
+            src = fitz.open(stream=page_bytes, filetype="pdf")
+            doc.insert_pdf(src)
+            src.close()
+        return doc.tobytes()

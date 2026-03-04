@@ -8,7 +8,13 @@ import asyncio
 import time
 import os
 import resend
-from classes import S3Bucket, Anthropic, db, make_summary_schema
+from classes import (
+    S3Bucket,
+    Anthropic,
+    db,
+    make_summary_schema,
+    PDFPageConverter
+)
 
 load_dotenv()
 
@@ -16,6 +22,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 anthropic = Anthropic()
+pdf_converter = PDFPageConverter()
 
 
 def send_mail(spec_id: str, completion_time: float) -> Dict:
@@ -121,24 +128,20 @@ async def build_summary_requests(
     for division_number, division in sections.items():
         for section_number, section in division.items():
             for multi in section.get("multi", []):
-                start_index, end_index = multi[:2]
-                last_index = multi[-1]
+                start_index, end_index = multi[0], multi[-1]
+                page_indices = list[int](range(start_index, end_index + 1))
 
                 safe_section_number = section_number.replace(".", "_")
-                custom_id = f'{division_number}-{safe_section_number}-{spec_id}-{start_index}-{last_index}'
+                custom_id = f'{division_number}-{safe_section_number}-{spec_id}-{start_index}-{end_index}'
 
-                content_blocks: List[dict] = []
-                async for page in s3.get_converted_pages_generator_with_client(
-                    spec_id, s3_client, start_index, end_index + 1
-                ):
-                    content_blocks.extend(
-                        anthropic.page_blocks(page["page_index"], page["text"], page["bytes"], page["media_type"]))
+                mini_pdf = await pdf_converter.build_mini_pdf(spec_id, page_indices, s3, s3_client)
+                content_blocks = [anthropic.pdf_document_block(mini_pdf)]
 
                 request = await anthropic.build_claude_request(
                     custom_id,
                     content_blocks,
-                    system_prompt=anthropic.build_prompt(
-                        system_prompt, {"section_number": section_number}),
+                    system_prompt=anthropic.build_prompt(system_prompt, {
+                        "section_number": section_number, "pages_analyzed": page_indices}),
                     schema=dynamic_schema(section_number),
                     model=model,
                     max_tokens=max_tokens
@@ -149,12 +152,8 @@ async def build_summary_requests(
                 safe_section_number = section_number.replace(".", "_")
                 custom_id = f'{division_number}-{safe_section_number}-{spec_id}-{single}'
 
-                content_blocks: List[dict] = []
-                async for page in s3.get_converted_pages_generator_with_client(
-                    spec_id, s3_client, single, single + 1
-                ):
-                    content_blocks.extend(
-                        anthropic.page_blocks(page["page_index"], page["text"], page["bytes"], page["media_type"]))
+                mini_pdf = await pdf_converter.build_mini_pdf(spec_id, [single], s3, s3_client)
+                content_blocks = [anthropic.pdf_document_block(mini_pdf)]
 
                 request = await anthropic.build_claude_request(
                     custom_id,

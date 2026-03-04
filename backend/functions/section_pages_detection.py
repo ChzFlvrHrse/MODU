@@ -1,6 +1,7 @@
 import re
 import asyncio
-from classes import S3Bucket
+import fitz
+from classes import PDFPageConverter, S3Bucket
 from concurrent.futures import ProcessPoolExecutor
 from csi_masterformat import divisions_and_sections
 import logging
@@ -9,6 +10,8 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 # Build a flat set of all known MasterFormat section numbers for O(1) lookup
+
+
 def build_known_sections() -> set:
     known = set()
     for div_sections in divisions_and_sections.values():
@@ -77,29 +80,29 @@ def flatten(section_numbers: list[list[str]]):
     return flattened_list
 
 
-def worker_scan_shard(spec_id: str, start_index: int, end_index: int) -> list[dict]:
+def worker_scan_shard(spec_id: str, start_index: int, end_index: int) -> dict:
     async def _run():
         s3 = S3Bucket()
-
-        section_numbers: dict = {page_index: []
-                                 for page_index in range(start_index, end_index)}
+        converter = PDFPageConverter()
+        section_numbers = {page_index: []
+                           for page_index in range(start_index, end_index)}
 
         async with s3.s3_client() as s3_client:
-            gen = s3.get_converted_pages_generator_with_client(
-                spec_id, s3_client, start_index=start_index, end_index=end_index
-            )
-            async for page in gen:
-                text = page.get("text") or ""
-                page_index = page["page_index"]
-                if not text or not page_index:
-                    continue
+            for page_index in range(start_index, end_index):
+                key = f"{spec_id}/original_pages/page_{page_index:04d}.pdf"
+                response = await s3_client.get_object(Bucket=s3.bucket_name, Key=key)
+                page_bytes = await response["Body"].read()
 
-                for match in CANDIDATE_PATTERN.finditer(text):
-                    validated = is_valid_section(match.group(0))
-                    if validated:
-                        section_numbers[page_index].append(validated)
+                for page in converter.pdf_page_converter_generator(pdf=page_bytes):
+                    text = page.get("text") or ""
+                    if not text:
+                        continue
+                    for match in CANDIDATE_PATTERN.finditer(text):
+                        validated = is_valid_section(match.group(0))
+                        if validated:
+                            section_numbers[page_index].append(validated)
 
-            return section_numbers
+        return section_numbers
 
     return asyncio.run(_run())
 
@@ -154,8 +157,6 @@ def section_page_dict(section_numbers: dict):
     return results
 
 # Nest key:value into divisions as master key ----> {division: {section: [page_indices]}}
-
-
 def division_parser(section_pages: dict) -> dict:
     divisions_dict = {}
     for section, page_indices in section_pages.items():
@@ -166,8 +167,9 @@ def division_parser(section_pages: dict) -> dict:
     return divisions_dict
 
 
-async def section_pages_detection(spec_id: str, s3, s3_client, workers: int = 6) -> list[str]:
+async def section_pages_detection(spec_id: str, s3: S3Bucket, s3_client: any, workers: int = 6) -> dict:
     total_pages = await s3.get_original_page_count_with_client(spec_id, s3_client)
+    print("TOTAL PAGES: ", total_pages)
 
     divider = total_pages / workers
     shards = [(int(divider * i), int(divider * (i + 1)))
@@ -180,31 +182,13 @@ async def section_pages_detection(spec_id: str, s3, s3_client, workers: int = 6)
                                  spec_id, start_index, end_index)
             for start_index, end_index in shards
         ]
-        # flatten into a single dict
         results = await asyncio.gather(*futures)
         flattened_results = {k: v for d in results for k, v in d.items()}
 
-        divisions_and_sections = division_parser(
-            section_page_dict(flattened_results))
-        total_divisions = len(divisions_and_sections.keys())
-        total_sections = len(flattened_results.keys())
+        divisions = division_parser(section_page_dict(flattened_results))
 
         return {
-            "total_divisions": total_divisions,
-            "total_sections": total_sections,
-            "divisions_and_sections": divisions_and_sections
+            "total_divisions": len(divisions.keys()),
+            "total_sections": len(flattened_results.keys()),
+            "divisions_and_sections": divisions
         }
-
-# if __name__ == "__main__":
-#     s3 = S3Bucket()
-#     spec_id = "1ca7077a-ac58-4f5a-9b40-f6847ff235e2"
-#     async def main():
-#         async with s3.s3_client() as s3_client:
-#             results = await run_shards(spec_id, s3, s3_client, workers=4)
-#         return results
-#     print(asyncio.run(main()))
-#     results = asyncio.run(main())
-#     print(section_page_dict(results))
-#     section_numbers = ["000033", "22-05-05", "2629-13.03", "01-33-00a", "02 33 00a", "03.33.00a", "03 33 00.12"]
-#     for section in section_numbers:
-#         print(normalize_section_numbers(section))

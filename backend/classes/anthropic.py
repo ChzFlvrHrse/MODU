@@ -5,8 +5,11 @@ import os
 import asyncio
 import aiohttp
 import json
+import base64
+import fitz
 import dotenv
 from typing import Any, Dict, List, Sequence, Tuple, Optional, Type
+from classes import S3Bucket
 
 dotenv.load_dotenv()
 
@@ -45,6 +48,16 @@ class Anthropic:
                 },
             })
         return blocks
+
+    def pdf_document_block(self, pdf_bytes: bytes) -> List[Dict[str, Any]]:
+        return {
+            "type": "document",
+            "source": {
+                "type": "base64",
+                "media_type": "application/pdf",
+                "data": base64.standard_b64encode(pdf_bytes).decode("utf-8"),
+            }
+        }
 
     def enforce_no_additional_properties(self, schema: Any) -> None:
         if not isinstance(schema, dict):
