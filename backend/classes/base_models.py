@@ -17,6 +17,10 @@ def make_classification_schema(section_number: str) -> type[BaseModel]:
         is_primary: bool = Field(
             description=f"True ONLY if the page contains the primary specification body for section {section_number} specifically. Must be false if reasoning concludes content belongs to a different section."
         )
+        referenced_sections: list[str] = Field(
+            default_factory=list,
+            description="List of other CSI MasterFormat section numbers explicitly referenced in this page or block (e.g. ['033000', '011000']). Empty list if none found."
+        )
     return PageClassification
 
 

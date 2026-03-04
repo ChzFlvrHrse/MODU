@@ -79,6 +79,7 @@ class ModuDB:
                     is_primary BOOLEAN NOT NULL,
                     confidence REAL NOT NULL,
                     reasoning TEXT NOT NULL,
+                    referenced_sections TEXT DEFAULT '[]',
                     pages_analyzed TEXT DEFAULT '[]',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -584,18 +585,22 @@ class ModuDB:
             return [dict(row) for row in rows]
 
     async def save_classification_result(self, section_id: int, custom_id: str, result: Dict):
-        """Save individual classification result"""
+        """
+        Save individual classification result
+        result argument schema: {"is_primary": bool, "confidence": float, "reasoning": str, "referenced_sections": list[str], "pages_analyzed": list[int]}
+        """
         async with aiosqlite.connect(self.db_path) as conn:
             await conn.execute("""
                 INSERT INTO classification
-                (section_id, custom_id, is_primary, confidence, reasoning, pages_analyzed)
-                VALUES (?, ?, ?, ?, ?, ?)
+                (section_id, custom_id, is_primary, confidence, reasoning, referenced_sections, pages_analyzed)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (
                 section_id,
                 custom_id,
                 result.get('is_primary'),
                 result.get('confidence'),
                 result.get('reasoning'),
+                json.dumps(result.get('referenced_sections', [])),
                 json.dumps(result.get('pages_analyzed', [])),
             ))
             await conn.commit()
