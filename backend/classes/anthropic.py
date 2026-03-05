@@ -49,13 +49,22 @@ class Anthropic:
             })
         return blocks
 
-    def pdf_document_block(self, pdf_bytes: bytes) -> List[Dict[str, Any]]:
+    # def pdf_document_block(self, pdf_bytes: bytes) -> List[Dict[str, Any]]:
+    #     return {
+    #         "type": "document",
+    #         "source": {
+    #             "type": "base64",
+    #             "media_type": "application/pdf",
+    #             "data": base64.standard_b64encode(pdf_bytes).decode("utf-8"),
+    #         }
+    #     }
+
+    def pdf_document_block(self, url: str) -> Dict[str, Any]:
         return {
             "type": "document",
             "source": {
-                "type": "base64",
-                "media_type": "application/pdf",
-                "data": base64.standard_b64encode(pdf_bytes).decode("utf-8"),
+                "type": "url",
+                "url": url,
             }
         }
 
@@ -362,6 +371,7 @@ class Anthropic:
                 "error": str(e),
                 "status": "error",
             }
+
 
     async def poll_and_fetch_batch_results(self, batch_id: str) -> list[dict]:
         while True:

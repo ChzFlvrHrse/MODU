@@ -134,8 +134,10 @@ async def build_summary_requests(
                 safe_section_number = section_number.replace(".", "_")
                 custom_id = f'{division_number}-{safe_section_number}-{spec_id}-{start_index}-{end_index}'
 
-                mini_pdf = await pdf_converter.build_mini_pdf(spec_id, page_indices, s3, s3_client)
-                content_blocks = [anthropic.pdf_document_block(mini_pdf)]
+                content_blocks = []
+                for page in page_indices:
+                    url = await s3.generate_presigned_url(spec_id, page, s3_client)
+                    content_blocks.append(anthropic.pdf_document_block(url))
 
                 request = await anthropic.build_claude_request(
                     custom_id,
@@ -152,14 +154,14 @@ async def build_summary_requests(
                 safe_section_number = section_number.replace(".", "_")
                 custom_id = f'{division_number}-{safe_section_number}-{spec_id}-{single}'
 
-                mini_pdf = await pdf_converter.build_mini_pdf(spec_id, [single], s3, s3_client)
-                content_blocks = [anthropic.pdf_document_block(mini_pdf)]
+                url = await s3.generate_presigned_url(spec_id, single, s3_client)
+                content_blocks = [anthropic.pdf_document_block(url)]
 
                 request = await anthropic.build_claude_request(
                     custom_id,
                     content_blocks,
                     system_prompt=anthropic.build_prompt(
-                        system_prompt, {"section_number": section_number}),
+                        system_prompt, {"section_number": section_number, "pages_analyzed": [single]}),
                     schema=dynamic_schema(section_number),
                     model=model,
                     max_tokens=max_tokens
