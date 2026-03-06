@@ -136,7 +136,8 @@ async def build_summary_requests(
 
                 content_blocks = []
                 for page in page_indices:
-                    url = await s3.generate_presigned_url(spec_id, page, s3_client)
+                    key = f"{spec_id}/original_pages/page_{page:04d}.pdf"
+                    url = await s3.generate_presigned_url(key, s3_client)
                     content_blocks.append(anthropic.pdf_document_block(url))
 
                 request = await anthropic.build_claude_request(
@@ -154,7 +155,8 @@ async def build_summary_requests(
                 safe_section_number = section_number.replace(".", "_")
                 custom_id = f'{division_number}-{safe_section_number}-{spec_id}-{single}'
 
-                url = await s3.generate_presigned_url(spec_id, single, s3_client)
+                key = f"{spec_id}/original_pages/page_{single:04d}.pdf"
+                url = await s3.generate_presigned_url(key, s3_client)
                 content_blocks = [anthropic.pdf_document_block(url)]
 
                 request = await anthropic.build_claude_request(

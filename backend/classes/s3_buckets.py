@@ -73,10 +73,10 @@ class S3Bucket(PDFPageConverter):
             logger.error(f"Error deleting object {key}: {e}")
             return {"message": str(e), "status_code": 400}
 
-    async def generate_presigned_url(self, spec_id: str, page: int, s3_client: any) -> str:
+    async def generate_presigned_url(self, key: str, s3_client: any) -> str:
         return await s3_client.generate_presigned_url(
             "get_object",
-            Params={"Bucket": self.bucket_name, "Key": f"{spec_id}/original_pages/page_{page:04d}.pdf"},
+            Params={"Bucket": self.bucket_name, "Key": key},
             ExpiresIn=24 * 60 * 60  # 24 hours
         )
 
