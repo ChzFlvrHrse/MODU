@@ -822,15 +822,14 @@ class ModuDB:
         page_count: int = None,
         compliance_score: float = None,
         submittal_type: str = None,
-        submittal_findings: str = None,
-        status: str = None
+        submittal_findings: str = None
     ) -> int:
         """Create submittal"""
         async with aiosqlite.connect(self.db_path) as conn:
             cursor = await conn.execute("""
-                INSERT INTO submittals (package_id, spec_id, submittal_title, s3_key, page_count, compliance_score, submittal_type, submittal_findings, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (package_id, spec_id, submittal_title, s3_key, page_count, compliance_score, submittal_type, submittal_findings, status))
+                INSERT INTO submittals (package_id, spec_id, submittal_title, s3_key, page_count, compliance_score, submittal_type, submittal_findings)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (package_id, spec_id, submittal_title, s3_key, page_count, compliance_score, submittal_type, submittal_findings))
             await conn.commit()
             return cursor.lastrowid
 

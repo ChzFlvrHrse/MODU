@@ -19,6 +19,8 @@ logger = logging.getLogger(__name__)
 
 
 class PDFPageConverter(OCRQualityChecker):
+    def __init__(self):
+        super().__init__()
     """
     Handles converting PDF pages to text/images and uploading them to S3.
     """

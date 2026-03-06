@@ -26,6 +26,7 @@ ESTIMATED_TOKENS_PER_IMAGE = 1000
 
 class Anthropic(S3Bucket):
     def __init__(self):
+        super().__init__()
         self.client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
     def build_prompt(self, prompt: str, kwargs: dict) -> str:
@@ -95,27 +96,56 @@ class Anthropic(S3Bucket):
         self,
         content_blocks: list[dict],
         system_prompt: str,
-        schema: Type[BaseModel],
+        schema: Type[BaseModel] = None,
         max_tokens: int = 1024,
-        model: str = "claude-sonnet-4-5-20250929"
+        model: str = "claude-sonnet-4-5-20250929",
+        thinking_type: str = "disabled",
+        cache_system_prompt: bool = False,
     ) -> dict:
         try:
-            response = await self.client.messages.parse(
-                model=model,
-                max_tokens=max_tokens,
-                system=system_prompt,
-                output_format=schema,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": content_blocks,
-                    }
-                ]
-            )
-            return {
-                "status": "success",
-                "response": response.parsed_output.model_dump(),
+            # Cache system prompt if enabled
+            system_prompt = [
+                {
+                    "type": "text",
+                    "text": system_prompt,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ] if cache_system_prompt else system_prompt
+
+            # Build kwargs for claude request
+            kwargs = {
+                "model": model,
+                "max_tokens": max_tokens,
+                "system": system_prompt,
+                "messages": [{"role": "user", "content": content_blocks}],
             }
+
+            if thinking_type == "enabled":
+                kwargs["thinking"] = {"type": "enabled", "budget_tokens": 10000}
+                response: object = await self.client.messages.create(**kwargs)
+
+                text_block = next((b for b in response.content if b.type == "text"), None)
+                raw = text_block.text if text_block else ""
+
+                try:
+                    parsed = json.loads(raw)
+                except Exception:
+                    parsed = {"raw": raw}
+
+                return {
+                    "status": "success",
+                    "response": parsed,
+                }
+
+            else:
+                if schema:
+                    kwargs["output_format"] = schema
+                response: object = await self.client.messages.parse(**kwargs)
+                return {
+                    "status": "success",
+                    "response": response.parsed_output.model_dump() if schema else response.content[0].text,
+                }
+
         except Exception as e:
             logger.error(f"Error calling Claude: {e}")
             return {
@@ -165,23 +195,25 @@ class Anthropic(S3Bucket):
                 "status": "error",
             }
 
-    async def count_tokens_document(self, s3_key: str, model: str = "claude-sonnet-4-5-20250929"):
+    async def count_tokens_document(self, s3_keys: list[str], system_prompt: str, model: str = "claude-sonnet-4-5-20250929"):
         try:
+            content_blocks = []
             async with self.s3_client() as s3_client:
-                get_object = await self.get_object_with_client(s3_key, s3_client)
+                for s3_key in s3_keys:
+                    get_object = await self.get_object_with_client(s3_key, s3_client)
+                    content_blocks.append({
+                        "type": "document",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "application/pdf",
+                            "data": base64.b64encode(get_object).decode("utf-8"),
+                        }
+                    })
 
             tokens = await self.client.messages.count_tokens(
+                system=system_prompt,
                 messages=[{
-                    "content": [
-                        {
-                            "type": "document",
-                            "source": {
-                                "type": "base64",
-                                "media_type": "application/pdf",
-                                "data": base64.b64encode(get_object).decode("utf-8"),
-                            }
-                        }
-                    ],
+                    "content": content_blocks,
                     "role": "user",
                 }],
                 model=model,
@@ -383,7 +415,6 @@ class Anthropic(S3Bucket):
                 "error": str(e),
                 "status": "error",
             }
-
 
     async def poll_and_fetch_batch_results(self, batch_id: str) -> list[dict]:
         while True:

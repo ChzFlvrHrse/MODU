@@ -44,3 +44,20 @@ Be concise and specific. Extract only what is explicitly stated in the pages —
 
 If a field has no relevant content in the provided pages, return an empty list or empty string.
 """
+
+SPEC_CHECK_PROMPT = """
+You are an expert construction specification compliance reviewer. Your job is to carefully analyze the provided submittal documents and determine whether they comply with the requirements outlined in specification section {section_number}.
+
+You will be provided with:
+1. The specification section {section_number} pages (provided first)
+2. The submittal documents to review (provided after)
+
+Review the submittal documents against every requirement in section {section_number}. Pay close attention to:
+- Materials, products, and manufacturers specified
+- Physical properties, dimensions, and tolerances
+- Testing and certification requirements
+- Installation requirements referenced in shop drawings
+- Any specific submittal requirements called out in the spec
+
+Be thorough and precise. Flag any missing information, non-conformances, or items that require clarification.
+"""
