@@ -195,7 +195,7 @@ async def compare_submittals_to_spec():
 
         logger.info(f"Found {len(submittals)} submittal(s) for package_id={package_id}")
 
-        s3_keys = []
+        # s3_keys = []
         content_blocks = [
             {"type": "text", "text": f"The following are the specification section {section_number} pages:"},
         ]
@@ -221,9 +221,9 @@ async def compare_submittals_to_spec():
 
                     block = anthropic.pdf_document_block(url)
                     content_blocks.append(block)
-                    s3_keys.append(key)
+                    # s3_keys.append(key)
 
-        logger.info(f"Added {len(s3_keys)} spec page block(s) to content")
+        # logger.info(f"Added {len(s3_keys)} spec page block(s) to content")
 
         # Add cache control to last block
         content_blocks[-1]["cache_control"] = {"type": "ephemeral"}
@@ -237,13 +237,13 @@ async def compare_submittals_to_spec():
 
                 block = anthropic.pdf_document_block(url)
                 content_blocks.append(block)
-                s3_keys.append(key)
+                # s3_keys.append(key)
 
-        logger.info(f"Added {len(submittals)} submittal block(s) to content. Total s3_keys: {len(s3_keys)}")
+        # logger.info(f"Added {len(submittals)} submittal block(s) to content. Total s3_keys: {len(s3_keys)}")
 
         # NOTE: Not currently being used, but could be useful for future reference
-        token_count = await anthropic.count_tokens_document(s3_keys, system_prompt)
-        logger.info(f"Token count: {token_count}")
+        # token_count = await anthropic.count_tokens_document(s3_keys, system_prompt)
+        # logger.info(f"Token count: {token_count}")
 
         logger.info("Sending request to Claude")
         claude_request = await anthropic.claude(
@@ -256,7 +256,7 @@ async def compare_submittals_to_spec():
 
         if claude_request.get("status") == "success":
             logger.info(f"Claude request succeeded for package_id={package_id}, section_number={section_number}")
-            return jsonify({"result": claude_request.get("response"), "token_count": token_count}), 200
+            return jsonify({"result": claude_request.get("response")}), 200
         else:
             logger.error(f"Claude request failed: {claude_request.get('error')}")
             return jsonify({"error": claude_request.get("error")}), 500
