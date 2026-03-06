@@ -3,6 +3,7 @@ import json
 import uuid
 from classes import db, S3Bucket
 from quart import Blueprint, jsonify, request
+from quart.datastructures import FileStorage
 from classes import Anthropic, make_summary_schema
 from csi_masterformat import divisions_and_sections
 
@@ -21,11 +22,13 @@ def required_fields(data: dict, fields: list) -> bool:
             missing_fields.append(field)
     return len(missing_fields) == 0, missing_fields
 
+# ---------------------------------------------------------------- Submittal Packages ----------------------------------------------------------------
+
 
 @submittal_routes_bp.route("/create_submittal_package", methods=["POST"])
 async def create_submittal_package():
     try:
-        data = await request.json
+        data: dict = await request.get_json()
 
         # required fields
         spec_id = data.get("spec_id")
@@ -73,15 +76,59 @@ async def create_submittal_package():
         return jsonify({"error": str(e)}), 500
 
 
+@submittal_routes_bp.route("/all_submittal_packages", methods=["GET"])
+async def all_submittal_packages():
+    try:
+        data = request.args
+        spec_id = data.get("spec_id")
+
+        submittal_packages = await db.get_all_submittal_packages(spec_id)
+
+        return jsonify({"submittal_packages": submittal_packages}), 200
+    except Exception as e:
+        logger.error(f"Error getting all submittal packages: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@submittal_routes_bp.route("/submittal_packages_for_section", methods=["GET"])
+async def submittal_packages_for_section():
+    try:
+        data = request.args
+        section_id = data.get("section_id")
+
+        submittal_packages = await db.get_submittal_packages_for_section(section_id)
+
+        return jsonify({"submittal_packages": submittal_packages}), 200
+    except Exception as e:
+        logger.error(f"Error getting submittal packages for section: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@submittal_routes_bp.route("/submittal_package", methods=["GET"])
+async def submittal_package():
+    try:
+        data = request.args
+        submittal_package_id = data.get("submittal_package_id")
+
+        submittal_package = await db.get_submittal_package(submittal_package_id)
+
+        return jsonify({"submittal_package": submittal_package}), 200
+    except Exception as e:
+        logger.error(f"Error getting submittal package: {e}")
+        return jsonify({"error": str(e)}), 500
+
+# ---------------------------------------------------------------- Submittals ----------------------------------------------------------------
+
+
 @submittal_routes_bp.route("/upload_submittal", methods=["POST"])
 async def upload_submittal():
     try:
         s3 = S3Bucket()
 
-        form = await request.form
-        files = await request.files
+        form: dict = await request.form
+        files: list[FileStorage] = await request.files
 
-        pdf = files.get("pdf")
+        pdf: FileStorage = files.get("pdf")
         spec_id = form.get("spec_id")
         package_id = form.get("package_id")
         submittal_title = form.get("submittal_title", pdf.filename)
@@ -91,7 +138,8 @@ async def upload_submittal():
         if pdf.content_type != "application/pdf" or not pdf.filename.endswith(".pdf"):
             return jsonify({"error": "Invalid PDF file"}), 400
 
-        is_valid, missing_fields = required_fields(form, ["spec_id", "package_id"])
+        is_valid, missing_fields = required_fields(
+            form, ["spec_id", "package_id"])
         if not is_valid:
             return jsonify({"error": f"Missing required fields: {', '.join(missing_fields)}"}), 400
 
@@ -108,7 +156,8 @@ async def upload_submittal():
         if upload_result.get("status_code") != 200:
             return jsonify({"error": upload_result.get("message")}), upload_result.get("status_code")
 
-        logger.info(f"Submittal uploaded successfully to S3 bucket: {upload_result.get('s3_key')}")
+        logger.info(
+            f"Submittal uploaded successfully to S3 bucket: {upload_result.get('s3_key')}")
 
         submittal_id = await db.create_submittal(
             package_id=package_id,
@@ -126,23 +175,28 @@ async def upload_submittal():
         return jsonify({"error": str(e)}), 500
 
 
-@submittal_routes_bp.route("/upload_submittal_bulk", methods=["POST"])
-async def upload_submittal_bulk():
+@submittal_routes_bp.route("/all_submittals", methods=["GET"])
+async def all_submittals():
     try:
-        s3 = S3Bucket()
+        data = request.args
+        package_id = data.get("package_id")
 
-        form = await request.form
-        files = await request.files
+        submittals = await db.get_all_submittals(package_id)
 
-        if len(files) == 0:
-            return jsonify({"error": "No files provided"}), 400
-        if files[0].content_type != "application/pdf" or not files[0].filename.endswith(".pdf"):
-            return jsonify({"error": "Invalid PDF file"}), 400
-
-        spec_id = form.get("spec_id")
-        if not spec_id:
-            return jsonify({"error": "No spec_id provided"}), 400
-
+        return jsonify({"submittals": submittals}), 200
     except Exception as e:
-        logger.error(f"Error uploading submittal package: {e}")
+        logger.error(f"Error getting all submittals: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@submittal_routes_bp.route("/submittal", methods=["GET"])
+async def submittal():
+    try:
+        data = request.args
+        submittal_id = data.get("submittal_id")
+
+        submittal = await db.get_submittal(submittal_id)
+
+        return jsonify({"submittal": submittal}), 200
+    except Exception as e:
+        logger.error(f"Error getting submittal: {e}")
         return jsonify({"error": str(e)}), 500

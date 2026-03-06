@@ -734,6 +734,16 @@ class ModuDB:
             row = await cursor.fetchone()
             return dict(row) if row else None
 
+    async def get_submittal_packages_for_section(self, section_id: int) -> List[Dict]:
+        """Get submittal packages for a section"""
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute("""
+                SELECT * FROM submittal_packages WHERE section_id = ?
+            """, (section_id,))
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
     async def get_all_submittal_packages(self, spec_id: str) -> List[Dict]:
         """Get all submittal packages"""
         async with aiosqlite.connect(self.db_path) as conn:
