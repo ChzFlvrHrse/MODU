@@ -1,7 +1,9 @@
 from pydantic import BaseModel
+from classes.s3_buckets import S3Bucket
 from anthropic import AsyncAnthropic
 import logging
 import os
+import base64
 import asyncio
 import aiohttp
 import json
@@ -22,7 +24,7 @@ ESTIMATED_TOKENS_PER_TEXT_PAGE = 1500
 ESTIMATED_TOKENS_PER_IMAGE = 1000
 
 
-class Anthropic:
+class Anthropic(S3Bucket):
     def __init__(self):
         self.client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
@@ -137,44 +139,57 @@ class Anthropic:
         right = self.split_batch(requests[mid:])
         return left + right
 
-    async def count_tokens(
+    # NOTE: URL PDF sources are not supported by the count_tokens endpoint, so we need to use the claude endpoint to count the tokens
+    async def count_tokens_content_blocks(
         self,
         content_blocks: list[tuple[str, bytes]],
         system_prompt: str,
         model: str = "claude-sonnet-4-5-20250929"
     ) -> int:
         try:
-            content = []
-
-            for text, img_bytes, media_type in content_blocks:
-                if text:
-                    content.append({
-                        "type": "text",
-                        "text": text
-                    })
-
-                if img_bytes:
-                    content.append({
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": media_type,
-                            "data": img_bytes,
-                        }
-                    })
-
-            messages = [{
-                "role": "user",
-                "content": content
-            }]
 
             res = await self.client.messages.count_tokens(
                 model=model,
                 system=system_prompt,
-                messages=messages
+                messages=[{
+                    "role": "user",
+                    "content": content_blocks,
+                }]
             )
 
             return res.input_tokens
+        except Exception as e:
+            logger.error(f"Error counting tokens: {e}")
+            return {
+                "error": str(e),
+                "status": "error",
+            }
+
+    async def count_tokens_document(self, s3_key: str, model: str = "claude-sonnet-4-5-20250929"):
+        try:
+            async with self.s3_client() as s3_client:
+                get_object = await self.get_object_with_client(s3_key, s3_client)
+
+            tokens = await self.client.messages.count_tokens(
+                messages=[{
+                    "content": [
+                        {
+                            "type": "document",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "application/pdf",
+                                "data": base64.b64encode(get_object).decode("utf-8"),
+                            }
+                        }
+                    ],
+                    "role": "user",
+                }],
+                model=model,
+            )
+            return {
+                "status": "success",
+                "tokens": tokens.input_tokens,
+            }
         except Exception as e:
             logger.error(f"Error counting tokens: {e}")
             return {
