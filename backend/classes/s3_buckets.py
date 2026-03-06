@@ -459,10 +459,10 @@ class S3Bucket(PDFPageConverter):
         file: FileStorage,
         spec_id: str,
         package_id: int,
-        submittal_id: int,
+        file_uuid: str,
         s3_client: any
     ) -> dict:
-        key = f"{spec_id}/submittals/{package_id}/{submittal_id}/{file.filename}"
+        key = f"{spec_id}/submittals/package_{package_id}/{file_uuid}/{file.filename}"
         return await self.put_object_with_client(
             key=key,
             body=file.stream,

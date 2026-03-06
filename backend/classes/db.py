@@ -3,10 +3,12 @@ import aiosqlite
 import json
 from typing import Optional, List, Dict
 import logging
+from classes.s3_buckets import S3Bucket
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+s3 = S3Bucket()
 
 class ModuDB:
     def __init__(self, db_path: str = "modu_db.db"):
@@ -111,23 +113,22 @@ class ModuDB:
             """)
 
             # Submittal packages table
-            # A package belongs to a company/contractor for a given spec
-            # division_id is always required
-            # section_id is optional — null means the package covers the whole division
+            # A package belongs to a series of submittals from a single source
+            # Minimum requirement is a spec_id, section_id, and package_name
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS submittal_packages (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     spec_id TEXT NOT NULL,
-                    division_id INTEGER NOT NULL,
-                    section_id INTEGER,
-                    company_name TEXT NOT NULL,
+                    section_id INTEGER NOT NULL,
+                    package_name TEXT NOT NULL,
+                    company_name TEXT,
                     submitted_by TEXT,
                     submitted_date TIMESTAMP,
+                    compliance_score REAL,
                     status TEXT DEFAULT 'pending',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP,
                     FOREIGN KEY (spec_id) REFERENCES projects(spec_id) ON DELETE CASCADE,
-                    FOREIGN KEY (division_id) REFERENCES divisions(id) ON DELETE CASCADE,
                     FOREIGN KEY (section_id) REFERENCES sections(id) ON DELETE CASCADE
                 )
             """)
@@ -138,13 +139,12 @@ class ModuDB:
                 CREATE TABLE IF NOT EXISTS submittals (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     package_id INTEGER NOT NULL,
-                    file_name TEXT NOT NULL,
-                    submittal_type TEXT,
-                    s3_key TEXT,
-                    page_count INTEGER,
-                    compliance_score REAL,
-                    classification_result TEXT DEFAULT '{}',
-                    extraction_result TEXT DEFAULT '{}',
+                    submittal_title TEXT NOT NULL,
+                    s3_key TEXT DEFAULT NULL,
+                    page_count INTEGER DEFAULT NULL,
+                    compliance_score REAL DEFAULT NULL,
+                    submittal_type  TEXT DEFAULT NULL,
+                    submittal_findings TEXT DEFAULT NULL,
                     status TEXT DEFAULT 'pending',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP,
@@ -703,6 +703,207 @@ class ModuDB:
                 "error": str(e),
                 "section_id": None
             }
+
+    async def create_submittal_package(
+        self,
+        spec_id: str,
+        section_id: int,
+        package_name: str,
+        company_name: str = None,
+        submitted_by: str = None,
+        submitted_date: str = None,
+        compliance_score: float = None,
+        status: str = "pending"
+    ) -> int:
+        """Create submittal package"""
+        async with aiosqlite.connect(self.db_path) as conn:
+            cursor = await conn.execute("""
+                INSERT INTO submittal_packages (spec_id, section_id, package_name, company_name, submitted_by, submitted_date, compliance_score, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (spec_id, section_id, package_name, company_name, submitted_by, submitted_date, compliance_score, status))
+            await conn.commit()
+            return cursor.lastrowid
+
+    async def get_submittal_package(self, submittal_package_id: int) -> Optional[Dict]:
+        """Get submittal package"""
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute("""
+                SELECT * FROM submittal_packages WHERE id = ?
+            """, (submittal_package_id,))
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+    async def get_all_submittal_packages(self, spec_id: str) -> List[Dict]:
+        """Get all submittal packages"""
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute("""
+                SELECT * FROM submittal_packages WHERE spec_id = ?
+            """, (spec_id,))
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    async def update_submittal_package(
+        self,
+        submittal_package_id: int,
+        company_name: str = None,
+        submitted_by: str = None,
+        submitted_date: str = None,
+        compliance_score: float = None,
+        status: str = None
+    ) -> int:
+        """Update submittal package"""
+        async with aiosqlite.connect(self.db_path) as conn:
+            fields = {
+                "company_name": company_name,
+                "submitted_by": submitted_by,
+                "submitted_date": submitted_date,
+                "compliance_score": compliance_score,
+                "status": status
+            }
+            updates = {k: v for k, v in fields.items() if v is not None}
+            if not updates:
+                return
+
+            set_clause = ", ".join(f"{k} = ?" for k in updates)
+            values = list(updates.values()) + [submittal_package_id]
+
+            await conn.execute(f"""
+                UPDATE submittal_packages
+                SET {set_clause}, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, values)
+            await conn.commit()
+            return submittal_package_id
+
+    async def delete_submittal_package(self, submittal_package_id: int):
+        """Delete submittal package from db and s3 bucket"""
+        try:
+            package = await self.get_submittal_package(submittal_package_id)
+            if not package:
+                return {"error": "Submittal package not found"}, 404
+
+            # delete submittal package from db
+            async with aiosqlite.connect(self.db_path) as conn:
+                await conn.execute("""
+                    DELETE FROM submittal_packages WHERE id = ?
+                """, (submittal_package_id,))
+                await conn.commit()
+
+            return {
+                "message": "Submittal package deleted successfully",
+                "submittal_package_id": submittal_package_id
+            }
+        except Exception as e:
+            logger.error(f"Error deleting submittal package: {e}")
+            return {
+                "error": str(e),
+                "submittal_package_id": None
+            }
+
+    async def create_submittal(
+        self,
+        package_id: int,
+        submittal_title: str,
+        s3_key: str,
+        page_count: int = None,
+        compliance_score: float = None,
+        submittal_type: str = None,
+        submittal_findings: str = None,
+        status: str = None
+    ) -> int:
+        """Create submittal"""
+        async with aiosqlite.connect(self.db_path) as conn:
+            cursor = await conn.execute("""
+                INSERT INTO submittals (package_id, submittal_title, s3_key, page_count, compliance_score, submittal_type, submittal_findings, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (package_id, submittal_title, s3_key, page_count, compliance_score, submittal_type, submittal_findings, status))
+            await conn.commit()
+            return cursor.lastrowid
+
+    async def get_submittal(self, submittal_id: int) -> Optional[Dict]:
+        """Get submittal"""
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute("""
+                SELECT * FROM submittals WHERE id = ?
+            """, (submittal_id,))
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+    async def get_all_submittals(self, package_id: int) -> List[Dict]:
+        """Get all submittals"""
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute("""
+                SELECT * FROM submittals WHERE package_id = ?
+            """, (package_id,))
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    async def update_submittal(
+        self,
+        submittal_id: int,
+        submittal_title: str = None,
+        s3_key: str = None,
+        page_count: int = None,
+        compliance_score: float = None,
+        submittal_type: str = None,
+        submittal_findings: str = None,
+        status: str = None
+    ) -> int:
+        """Update submittal"""
+        async with aiosqlite.connect(self.db_path) as conn:
+            fields = {
+                "submittal_title": submittal_title,
+                "s3_key": s3_key,
+                "page_count": page_count,
+                "compliance_score": compliance_score,
+                "submittal_type": submittal_type,
+                "submittal_findings": submittal_findings,
+                "status": status
+            }
+            updates = {k: v for k, v in fields.items() if v is not None}
+            if not updates:
+                return
+
+            set_clause = ", ".join(f"{k} = ?" for k in updates)
+            values = list(updates.values()) + [submittal_id]
+
+            await conn.execute(f"""
+                UPDATE submittals
+                SET {set_clause}, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, values)
+            await conn.commit()
+            return submittal_id
+
+    async def delete_submittal(self, submittal_id: int):
+        """Delete submittal from db and s3 bucket"""
+        try:
+            submittal = await self.get_submittal(submittal_id)
+            if not submittal:
+                return {"error": "Submittal not found"}, 404
+
+            async with aiosqlite.connect(self.db_path) as conn:
+                await conn.execute("""
+                    DELETE FROM submittals WHERE id = ?
+                """, (submittal_id,))
+                await conn.commit()
+
+            async with s3.s3_client() as s3_client:
+                deleted_from_s3 = await s3.delete_submittal_with_client(submittal.get("s3_key"), s3_client)
+                if deleted_from_s3.get("status_code") != 200:
+                    return {"error": deleted_from_s3.get("message")}, deleted_from_s3.get("status_code")
+
+            return {
+                "message": "Submittal deleted successfully",
+                "submittal_id": submittal_id
+            }
+        except Exception as e:
+            logger.error(f"Error deleting submittal: {e}")
+            return {"error": str(e), "submittal_id": None}
 
 
 db = ModuDB()

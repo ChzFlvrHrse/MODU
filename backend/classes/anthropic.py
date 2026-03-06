@@ -5,11 +5,8 @@ import os
 import asyncio
 import aiohttp
 import json
-import base64
-import fitz
 import dotenv
 from typing import Any, Dict, List, Sequence, Tuple, Optional, Type
-from classes import S3Bucket
 
 dotenv.load_dotenv()
 

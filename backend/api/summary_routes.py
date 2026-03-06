@@ -1,11 +1,10 @@
 import logging
 import json
-import asyncio
-from classes import db, S3Bucket
-from quart import Blueprint, jsonify
-from prompts import SUMMARY_PROMPT
-from classes import Anthropic, make_summary_schema
 from urllib.parse import unquote
+from classes import db, S3Bucket
+from prompts import SUMMARY_PROMPT
+from quart import Blueprint, jsonify
+from classes import Anthropic, make_summary_schema
 from csi_masterformat import divisions_and_sections
 
 summary_routes_bp = Blueprint("summary_routes", __name__)
@@ -28,6 +27,8 @@ async def section_summary(spec_id: str, section_number: str):
         return jsonify({"error": str(e)}), 500
 
 # NOTE: Consider using 2 prompts for all_contiguous vs not all_contiguous scenarios
+
+
 @summary_routes_bp.route("/generate_section_summary/<spec_id>/<section_number>", methods=["POST"])
 async def generate_section_summary(spec_id: str, section_number: str):
     try:
