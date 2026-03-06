@@ -1,18 +1,13 @@
 import logging
-import json
 import uuid
 from classes import db, S3Bucket
 from quart import Blueprint, jsonify, request
 from quart.datastructures import FileStorage
-from classes import Anthropic, make_summary_schema
-from csi_masterformat import divisions_and_sections
 
 submittal_routes_bp = Blueprint("submittal_routes", __name__)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-anthropic = Anthropic()
 
 
 def required_fields(data: dict, fields: list) -> bool:
@@ -161,6 +156,7 @@ async def upload_submittal():
 
         submittal_id = await db.create_submittal(
             package_id=package_id,
+            spec_id=spec_id,
             submittal_title=submittal_title,
             s3_key=upload_result.get("s3_key"),
         )
@@ -179,24 +175,24 @@ async def upload_submittal():
 async def all_submittals():
     try:
         data = request.args
-        package_id = data.get("package_id")
+        spec_id = data.get("spec_id")
 
-        submittals = await db.get_all_submittals(package_id)
+        submittals = await db.get_all_submittals(spec_id)
 
         return jsonify({"submittals": submittals}), 200
     except Exception as e:
         logger.error(f"Error getting all submittals: {e}")
         return jsonify({"error": str(e)}), 500
 
-@submittal_routes_bp.route("/submittal", methods=["GET"])
-async def submittal():
+@submittal_routes_bp.route("/submittals_by_package", methods=["GET"])
+async def submittals_by_package():
     try:
         data = request.args
-        submittal_id = data.get("submittal_id")
+        package_id = data.get("package_id")
 
-        submittal = await db.get_submittal(submittal_id)
+        submittals = await db.get_all_submittals_by_package(package_id)
 
-        return jsonify({"submittal": submittal}), 200
+        return jsonify({"submittals": submittals}), 200
     except Exception as e:
-        logger.error(f"Error getting submittal: {e}")
+        logger.error(f"Error getting submittals by package: {e}")
         return jsonify({"error": str(e)}), 500

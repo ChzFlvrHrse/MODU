@@ -139,6 +139,7 @@ class ModuDB:
                 CREATE TABLE IF NOT EXISTS submittals (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     package_id INTEGER NOT NULL,
+                    spec_id TEXT NOT NULL,
                     submittal_title TEXT NOT NULL,
                     s3_key TEXT DEFAULT NULL,
                     page_count INTEGER DEFAULT NULL,
@@ -815,6 +816,7 @@ class ModuDB:
     async def create_submittal(
         self,
         package_id: int,
+        spec_id: str,
         submittal_title: str,
         s3_key: str,
         page_count: int = None,
@@ -826,11 +828,21 @@ class ModuDB:
         """Create submittal"""
         async with aiosqlite.connect(self.db_path) as conn:
             cursor = await conn.execute("""
-                INSERT INTO submittals (package_id, submittal_title, s3_key, page_count, compliance_score, submittal_type, submittal_findings, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (package_id, submittal_title, s3_key, page_count, compliance_score, submittal_type, submittal_findings, status))
+                INSERT INTO submittals (package_id, spec_id, submittal_title, s3_key, page_count, compliance_score, submittal_type, submittal_findings, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (package_id, spec_id, submittal_title, s3_key, page_count, compliance_score, submittal_type, submittal_findings, status))
             await conn.commit()
             return cursor.lastrowid
+
+    async def get_all_submittals(self, spec_id: str) -> List[Dict]:
+        """Get all submittals by spec_id"""
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute("""
+                SELECT * FROM submittals WHERE spec_id = ?
+            """, (spec_id,))
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
 
     async def get_submittal(self, submittal_id: int) -> Optional[Dict]:
         """Get submittal"""
@@ -842,8 +854,8 @@ class ModuDB:
             row = await cursor.fetchone()
             return dict(row) if row else None
 
-    async def get_all_submittals(self, package_id: int) -> List[Dict]:
-        """Get all submittals"""
+    async def get_all_submittals_by_package(self, package_id: int) -> List[Dict]:
+        """Get all submittals by package"""
         async with aiosqlite.connect(self.db_path) as conn:
             conn.row_factory = aiosqlite.Row
             cursor = await conn.execute("""
