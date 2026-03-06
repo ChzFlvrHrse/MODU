@@ -251,8 +251,7 @@ async def compare_submittals_to_spec():
             system_prompt=system_prompt,
             schema=make_spec_check_schema(section_number),
             max_tokens=16000,
-            cache_system_prompt=True,
-            effort="high"
+            cache_system_prompt=True
         )
 
         if claude_request.get("status") == "success":
