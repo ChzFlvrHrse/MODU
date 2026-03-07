@@ -11,10 +11,6 @@ anthropic = Anthropic()
 
 async def compliance_check(package_id: int, spec_id: str, section_number: str, submittals: list[dict]):
     try:
-        # s3_keys = []
-        content_blocks = [
-            {"type": "text", "text": f"The following are the specification section {section_number} pages:"},
-        ]
 
         # Check if the submittals are only shop drawings
         type_ids = [submittal.get("submittal_type_id")
@@ -50,6 +46,11 @@ async def compliance_check(package_id: int, spec_id: str, section_number: str, s
         logger.info(
             f"Fetching {len(summary_pages)} spec page(s) across {len(summary_page_groups)} group(s)")
 
+        # s3_keys = []
+        content_blocks = [
+            {"type": "text", "text": f"The following are the specification section {section_number} pages:"},
+        ]
+        
         # Get original pdf pages
         async with s3.s3_client() as s3_client:
             for group in summary_page_groups:
