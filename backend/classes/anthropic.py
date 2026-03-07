@@ -49,17 +49,17 @@ class Anthropic(S3Bucket):
             })
         return blocks
 
-    # def pdf_document_block(self, pdf_bytes: bytes) -> List[Dict[str, Any]]:
-    #     return {
-    #         "type": "document",
-    #         "source": {
-    #             "type": "base64",
-    #             "media_type": "application/pdf",
-    #             "data": base64.standard_b64encode(pdf_bytes).decode("utf-8"),
-    #         }
-    #     }
+    def pdf_document_block_base64(self, pdf_bytes: bytes) -> List[Dict[str, Any]]:
+        return {
+            "type": "document",
+            "source": {
+                "type": "base64",
+                "media_type": "application/pdf",
+                "data": base64.standard_b64encode(pdf_bytes).decode("utf-8"),
+            }
+        }
 
-    def pdf_document_block(self, url: str) -> Dict[str, Any]:
+    def pdf_document_block_url(self, url: str) -> Dict[str, Any]:
         return {
             "type": "document",
             "source": {
@@ -97,9 +97,10 @@ class Anthropic(S3Bucket):
         content_blocks: list[dict],
         system_prompt: str,
         schema: Type[BaseModel] = None,
-        max_tokens: int = 1024,
-        model: str = "claude-sonnet-4-5-20250929",
-        thinking_type: str = "disabled",
+        max_tokens: int = 16000,
+        model: str = "claude-sonnet-4-6",
+        adaptive_thinking: bool = False,
+        effort: str = "medium",
         cache_system_prompt: bool = False,
     ) -> dict:
         try:
@@ -120,9 +121,20 @@ class Anthropic(S3Bucket):
                 "messages": [{"role": "user", "content": content_blocks}],
             }
 
-            if thinking_type == "enabled":
-                kwargs["thinking"] = {"type": "enabled", "budget_tokens": 10000}
-                response: object = await self.client.messages.create(**kwargs)
+            if adaptive_thinking:
+                kwargs["thinking"] = {"type": "adaptive"}
+                kwargs["output_config"] = {"effort": effort}
+                async with self.client.messages.stream(**kwargs) as stream:
+                    async for event in stream:
+                        if event.type == "content_block_start":
+                            print(f"\nStarting {event.type} block...")
+                        elif event.type == "content_block_delta":
+                            if event.delta.type == "thinking_delta":
+                                print(event.delta.thinking, end="", flush=True)
+                            elif event.delta.type == "text_delta":
+                                print(event.delta.text, end="", flush=True)
+
+                    response = await stream.get_final_message()
 
                 text_block = next((b for b in response.content if b.type == "text"), None)
                 raw = text_block.text if text_block else ""
@@ -174,7 +186,7 @@ class Anthropic(S3Bucket):
         self,
         content_blocks: list[tuple[str, bytes]],
         system_prompt: str,
-        model: str = "claude-sonnet-4-5-20250929"
+        model: str = "claude-sonnet-4-6"
     ) -> int:
         try:
 
@@ -195,7 +207,7 @@ class Anthropic(S3Bucket):
                 "status": "error",
             }
 
-    async def count_tokens_document(self, s3_keys: list[str], system_prompt: str, model: str = "claude-sonnet-4-5-20250929"):
+    async def count_tokens_document(self, s3_keys: list[str], system_prompt: str, model: str = "claude-sonnet-4-6"):
         try:
             content_blocks = []
             async with self.s3_client() as s3_client:
@@ -347,7 +359,7 @@ class Anthropic(S3Bucket):
         system_prompt: str,
         schema: Type[BaseModel],
         max_tokens: int = 1024,
-        model: str = "claude-sonnet-4-5-20250929"
+        model: str = "claude-sonnet-4-6"
     ) -> Dict[str, Any]:
         # Check token count before building request
         # NOTE: Develop a way to handle exceeding the context window by splitting the request into multiple requests

@@ -5,7 +5,8 @@ from classes import db, S3Bucket, Anthropic
 from quart import Blueprint, jsonify, request
 from quart.datastructures import FileStorage
 from prompts import SPEC_CHECK_PROMPT
-from classes.base_models import make_spec_check_schema
+from functions import compliance_check
+from typing import List
 
 submittal_routes_bp = Blueprint("submittal_routes", __name__)
 
@@ -14,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 s3 = S3Bucket()
 anthropic = Anthropic()
+
 
 def required_fields(data: dict, fields: list) -> bool:
     missing_fields = []
@@ -132,6 +134,7 @@ async def upload_submittal():
         spec_id = form.get("spec_id")
         package_id = form.get("package_id")
         submittal_title = form.get("submittal_title", pdf.filename)
+        submittal_type_id: int = int(form.get("submittal_type_id"))
 
         if not pdf:
             return jsonify({"error": "No file provided"}), 400
@@ -139,7 +142,7 @@ async def upload_submittal():
             return jsonify({"error": "Invalid PDF file"}), 400
 
         is_valid, missing_fields = required_fields(
-            form, ["spec_id", "package_id"])
+            form, ["spec_id", "package_id", "submittal_type_id"])
         if not is_valid:
             return jsonify({"error": f"Missing required fields: {', '.join(missing_fields)}"}), 400
 
@@ -164,106 +167,64 @@ async def upload_submittal():
             spec_id=spec_id,
             submittal_title=submittal_title,
             s3_key=upload_result.get("s3_key"),
+            submittal_type_id=submittal_type_id,
         )
 
         if not submittal_id:
             return jsonify({"error": "Failed to create submittal"}), 500
 
-        return jsonify({"message": "Submittal created successfully", "submittal_id": submittal_id}), 200
+        return jsonify({
+            "message": "Submittal created successfully",
+            "spec_id": spec_id,
+            "submittal_id": submittal_id,
+            "submittal_type_id": submittal_type_id,
+            "package_id": package_id,
+            "s3_key": upload_result.get("s3_key")
+        }), 200
 
     except Exception as e:
         logger.error(f"Error uploading submittal: {e}")
         return jsonify({"error": str(e)}), 500
 
+
 @submittal_routes_bp.route("/compliance_check", methods=["POST"])
-async def compliance_check():
+async def compliance_check_route():
     try:
         data: dict = await request.get_json()
 
         package_id = data.get("package_id")
         spec_id = data.get("spec_id")
         section_number = data.get("section_number")
+        submittal_type_ids: List[int] | None = data.get(
+            "submittal_type_ids", None)
 
-        logger.info(f"Comparing submittals to spec: package_id={package_id}, spec_id={spec_id}, section_number={section_number}")
+        logger.info(
+            f"Comparing submittals to spec: package_id={package_id}, spec_id={spec_id}, section_number={section_number}, submittal_type_ids={submittal_type_ids}")
 
-        if not package_id:
-            return jsonify({"error": "Package ID is required"}), 400
+        is_valid, missing_fields = required_fields(data, ["package_id", "spec_id", "section_number"])
+        if not is_valid:
+            return jsonify({"error": f"Missing required fields: {', '.join(missing_fields)}"}), 400
 
-        submittals = await db.get_all_submittals_by_package(package_id)
-        if not submittals:
-            return jsonify({"error": "No submittals found"}), 404
-
-        logger.info(f"Found {len(submittals)} submittal(s) for package_id={package_id}")
-
-        # s3_keys = []
-        content_blocks = [
-            {"type": "text", "text": f"The following are the specification section {section_number} pages:"},
-        ]
-
-        system_prompt = anthropic.build_prompt(SPEC_CHECK_PROMPT, {"section_number": section_number})
-        section = await db.get_section(spec_id, section_number)
-        if not section:
-            return jsonify({"error": "Section not found"}), 404
-
-        primary_pages = json.loads(section.get("primary_pages", "[]"))
-        reference_pages = json.loads(section.get("reference_pages", "[]"))
-        summary_pages = primary_pages if primary_pages else reference_pages
-        summary_page_groups, _ = s3.group_contiguous_pages(summary_pages)
-
-        logger.info(f"Fetching {len(summary_pages)} spec page(s) across {len(summary_page_groups)} group(s)")
-
-        # Get original pdf pages
-        async with s3.s3_client() as s3_client:
-            for group in summary_page_groups:
-                for page in group:
-                    key = f"{spec_id}/original_pages/page_{page:04d}.pdf"
-                    url = await s3.generate_presigned_url(key, s3_client)
-
-                    block = anthropic.pdf_document_block(url)
-                    content_blocks.append(block)
-                    # s3_keys.append(key)
-
-        # logger.info(f"Added {len(s3_keys)} spec page block(s) to content")
-
-        # Add cache control to last block
-        content_blocks[-1]["cache_control"] = {"type": "ephemeral"}
-
-        content_blocks.append({"type": "text", "text": "The following are the submittal documents to review:"})
-
-        async with s3.s3_client() as s3_client:
-            for submittal in submittals:
-                key = submittal.get("s3_key")
-                url = await s3.generate_presigned_url(key, s3_client)
-
-                block = anthropic.pdf_document_block(url)
-                content_blocks.append(block)
-                # s3_keys.append(key)
-
-        # logger.info(f"Added {len(submittals)} submittal block(s) to content. Total s3_keys: {len(s3_keys)}")
-
-        # NOTE: Not currently being used, but could be useful for future reference
-        # token_count = await anthropic.count_tokens_document(s3_keys, system_prompt)
-        # logger.info(f"Token count: {token_count}")
-
-        logger.info("Sending request to Claude")
-        claude_request = await anthropic.claude(
-            content_blocks=content_blocks,
-            system_prompt=system_prompt,
-            schema=make_spec_check_schema(section_number),
-            max_tokens=16000,
-            cache_system_prompt=True
-        )
-
-        if claude_request.get("status") == "success":
-            logger.info(f"Claude request succeeded for package_id={package_id}, section_number={section_number}")
-            return jsonify({"result": claude_request.get("response")}), 200
+        if submittal_type_ids:
+            submittals = await db.get_submittals_by_type(spec_id, package_id, submittal_type_ids)
         else:
-            logger.error(f"Claude request failed: {claude_request.get('error')}")
-            return jsonify({"error": claude_request.get("error")}), 500
+            submittals = await db.get_submittals_by_package(package_id)
 
+
+        if not submittals:
+            logger.error(f"No submittals found for package_id={package_id}")
+            return {"status": "error", "error": "No submittals found"}
+
+        logger.info(
+            f"Found {len(submittals)} submittal(s) for package_id={package_id}")
+
+        result = await compliance_check(package_id=package_id, spec_id=spec_id, section_number=section_number, submittals=submittals)
+
+        return jsonify({"result": result}), 200
     except Exception as e:
         logger.error(f"Error comparing submittals: {e}")
         return jsonify({"error": str(e)}), 500
+
 
 @submittal_routes_bp.route("/all_submittals", methods=["GET"])
 async def all_submittals():
@@ -277,6 +238,7 @@ async def all_submittals():
     except Exception as e:
         logger.error(f"Error getting all submittals: {e}")
         return jsonify({"error": str(e)}), 500
+
 
 @submittal_routes_bp.route("/submittals_by_package", methods=["GET"])
 async def submittals_by_package():

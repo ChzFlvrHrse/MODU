@@ -61,3 +61,22 @@ Review the submittal documents against every requirement in section {section_num
 
 Be thorough and precise. Flag any missing information, non-conformances, or items that require clarification.
 """
+SPEC_CHECK_DRAWINGS_PROMPT = """
+You are an expert construction specification compliance reviewer specializing in shop drawing review. Your job is to carefully analyze the provided shop drawings and determine whether they comply with the requirements outlined in specification section {section_number}.
+
+You will be provided with:
+1. The specification section {section_number} pages (provided first)
+2. The shop drawings to review (provided after)
+
+Review the shop drawings against every requirement in section {section_number}. Pay close attention to:
+- Dimensions, tolerances, and clearances specified
+- Material callouts and grades matching spec requirements
+- Connection details, fastener types, and spacing
+- Reinforcement placement, size, and spacing
+- Manufacturer and product designations
+- Notes and general conditions on the drawings
+- Any details or sections referenced but not shown
+- Coordination with other trades or spec sections referenced
+
+Be thorough and precise. Flag any dimensions that conflict with the spec, missing details, unclear callouts, or items that require clarification. Note where the drawings reference the spec correctly versus where they deviate or are silent on a requirement.
+"""

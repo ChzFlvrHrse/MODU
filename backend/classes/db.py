@@ -10,6 +10,7 @@ logger.setLevel(logging.INFO)
 
 s3 = S3Bucket()
 
+
 class ModuDB:
     def __init__(self, db_path: str = "modu_db.db"):
         self.db_path = db_path
@@ -144,7 +145,18 @@ class ModuDB:
                     s3_key TEXT DEFAULT NULL,
                     page_count INTEGER DEFAULT NULL,
                     compliance_score REAL DEFAULT NULL,
-                    submittal_type  TEXT DEFAULT NULL,
+                    submittal_type_id INTEGER DEFAULT NULL CHECK (submittal_type_id IN (1042, 2187, 3561, 4823, 5394, 6718, 7265)),
+                    submittal_type_name TEXT GENERATED ALWAYS AS (
+                        CASE submittal_type_id
+                            WHEN 1042 THEN 'Shop Drawing'
+                            WHEN 2187 THEN 'Product Data'
+                            WHEN 3561 THEN 'Material Certification'
+                            WHEN 4823 THEN 'Test Report'
+                            WHEN 5394 THEN 'Mix Design'
+                            WHEN 6718 THEN 'Sample'
+                            WHEN 7265 THEN 'Other'
+                        END
+                    ) STORED,
                     submittal_findings TEXT DEFAULT NULL,
                     status TEXT DEFAULT 'pending',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -819,17 +831,17 @@ class ModuDB:
         spec_id: str,
         submittal_title: str,
         s3_key: str,
+        submittal_type_id: int,
         page_count: int = None,
         compliance_score: float = None,
-        submittal_type: str = None,
         submittal_findings: str = None
     ) -> int:
         """Create submittal"""
         async with aiosqlite.connect(self.db_path) as conn:
             cursor = await conn.execute("""
-                INSERT INTO submittals (package_id, spec_id, submittal_title, s3_key, page_count, compliance_score, submittal_type, submittal_findings)
+                INSERT INTO submittals (package_id, spec_id, submittal_title, s3_key, page_count, compliance_score, submittal_type_id, submittal_findings)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (package_id, spec_id, submittal_title, s3_key, page_count, compliance_score, submittal_type, submittal_findings))
+            """, (package_id, spec_id, submittal_title, s3_key, page_count, compliance_score, submittal_type_id, submittal_findings))
             await conn.commit()
             return cursor.lastrowid
 
@@ -853,7 +865,18 @@ class ModuDB:
             row = await cursor.fetchone()
             return dict(row) if row else None
 
-    async def get_all_submittals_by_package(self, package_id: int) -> List[Dict]:
+    async def get_submittals_by_type(self, spec_id: str, package_id: int, submittal_type_ids: List[int]) -> List[Dict]:
+        """Get submittals by submittal_type_ids"""
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            placeholders = ", ".join("?" * len(submittal_type_ids))
+            cursor = await conn.execute(f"""
+                SELECT * FROM submittals WHERE spec_id = ? AND package_id = ? AND submittal_type_id IN ({placeholders})
+            """, (spec_id, package_id, *submittal_type_ids))
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    async def get_submittals_by_package(self, package_id: int) -> List[Dict]:
         """Get all submittals by package"""
         async with aiosqlite.connect(self.db_path) as conn:
             conn.row_factory = aiosqlite.Row

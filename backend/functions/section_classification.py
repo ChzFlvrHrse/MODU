@@ -157,8 +157,8 @@ async def build_classification_requests(
     dynamic_schema: Callable[[str], Type[BaseModel]],
     s3: S3Bucket,
     s3_client: any,
-    model: str = "claude-sonnet-4-5-20250929",
-    max_tokens: int = 1024
+    model: str = "claude-sonnet-4-6",
+    max_tokens: int = 16000
 ) -> list[dict]:
     requests = []
 
@@ -175,7 +175,7 @@ async def build_classification_requests(
                 for page in page_indices:
                     key = f"{spec_id}/original_pages/page_{page:04d}.pdf"
                     url = await s3.generate_presigned_url(key, s3_client)
-                    content_blocks.append(anthropic.pdf_document_block(url))
+                    content_blocks.append(anthropic.pdf_document_block_url(url))
 
                 request = await anthropic.build_claude_request(
                     custom_id,
@@ -194,7 +194,7 @@ async def build_classification_requests(
 
                 key = f"{spec_id}/original_pages/page_{single:04d}.pdf"
                 url = await s3.generate_presigned_url(key, s3_client)
-                content_blocks = [anthropic.pdf_document_block(url)]
+                content_blocks = [anthropic.pdf_document_block_url(url)]
 
                 request = await anthropic.build_claude_request(
                     custom_id,
@@ -262,8 +262,8 @@ async def page_classification(spec_id: str, divisions_and_sections: dict[str, di
                 dynamic_schema=make_classification_schema,
                 s3=s3,
                 s3_client=s3_client,
-                model="claude-sonnet-4-5-20250929",
-                max_tokens=1024
+                model="claude-sonnet-4-6",
+                max_tokens=16000
             )
 
         batches = anthropic.split_batch(requests)
