@@ -175,8 +175,8 @@ async def upload_submittal():
         logger.error(f"Error uploading submittal: {e}")
         return jsonify({"error": str(e)}), 500
 
-@submittal_routes_bp.route("/compare_submittals_to_spec", methods=["POST"])
-async def compare_submittals_to_spec():
+@submittal_routes_bp.route("/compliance_check", methods=["POST"])
+async def compliance_check():
     try:
         data: dict = await request.get_json()
 
