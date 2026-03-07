@@ -121,17 +121,12 @@ class Anthropic(S3Bucket):
                 "max_tokens": max_tokens,
                 "system": system_prompt,
                 "messages": [{"role": "user", "content": content_blocks}],
+                "output_format": schema,
             }
 
             if adaptive_thinking:
                 kwargs["thinking"] = {"type": "adaptive"}
-                kwargs["output_config"] = {
-                    "effort": effort,
-                    "format": {
-                        "type": "json_schema",
-                        "schema": self.enforce_no_additional_properties(schema.model_json_schema())
-                    }
-                }
+                kwargs["output_config"] = {"effort": effort}
 
                 async with self.client.messages.stream(**kwargs) as stream:
                     async for event in stream:
@@ -160,8 +155,6 @@ class Anthropic(S3Bucket):
                 }
 
             else:
-                if schema:
-                    kwargs["output_format"] = schema
                 response: object = await self.client.messages.parse(**kwargs)
                 return {
                     "status": "success",
