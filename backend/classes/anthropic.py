@@ -68,9 +68,9 @@ class Anthropic(S3Bucket):
             }
         }
 
-    def enforce_no_additional_properties(self, schema: Any) -> None:
+    def enforce_no_additional_properties(self, schema: Any) -> dict:
         if not isinstance(schema, dict):
-            return None
+            return schema
 
         if schema.get("type") == "object":
             schema.setdefault("additionalProperties", False)
@@ -92,11 +92,13 @@ class Anthropic(S3Bucket):
         for sub in (schema.get("$defs") or {}).values():
             self.enforce_no_additional_properties(sub)
 
+        return schema
+
     async def claude(
         self,
         content_blocks: list[dict],
         system_prompt: str,
-        schema: Type[BaseModel] = None,
+        schema: Type[BaseModel],
         max_tokens: int = 16000,
         model: str = "claude-sonnet-4-6",
         adaptive_thinking: bool = False,
@@ -123,7 +125,14 @@ class Anthropic(S3Bucket):
 
             if adaptive_thinking:
                 kwargs["thinking"] = {"type": "adaptive"}
-                kwargs["output_config"] = {"effort": effort}
+                kwargs["output_config"] = {
+                    "effort": effort,
+                    "format": {
+                        "type": "json_schema",
+                        "schema": self.enforce_no_additional_properties(schema.model_json_schema())
+                    }
+                }
+
                 async with self.client.messages.stream(**kwargs) as stream:
                     async for event in stream:
                         if event.type == "content_block_start":
@@ -136,7 +145,8 @@ class Anthropic(S3Bucket):
 
                     response = await stream.get_final_message()
 
-                text_block = next((b for b in response.content if b.type == "text"), None)
+                text_block = next(
+                    (b for b in response.content if b.type == "text"), None)
                 raw = text_block.text if text_block else ""
 
                 try:
