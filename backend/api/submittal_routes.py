@@ -137,10 +137,9 @@ async def upload_submittal():
 
         spec_id = form.get("spec_id")
         package_id = form.get("package_id")
-        submittal_type_id: int = int(form.get("submittal_type_id"))
 
         is_valid, missing_fields = required_fields(
-            form, ["spec_id", "package_id", "submittal_type_id"])
+            form, ["spec_id", "package_id"])
         if not is_valid:
             return jsonify({"error": f"Missing required fields: {', '.join(missing_fields)}"}), 400
 
@@ -152,9 +151,15 @@ async def upload_submittal():
             if pdf.content_type != "application/pdf" or not pdf.filename.endswith(".pdf"):
                 return jsonify({"error": f"Invalid file: {pdf.filename}. PDFs only."}), 400
 
+        VALID_SUBMITTAL_TYPE_IDS = {1042, 2187, 3561, 4823, 5394, 6718, 7265}
         results = []
         async with s3.s3_client() as s3_client:
-            for pdf in pdfs:
+            for i, pdf in enumerate(pdfs):
+                submittal_type_id = int(form.get(f"submittal_type_id_{i}"))
+
+                if submittal_type_id not in VALID_SUBMITTAL_TYPE_IDS:
+                    return jsonify({"error": f"Invalid submittal type id: {submittal_type_id}"}), 400
+
                 file_uuid = str(uuid.uuid4())
                 upload_result = await s3.upload_submittal_with_client(
                     file=pdf,
@@ -167,7 +172,7 @@ async def upload_submittal():
                 if upload_result.get("status_code") != 200:
                     return jsonify({"error": upload_result.get("message")}), upload_result.get("status_code")
 
-                submittal_title = form.get("submittal_title", pdf.filename)
+                submittal_title = form.get("submittal_title", pdf.filename.replace(".pdf", "").replace(".PDF", ""))
                 submittal_id = await db.create_submittal(
                     package_id=package_id,
                     spec_id=spec_id,
@@ -189,9 +194,6 @@ async def upload_submittal():
 
         return jsonify({
             "message": f"{len(results)} submittal(s) created successfully",
-            "spec_id": spec_id,
-            "package_id": package_id,
-            "submittal_type_id": submittal_type_id,
             "submittals": results,
         }), 200
 
