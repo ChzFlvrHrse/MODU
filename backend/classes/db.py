@@ -126,6 +126,10 @@ class ModuDB:
                     submitted_by TEXT,
                     submitted_date TIMESTAMP,
                     compliance_score REAL,
+                    compliance_result TEXT DEFAULT NULL,
+                    checked_submittal_ids TEXT DEFAULT NULL,
+                    run_count INTEGER DEFAULT 0,
+                    last_checked_at TIMESTAMP DEFAULT NULL,
                     status TEXT DEFAULT 'pending',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP,
@@ -879,14 +883,14 @@ class ModuDB:
             row = await cursor.fetchone()
             return dict(row) if row else None
 
-    async def get_submittals_by_type(self, spec_id: str, package_id: int, submittal_type_ids: List[int]) -> List[Dict]:
+    async def get_submittals_by_type(self, package_id: int, submittal_type_ids: List[int]) -> List[Dict]:
         """Get submittals by submittal_type_ids"""
         async with aiosqlite.connect(self.db_path) as conn:
             conn.row_factory = aiosqlite.Row
             placeholders = ", ".join("?" * len(submittal_type_ids))
             cursor = await conn.execute(f"""
-                SELECT * FROM submittals WHERE spec_id = ? AND package_id = ? AND submittal_type_id IN ({placeholders})
-            """, (spec_id, package_id, *submittal_type_ids))
+                SELECT * FROM submittals WHERE package_id = ? AND submittal_type_id IN ({placeholders})
+            """, (package_id, *submittal_type_ids))
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
 

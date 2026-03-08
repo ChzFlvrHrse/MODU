@@ -128,38 +128,31 @@ class Anthropic(S3Bucket):
                 kwargs["thinking"] = {"type": "adaptive"}
                 kwargs["output_config"] = {"effort": effort}
 
-                async with self.client.messages.stream(**kwargs) as stream:
-                    async for event in stream:
-                        if event.type == "content_block_start":
-                            print(f"\nStarting {event.type} block...")
-                        elif event.type == "content_block_delta":
-                            if event.delta.type == "thinking_delta":
-                                print(event.delta.thinking, end="", flush=True)
-                            elif event.delta.type == "text_delta":
-                                print(event.delta.text, end="", flush=True)
+            async with self.client.messages.stream(**kwargs) as stream:
+                async for event in stream:
+                    if event.type == "content_block_start":
+                        print(f"\nStarting {event.type} block...")
+                    elif event.type == "content_block_delta":
+                        if event.delta.type == "thinking_delta":
+                            print(event.delta.thinking, end="", flush=True)
+                        elif event.delta.type == "text_delta":
+                            print(event.delta.text, end="", flush=True)
 
-                    response = await stream.get_final_message()
+                response = await stream.get_final_message()
 
-                text_block = next(
-                    (b for b in response.content if b.type == "text"), None)
-                raw = text_block.text if text_block else ""
+            text_block = next(
+                (b for b in response.content if b.type == "text"), None)
+            raw = text_block.text if text_block else ""
 
-                try:
-                    parsed = json.loads(raw)
-                except Exception:
-                    parsed = {"raw": raw}
+            try:
+                parsed = json.loads(raw)
+            except Exception:
+                parsed = {"raw": raw}
 
-                return {
-                    "status": "success",
-                    "response": parsed,
-                }
-
-            else:
-                response: object = await self.client.messages.parse(**kwargs)
-                return {
-                    "status": "success",
-                    "response": response.parsed_output.model_dump() if schema else response.content[0].text,
-                }
+            return {
+                "status": "success",
+                "response": parsed,
+            }
 
         except Exception as e:
             logger.error(f"Error calling Claude: {e}")

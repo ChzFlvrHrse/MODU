@@ -222,7 +222,7 @@ async def compliance_check_route():
             return jsonify({"error": f"Missing required fields: {', '.join(missing_fields)}"}), 400
 
         if submittal_type_ids:
-            submittals = await db.get_submittals_by_type(spec_id, package_id, submittal_type_ids)
+            submittals = await db.get_submittals_by_type(package_id, submittal_type_ids)
         else:
             submittals = await db.get_submittals_by_package(package_id)
 

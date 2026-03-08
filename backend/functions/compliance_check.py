@@ -15,7 +15,7 @@ async def compliance_check(package_id: int, spec_id: str, section_number: str, s
         # Check if the submittals are only shop drawings
         type_ids = [submittal.get("submittal_type_id")
                     for submittal in submittals]
-        is_drawing_only = type_ids == [1042]
+        is_drawing_only = set(type_ids) == {1042}
 
         if is_drawing_only:
             logger.info("Submittals are only shop drawings")
@@ -50,7 +50,7 @@ async def compliance_check(package_id: int, spec_id: str, section_number: str, s
         content_blocks = [
             {"type": "text", "text": f"The following are the specification section {section_number} pages:"},
         ]
-        
+
         # Get original pdf pages
         async with s3.s3_client() as s3_client:
             for group in summary_page_groups:
