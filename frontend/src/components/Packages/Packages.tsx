@@ -6,6 +6,9 @@ import { ArrowBackIosNew, ChevronRight, ExpandMore, ExpandLess, PlayArrow } from
 import { toast } from "react-hot-toast";
 import "./Packages.css";
 
+// Components
+import UploadSubmittal from "../UploadSubmittal/UploadSubmittal";
+
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
 interface Submittal {
@@ -76,6 +79,7 @@ export default function Packages() {
     const [highlightedSubmittalId, setHighlightedSubmittalId] = useState<number | null>(null);
     const [loading, setLoading] = useState(true);
     const [running, setRunning] = useState(false);
+    const [showUpload, setShowUpload] = useState(false);
 
     const activePackage = useMemo(
         () => packages.find((p) => p.id === activePackageId) ?? null,
@@ -169,170 +173,182 @@ export default function Packages() {
     }, [activePackage, highlightedSubmittalId]);
 
     return (
-        <div className="pkg-page">
-            {/* Header */}
-            <div className="pkg-header">
-                <div>
-                    <button className="pkg-back-btn" onClick={() => navigate(-1)}>
-                        <ArrowBackIosNew fontSize="large" />
-                    </button>
-                    <h1 className="pkg-title">Packages</h1>
-                    {section_number && section_title && (
-                        <p className="pkg-subtitle">
-                            <span className="pkg-section-title">{section_title} - </span>
-                            <span className="pkg-section-badge">{section_number}</span>
-                        </p>
-                    )}
-                </div>
-            </div>
-
-            <div className="pkg-layout">
-                {/* Sidebar */}
-                <aside className="pkg-sidebar">
-                    <div className="pkg-sidebar-title">Packages</div>
-                    <div className="pkg-sidebar-list">
-                        {loading ? (
-                            <div className="pkg-sidebar-loading">
-                                <CircularProgress size={18} sx={{ color: "rgba(255,255,255,0.4)" }} />
-                            </div>
-                        ) : packages.length === 0 ? (
-                            <div className="pkg-sidebar-empty">No packages found.</div>
-                        ) : (
-                            packages.map((pkg) => {
-                                const isActive = pkg.id === activePackageId;
-                                const isExpanded = expandedPackageIds.has(pkg.id);
-                                const score = pkg.compliance_score;
-
-                                return (
-                                    <div key={pkg.id} className="pkg-sidebar-group">
-                                        {/* Package row */}
-                                        <button
-                                            className={`pkg-sidebar-item ${isActive ? "active" : ""}`}
-                                            onClick={() => {
-                                                setActivePackageId(pkg.id);
-                                                toggleExpand(pkg.id);
-                                            }}
-                                        >
-                                            <div className="pkg-sidebar-item-left">
-                                                <span className="pkg-sidebar-name">{pkg.package_name}</span>
-                                                {pkg.company_name && (
-                                                    <span className="pkg-sidebar-company">{pkg.company_name}</span>
-                                                )}
-                                            </div>
-                                            <div className="pkg-sidebar-item-right">
-                                                {score !== null && (
-                                                    <span className={`pkg-score-badge ${score >= 0.7 ? "good" : score >= 0.4 ? "warn" : "bad"}`}>
-                                                        {Math.round(score * 100)}%
-                                                    </span>
-                                                )}
-                                                {isExpanded
-                                                    ? <ExpandLess fontSize="small" sx={{ color: "rgba(255,255,255,0.3)", flexShrink: 0 }} />
-                                                    : <ExpandMore fontSize="small" sx={{ color: "rgba(255,255,255,0.3)", flexShrink: 0 }} />
-                                                }
-                                            </div>
-                                        </button>
-
-                                        {/* Submittals sub-list */}
-                                        {isExpanded && pkg.submittals.length > 0 && (
-                                            <div className="pkg-submittal-list">
-                                                {pkg.submittals.map((sub) => (
-                                                    <button
-                                                        key={sub.id}
-                                                        className={`pkg-submittal-item ${highlightedSubmittalId === sub.id ? "highlighted" : ""}`}
-                                                        onClick={() => {
-                                                            setActivePackageId(pkg.id);
-                                                            handleSubmittalClick(sub.id);
-                                                        }}
-                                                    >
-                                                        <ChevronRight fontSize="small" sx={{ color: "rgba(255,255,255,0.2)", flexShrink: 0 }} />
-                                                        <div className="pkg-submittal-info">
-                                                            <span className="pkg-submittal-title">{sub.submittal_title}</span>
-                                                            <span className="pkg-submittal-type">{sub.submittal_type_name}</span>
-                                                        </div>
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        )}
-
-                                        {isExpanded && pkg.submittals.length === 0 && (
-                                            <div className="pkg-submittal-empty">No submittals uploaded yet.</div>
-                                        )}
-                                    </div>
-                                );
-                            })
+        <>
+            <div className="pkg-page">
+                {/* Header */}
+                <div className="pkg-header">
+                    <div>
+                        <button className="pkg-back-btn" onClick={() => navigate(-1)}>
+                            <ArrowBackIosNew fontSize="large" />
+                        </button>
+                        <h1 className="pkg-title">Packages</h1>
+                        {section_number && section_title && (
+                            <p className="pkg-subtitle">
+                                <span className="pkg-section-title">{section_title} - </span>
+                                <span className="pkg-section-badge">{section_number}</span>
+                            </p>
                         )}
                     </div>
-                </aside>
+                </div>
 
-                {/* Main content */}
-                <main className="pkg-main">
-                    {!activePackage ? (
-                        <div className="pkg-main-empty">Select a package to view results.</div>
-                    ) : (
-                        <>
-                            {/* Main top bar */}
-                            <div className="pkg-main-topbar">
-                                <div className="pkg-main-topbar-left">
-                                    <span className="pkg-main-package-name">{activePackage.package_name}</span>
-                                    {activePackage.company_name && (
-                                        <span className="pkg-main-company">{activePackage.company_name}</span>
-                                    )}
-                                    {highlightedSubmittal && (
-                                        <span className="pkg-main-filter-pill">
-                                            Filtered: {highlightedSubmittal.submittal_title}
-                                            <button className="pkg-main-filter-clear" onClick={() => setHighlightedSubmittalId(null)}>✕</button>
-                                        </span>
-                                    )}
+                <div className="pkg-layout">
+                    {/* Sidebar */}
+                    <aside className="pkg-sidebar">
+                        <div className="pkg-sidebar-title">Packages</div>
+                        <div className="pkg-sidebar-list">
+                            {loading ? (
+                                <div className="pkg-sidebar-loading">
+                                    <CircularProgress size={18} sx={{ color: "rgba(255,255,255,0.4)" }} />
                                 </div>
+                            ) : packages.length === 0 ? (
+                                <div className="pkg-sidebar-empty">No packages found.</div>
+                            ) : (
+                                packages.map((pkg) => {
+                                    const isActive = pkg.id === activePackageId;
+                                    const isExpanded = expandedPackageIds.has(pkg.id);
+                                    const score = pkg.compliance_score;
 
-                                {/* Upload Submittal(s) button */}
-                                <button
-                                    className={`pkg-run-btn ${running ? "loading" : ""}`}
-                                    onClick={handleRunCheck}
-                                    disabled={running}
-                                >
-                                    {running ? (
-                                        <><CircularProgress size={12} sx={{ color: "inherit" }} /> Running…</>
-                                    ) : (
-                                        <><UploadIcon fontSize="small" /> Upload Submittal(s)</>
-                                    )}
-                                </button>
+                                    return (
+                                        <div key={pkg.id} className="pkg-sidebar-group">
+                                            {/* Package row */}
+                                            <button
+                                                className={`pkg-sidebar-item ${isActive ? "active" : ""}`}
+                                                onClick={() => {
+                                                    setActivePackageId(pkg.id);
+                                                    toggleExpand(pkg.id);
+                                                }}
+                                            >
+                                                <div className="pkg-sidebar-item-left">
+                                                    <span className="pkg-sidebar-name">{pkg.package_name}</span>
+                                                    {pkg.company_name && (
+                                                        <span className="pkg-sidebar-company">{pkg.company_name}</span>
+                                                    )}
+                                                </div>
+                                                <div className="pkg-sidebar-item-right">
+                                                    {score !== null && (
+                                                        <span className={`pkg-score-badge ${score >= 0.7 ? "good" : score >= 0.4 ? "warn" : "bad"}`}>
+                                                            {Math.round(score * 100)}%
+                                                        </span>
+                                                    )}
+                                                    {isExpanded
+                                                        ? <ExpandLess fontSize="small" sx={{ color: "rgba(255,255,255,0.3)", flexShrink: 0 }} />
+                                                        : <ExpandMore fontSize="small" sx={{ color: "rgba(255,255,255,0.3)", flexShrink: 0 }} />
+                                                    }
+                                                </div>
+                                            </button>
 
-                                {/* Run Compliance Check button */}
-                                {activePackage.submittals.length > 0 && (
+                                            {/* Submittals sub-list */}
+                                            {isExpanded && pkg.submittals.length > 0 && (
+                                                <div className="pkg-submittal-list">
+                                                    {pkg.submittals.map((sub) => (
+                                                        <button
+                                                            key={sub.id}
+                                                            className={`pkg-submittal-item ${highlightedSubmittalId === sub.id ? "highlighted" : ""}`}
+                                                            onClick={() => {
+                                                                setActivePackageId(pkg.id);
+                                                                handleSubmittalClick(sub.id);
+                                                            }}
+                                                        >
+                                                            <ChevronRight fontSize="small" sx={{ color: "rgba(255,255,255,0.2)", flexShrink: 0 }} />
+                                                            <div className="pkg-submittal-info">
+                                                                <span className="pkg-submittal-title">{sub.submittal_title}</span>
+                                                                <span className="pkg-submittal-type">{sub.submittal_type_name}</span>
+                                                            </div>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            {isExpanded && pkg.submittals.length === 0 && (
+                                                <div className="pkg-submittal-empty">No submittals uploaded yet.</div>
+                                            )}
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+                    </aside>
+
+                    {/* Main content */}
+                    <main className="pkg-main">
+                        {!activePackage ? (
+                            <div className="pkg-main-empty">Select a package to view results.</div>
+                        ) : (
+                            <>
+                                {/* Main top bar */}
+                                <div className="pkg-main-topbar">
+                                    <div className="pkg-main-topbar-left">
+                                        <span className="pkg-main-package-name">{activePackage.package_name}</span>
+                                        {activePackage.company_name && (
+                                            <span className="pkg-main-company">{activePackage.company_name}</span>
+                                        )}
+                                        {highlightedSubmittal && (
+                                            <span className="pkg-main-filter-pill">
+                                                Filtered: {highlightedSubmittal.submittal_title}
+                                                <button className="pkg-main-filter-clear" onClick={() => setHighlightedSubmittalId(null)}>✕</button>
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    {/* Upload Submittal(s) button */}
                                     <button
                                         className={`pkg-run-btn ${running ? "loading" : ""}`}
-                                        onClick={handleRunCheck}
+                                        onClick={() => setShowUpload(true)}
                                         disabled={running}
                                     >
                                         {running ? (
                                             <><CircularProgress size={12} sx={{ color: "inherit" }} /> Running…</>
                                         ) : (
-                                            <><PlayArrow fontSize="small" /> Run Compliance Check</>
+                                            <><UploadIcon fontSize="small" /> Upload Submittal(s)</>
                                         )}
                                     </button>
-                                )}
-                            </div>
 
-                            {/* Compliance report or empty state */}
-                            {!activePackage.compliance_result ? (
-                                <div className="pkg-no-results">
-                                    <div className="pkg-no-results-icon">◎</div>
-                                    <p className="pkg-no-results-title">No compliance check yet</p>
-                                    <p className="pkg-no-results-sub">Run a compliance check to see AI-generated findings for this package.</p>
+                                    {/* Run Compliance Check button */}
+                                    {activePackage.submittals.length > 0 && (
+                                        <button
+                                            className={`pkg-run-btn ${running ? "loading" : ""}`}
+                                            onClick={handleRunCheck}
+                                            disabled={running}
+                                        >
+                                            {running ? (
+                                                <><CircularProgress size={12} sx={{ color: "inherit" }} /> Running…</>
+                                            ) : (
+                                                <><PlayArrow fontSize="small" /> Run Compliance Check</>
+                                            )}
+                                        </button>
+                                    )}
                                 </div>
-                            ) : (
-                                <ComplianceReport
-                                    result={activePackage.compliance_result}
-                                    findings={filteredFindings}
-                                    isFiltered={!!highlightedSubmittalId}
-                                />
-                            )}
-                        </>
-                    )}
-                </main>
+
+                                {/* Compliance report or empty state */}
+                                {!activePackage.compliance_result ? (
+                                    <div className="pkg-no-results">
+                                        <div className="pkg-no-results-icon">◎</div>
+                                        <p className="pkg-no-results-title">No compliance check yet</p>
+                                        <p className="pkg-no-results-sub">Run a compliance check to see AI-generated findings for this package.</p>
+                                    </div>
+                                ) : (
+                                    <ComplianceReport
+                                        result={activePackage.compliance_result}
+                                        findings={filteredFindings}
+                                        isFiltered={!!highlightedSubmittalId}
+                                    />
+                                )}
+                            </>
+                        )}
+                    </main>
+                </div>
             </div>
-        </div>
+
+            {showUpload && activePackage && (
+                <UploadSubmittal
+                    spec_id={spec_id!}
+                    package_id={activePackage.id}
+                    package_name={activePackage.package_name}
+                    onClose={() => setShowUpload(false)}
+                    onUploaded={fetchPackages}
+                />
+            )}
+        </>
     );
 }
 
