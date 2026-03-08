@@ -15,15 +15,14 @@ logger = logging.getLogger(__name__)
 anthropic = Anthropic()
 
 
-@summary_routes_bp.route("/section_summary/<spec_id>/<section_number>", methods=["GET"])
-async def section_summary(spec_id: str, section_number: str):
+@summary_routes_bp.route("/section_summary/<section_id>", methods=["GET"])
+async def section_summary(section_id: int):
     try:
-        print(spec_id, section_number)
-        spec_summary = await db.get_section_summary(spec_id, section_number)
-        logger.info(f"Spec summary: {spec_summary}")
-        return jsonify({"spec_summary": spec_summary}), 200
+        section_summary = await db.get_section_summary(section_id)
+        logger.info(f"Section summary: {section_summary}")
+        return jsonify({"section_summary": section_summary}), 200
     except Exception as e:
-        logger.error(f"Error getting spec summary: {e}")
+        logger.error(f"Error getting section summary: {e}")
         return jsonify({"error": str(e)}), 500
 
 # NOTE: Consider using 2 prompts for all_contiguous vs not all_contiguous scenarios

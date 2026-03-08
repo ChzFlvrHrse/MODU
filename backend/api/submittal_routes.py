@@ -4,7 +4,6 @@ import uuid
 from classes import db, S3Bucket, Anthropic
 from quart import Blueprint, jsonify, request
 from quart.datastructures import FileStorage
-from prompts import SPEC_CHECK_PROMPT
 from functions import compliance_check
 from typing import List
 
@@ -49,6 +48,13 @@ async def create_submittal_package():
         if not is_valid:
             return jsonify({"error": f"Missing required fields: {', '.join(missing_fields)}"}), 400
 
+        section = await db.get_packages_for_section(section_id)
+        filter_packages_names = list(
+            filter(lambda x: x.get("package_name") == package_name, section))
+
+        if filter_packages_names:
+            return jsonify({"error": f"Package name already exists: {filter_packages_names[0].get('package_name')}"}), 400
+
         # create submittal package
         submittal_package_id = await db.create_submittal_package(
             spec_id=spec_id,
@@ -92,18 +98,17 @@ async def all_submittal_packages():
         return jsonify({"error": str(e)}), 500
 
 
-@submittal_routes_bp.route("/submittal_packages_for_section", methods=["GET"])
-async def submittal_packages_for_section():
+@submittal_routes_bp.route("/sections_packages/<section_id>", methods=["GET"])
+async def sections_packages(section_id: int):
     try:
-        data = request.args
-        section_id = data.get("section_id")
+        packages = await db.get_packages_for_section(section_id)
+        if not packages:
+            return jsonify({"error": "No packages found for section"}), 404
 
-        submittal_packages = await db.get_submittal_packages_for_section(section_id)
-
-        return jsonify({"submittal_packages": submittal_packages}), 200
+        return jsonify({"packages": packages}), 200
     except Exception as e:
-        logger.error(f"Error getting submittal packages for section: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Error getting packages for section: {section_id}: {e}")
+        return jsonify({"error": f"Error getting packages for section: {section_id}: {str(e)}"}), 500
 
 
 @submittal_routes_bp.route("/submittal_package", methods=["GET"])
@@ -128,58 +133,66 @@ async def upload_submittal():
         s3 = S3Bucket()
 
         form: dict = await request.form
-        files: list[FileStorage] = await request.files
+        files = await request.files
 
-        pdf: FileStorage = files.get("pdf")
         spec_id = form.get("spec_id")
         package_id = form.get("package_id")
-        submittal_title = form.get("submittal_title", pdf.filename)
         submittal_type_id: int = int(form.get("submittal_type_id"))
-
-        if not pdf:
-            return jsonify({"error": "No file provided"}), 400
-        if pdf.content_type != "application/pdf" or not pdf.filename.endswith(".pdf"):
-            return jsonify({"error": "Invalid PDF file"}), 400
 
         is_valid, missing_fields = required_fields(
             form, ["spec_id", "package_id", "submittal_type_id"])
         if not is_valid:
             return jsonify({"error": f"Missing required fields: {', '.join(missing_fields)}"}), 400
 
-        file_uuid = str(uuid.uuid4())
+        pdfs = files.getlist("pdf")
+        if not pdfs:
+            return jsonify({"error": "No files provided"}), 400
+
+        for pdf in pdfs:
+            if pdf.content_type != "application/pdf" or not pdf.filename.endswith(".pdf"):
+                return jsonify({"error": f"Invalid file: {pdf.filename}. PDFs only."}), 400
+
+        results = []
         async with s3.s3_client() as s3_client:
-            upload_result = await s3.upload_submittal_with_client(
-                file=pdf,
-                spec_id=spec_id,
-                package_id=package_id,
-                file_uuid=file_uuid,
-                s3_client=s3_client
-            )
+            for pdf in pdfs:
+                file_uuid = str(uuid.uuid4())
+                upload_result = await s3.upload_submittal_with_client(
+                    file=pdf,
+                    spec_id=spec_id,
+                    package_id=package_id,
+                    file_uuid=file_uuid,
+                    s3_client=s3_client,
+                )
 
-        if upload_result.get("status_code") != 200:
-            return jsonify({"error": upload_result.get("message")}), upload_result.get("status_code")
+                if upload_result.get("status_code") != 200:
+                    return jsonify({"error": upload_result.get("message")}), upload_result.get("status_code")
 
-        logger.info(
-            f"Submittal uploaded successfully to S3 bucket: {upload_result.get('s3_key')}")
+                submittal_title = form.get("submittal_title", pdf.filename)
+                submittal_id = await db.create_submittal(
+                    package_id=package_id,
+                    spec_id=spec_id,
+                    submittal_title=submittal_title,
+                    s3_key=upload_result.get("s3_key"),
+                    submittal_type_id=submittal_type_id,
+                )
 
-        submittal_id = await db.create_submittal(
-            package_id=package_id,
-            spec_id=spec_id,
-            submittal_title=submittal_title,
-            s3_key=upload_result.get("s3_key"),
-            submittal_type_id=submittal_type_id,
-        )
+                if not submittal_id:
+                    return jsonify({"error": f"Failed to create DB record for {pdf.filename}"}), 500
 
-        if not submittal_id:
-            return jsonify({"error": "Failed to create submittal"}), 500
+                logger.info(
+                    f"Submittal uploaded: {upload_result.get('s3_key')}")
+                results.append({
+                    "submittal_id": submittal_id,
+                    "submittal_title": submittal_title,
+                    "s3_key": upload_result.get("s3_key"),
+                })
 
         return jsonify({
-            "message": "Submittal created successfully",
+            "message": f"{len(results)} submittal(s) created successfully",
             "spec_id": spec_id,
-            "submittal_id": submittal_id,
-            "submittal_type_id": submittal_type_id,
             "package_id": package_id,
-            "s3_key": upload_result.get("s3_key")
+            "submittal_type_id": submittal_type_id,
+            "submittals": results,
         }), 200
 
     except Exception as e:
@@ -201,7 +214,8 @@ async def compliance_check_route():
         logger.info(
             f"Comparing submittals to spec: package_id={package_id}, spec_id={spec_id}, section_number={section_number}, submittal_type_ids={submittal_type_ids}")
 
-        is_valid, missing_fields = required_fields(data, ["package_id", "spec_id", "section_number"])
+        is_valid, missing_fields = required_fields(
+            data, ["package_id", "spec_id", "section_number"])
         if not is_valid:
             return jsonify({"error": f"Missing required fields: {', '.join(missing_fields)}"}), 400
 
@@ -209,7 +223,6 @@ async def compliance_check_route():
             submittals = await db.get_submittals_by_type(spec_id, package_id, submittal_type_ids)
         else:
             submittals = await db.get_submittals_by_package(package_id)
-
 
         if not submittals:
             logger.error(f"No submittals found for package_id={package_id}")

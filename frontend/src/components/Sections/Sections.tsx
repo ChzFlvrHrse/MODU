@@ -5,7 +5,7 @@ import type { Section } from "../../../types/types";
 import "./Sections.css";
 
 import { CircularProgress } from "@mui/material";
-import { ArrowBackIosNew, AdsClickRounded } from '@mui/icons-material';
+import { ArrowBackIosNew, AdsClickRounded, Error } from '@mui/icons-material';
 import SectionModal from "../../modals/SectionModal/SectionModal";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -21,10 +21,12 @@ export default function Sections() {
     const [activeDivision, setActiveDivision] = useState<string>("");
     const [query, setQuery] = useState("");
     const [statusFilter, setStatusFilter] = useState<string>("all");
+    // const [divisionErrors, setDivisionErrors] = useState<Record<string, number>>({});
 
     const [sectionModalsOpen, setSectionModalsOpen] = useState<boolean>(false);
     const [sectionModalSectionNumber, setSectionModalSectionNumber] = useState<string>("");
     const [sectionModalSectionTitle, setSectionModalSectionTitle] = useState<string>("");
+    const [sectionModalSectionId, setSectionModalSectionId] = useState<number>(0);
 
     const [generatingSummaries, setGeneratingSummaries] = useState<Set<string>>(new Set());;
 
@@ -67,8 +69,22 @@ export default function Sections() {
         const list = sections[division] ?? [];
         if (list.length === 0) return false;
 
-        return list.some((s) => (s.summary_status ?? "").toLowerCase() === "pending" || (s.summary_status ?? "").toLowerCase() === "error");
+        return list.some((s) => (s.summary_status ?? "").toLowerCase() === "pending");
     };
+
+    const isDivisionSummaryError = (division: string) => {
+        const list = sections[division] ?? [];
+        if (list.length === 0) return false;
+
+        return list.some((s) => (s.summary_status ?? "").toLowerCase() === "error");
+    };
+
+    // const getDivisionErrors = (division: string) => {
+    //     const list = sections[division] ?? [];
+    //     if (list.length === 0) return [];
+
+    //     return list.filter((s) => (s.summary_status ?? "").toLowerCase() === "error").map((s) => s.section_number).join(", ");
+    // };
 
     const allDivisionsSummaryComplete = useMemo(() => {
         if (divisions.length === 0) return false;
@@ -100,7 +116,10 @@ export default function Sections() {
     };
 
     const activeList = useMemo(() => {
-        const list = sections[activeDivision] ?? [];
+        let list = sections[activeDivision] ?? [];
+        if (activeDivision === "all") {
+            list = Object.values(sections).flat();
+        }
 
         const q = query.trim().toLowerCase();
         const filtered = list.filter((s) => {
@@ -132,9 +151,10 @@ export default function Sections() {
             toast.error("Summary for this section is manual. Please generate it first.");
             return;
         }
-        setSectionModalsOpen(true);
+        setSectionModalSectionId(section?.id ?? 0);
         setSectionModalSectionNumber(section_number);
         setSectionModalSectionTitle(section_title ?? "Undocumented Section Number (MSF2020)");
+        setSectionModalsOpen(true);
     };
 
     function getStatusIcon(status: string) {
@@ -220,6 +240,7 @@ export default function Sections() {
             {sectionModalsOpen &&
                 <SectionModal
                     spec_id={spec_id ?? ""}
+                    section_id={sectionModalSectionId}
                     section_number={sectionModalSectionNumber}
                     section_title={sectionModalSectionTitle}
                     onClose={() => setSectionModalsOpen(false)}
@@ -266,17 +287,34 @@ export default function Sections() {
                         <div className="division-panel-title">Divisions</div>
 
                         <div className="division-list">
+                            <button
+                                className={`division-item ${activeDivision === "all" ? "active" : ""}`}
+                                onClick={() => setActiveDivision("all")}
+                            >
+                                <span className="division-left">
+                                    <span className="division-code">All</span>
+                                </span>
+
+                                <span className="division-right">
+                                    <span className="division-count">
+                                        {totalSections} sections
+                                    </span>
+                                </span>
+                            </button>
+
                             {divisions.map((d) => {
                                 const classification_done = isDivisionClassificationComplete(d);
                                 const classification_pending = isDivisionClassificationPending(d);
                                 const summary_done = isDivisionSummaryComplete(d);
                                 const summary_pending = isDivisionSummaryPending(d);
+                                const summary_error = isDivisionSummaryError(d);
 
                                 return (
                                     <button
                                         key={d}
                                         className={`division-item ${d === activeDivision ? "active" : ""}`}
                                         onClick={() => setActiveDivision(d)}
+                                        // title={summary_error ? "Summary error" : undefined}
                                     >
                                         <span className="division-left">
                                             <span className="division-code">{d}</span>
@@ -288,6 +326,7 @@ export default function Sections() {
                                             </span>
                                             {(classification_done && summary_done) && <span className="division-check" title="All sections complete">✓</span>}
                                             {(classification_pending || summary_pending) && <CircularProgress size={18} />}
+                                            {(summary_error) && <Error sx={{ fontSize: 18, color: 'rgba(231,76,60,0.9)' }} />}
                                         </span>
                                     </button>
                                 );

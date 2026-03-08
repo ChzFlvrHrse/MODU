@@ -8,6 +8,7 @@ import Nav from './components/Nav/Nav';
 import Projects from './components/Projects/Projects';
 import Sections from './components/Sections/Sections';
 import UploadSpec from './components/UploadSpec/UploadSpec';
+import Packages from './components/Packages/Packages';
 
 function App() {
   const [projectsComplete, setProjectsComplete] = useState(true);
@@ -23,6 +24,7 @@ function App() {
               <Route path="/" element={<Navigate to="/projects" />} />
               <Route path="/projects" element={<Projects projectsComplete={projectsComplete} setProjectsComplete={setProjectsComplete} />} />
               <Route path="/projects/:spec_id" element={<Sections />} />
+              <Route path="/packages/:spec_id/:package_id" element={<Packages />} />
             </Routes>
           </div>
           <UploadSpec setProjectsComplete={setProjectsComplete} />

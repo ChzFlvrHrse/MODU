@@ -24,6 +24,9 @@ export default function UploadSpec({ setProjectsComplete }: UploadSpecProps) {
     const [projectName, setProjectName] = useState("");
     const [projectNameError, setProjectNameError] = useState("");
 
+    const [submittalTitle, setSubmittalTitle] = useState("");
+    const [submittalType, setSubmittalType] = useState("");
+
     // ✅ store as File[] (much easier than FileList)
     const [files, setFiles] = useState<File[]>([]);
     const [error, setError] = useState("");

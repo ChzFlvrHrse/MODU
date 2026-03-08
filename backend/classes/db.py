@@ -634,13 +634,13 @@ class ModuDB:
                 return dict(row)
             return None
 
-    async def get_section_summary(self, spec_id: str, section_number: str) -> Optional[Dict]:
+    async def get_section_summary(self, section_id: int) -> Optional[Dict]:
         """Get section summary"""
         async with aiosqlite.connect(self.db_path) as conn:
             conn.row_factory = aiosqlite.Row
             cursor = await conn.execute("""
-                SELECT * FROM section_summaries WHERE spec_id = ? AND section_number = ?
-            """, (spec_id, section_number))
+                SELECT * FROM section_summaries WHERE section_id = ?
+            """, (section_id,))
             row = await cursor.fetchone()
             return dict(row) if row else None
 
@@ -747,15 +747,29 @@ class ModuDB:
             row = await cursor.fetchone()
             return dict(row) if row else None
 
-    async def get_submittal_packages_for_section(self, section_id: int) -> List[Dict]:
-        """Get submittal packages for a section"""
+    async def get_packages_for_section(self, section_id: int) -> List[Dict]:
+        """Get submittal packages for a section, including their submittals"""
         async with aiosqlite.connect(self.db_path) as conn:
             conn.row_factory = aiosqlite.Row
+
+            # Fetch packages
             cursor = await conn.execute("""
                 SELECT * FROM submittal_packages WHERE section_id = ?
             """, (section_id,))
-            rows = await cursor.fetchall()
-            return [dict(row) for row in rows]
+            packages = [dict(row) for row in await cursor.fetchall()]
+
+            # Fetch submittals for each package
+            for pkg in packages:
+                cursor = await conn.execute("""
+                    SELECT id, submittal_title, submittal_type_id, submittal_type_name,
+                           status, page_count
+                    FROM submittals
+                    WHERE package_id = ?
+                    ORDER BY id ASC
+                """, (pkg["id"],))
+                pkg["submittals"] = [dict(row) for row in await cursor.fetchall()]
+
+            return packages
 
     async def get_all_submittal_packages(self, spec_id: str) -> List[Dict]:
         """Get all submittal packages"""
