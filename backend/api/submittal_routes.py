@@ -2,10 +2,10 @@ import logging
 import json
 import uuid
 from classes import db, S3Bucket, Anthropic
-from quart import Blueprint, jsonify, request
+from quart import Blueprint, jsonify, request, Response
 from quart.datastructures import FileStorage
-from functions import compliance_check
-from typing import List
+from functions import stream_compliance_check
+from typing import List, Optional
 
 submittal_routes_bp = Blueprint("submittal_routes", __name__)
 
@@ -172,7 +172,8 @@ async def upload_submittal():
                 if upload_result.get("status_code") != 200:
                     return jsonify({"error": upload_result.get("message")}), upload_result.get("status_code")
 
-                submittal_title = form.get("submittal_title", pdf.filename.replace(".pdf", "").replace(".PDF", ""))
+                submittal_title = form.get(
+                    "submittal_title", pdf.filename.replace(".pdf", "").replace(".PDF", ""))
                 submittal_id = await db.create_submittal(
                     package_id=package_id,
                     spec_id=spec_id,
@@ -211,59 +212,44 @@ async def compliance_check_route():
         spec_id = data.get("spec_id")
         section_id = data.get("section_id")
         section_number = data.get("section_number")
-        submittal_type_ids: List[int] | None = data.get(
-            "submittal_type_ids", None)
-
-        logger.info(
-            f"Comparing submittals to spec: package_id={package_id}, spec_id={spec_id}, section_number={section_number}, submittal_type_ids={submittal_type_ids}")
+        submittal_ids: Optional[List[int]] = data.get("submittal_ids", None)
 
         is_valid, missing_fields = required_fields(
             data, ["package_id", "spec_id", "section_number", "section_id"])
         if not is_valid:
             return jsonify({"error": f"Missing required fields: {', '.join(missing_fields)}"}), 400
 
-        if submittal_type_ids:
-            submittals = await db.get_submittals_by_type(package_id, submittal_type_ids)
+        if submittal_ids:
+            submittals = await db.get_submittals_by_ids(package_id, submittal_ids)
         else:
             submittals = await db.get_submittals_by_package(package_id)
 
         if not submittals:
-            logger.error(f"No submittals found for package_id={package_id}")
-            return {"status": "error", "error": "No submittals found"}
+            return jsonify({"status": "error", "error": "No submittals found"}), 404
 
-        logger.info(
-            f"Found {len(submittals)} submittal(s) for package_id={package_id}")
+        # Billing gate (testing)
+        # prev_runs = await db.get_compliance_runs(package_id, submittal_id=submittal_ids[0] if submittal_ids else None)
+        # if prev_runs:
+        #     return jsonify({"error": "..."}), 400
 
-        result = await compliance_check(package_id=package_id, spec_id=spec_id, section_number=section_number, submittals=submittals)
-
-        if result.get("status") == "success":
-            await db.create_compliance_run(
-                package_id=package_id,
-                spec_id=spec_id,
-                section_id=section_id,
-                submittal_ids=result.get("submittal_ids"),
-                compliance_result=result.get("result"),
-                compliance_score=result.get("result").get("compliance_score"),
-                is_compliant=result.get("result").get("is_compliant"),
-                pipeline=result.get("pipeline"),
-                model="claude-sonnet-4-6",
-                token_count=result.get("total_tokens"),
-            )
-
-            await db.update_package_after_run(
-                package_id=package_id,
-                compliance_result=result,
-                compliance_score=result.get("result").get("compliance_score"),
-                checked_submittal_ids=result.get("submittal_ids"),
-            )
-
-            return result, 200
-        else:
-            logger.error(f"Error creating compliance run: {result.get('error')}")
-            return jsonify({"error": result.get('error')}), 500
+        return Response(
+            stream_compliance_check(
+                package_id,
+                spec_id,
+                section_id,
+                section_number,
+                submittals,
+                submittal_ids
+            ),
+            mimetype="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            }
+        )
 
     except Exception as e:
-        logger.error(f"Error comparing submittals: {e}")
+        logger.error(f"Error in compliance_check_route: {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -281,6 +267,20 @@ async def all_submittals():
         return jsonify({"error": str(e)}), 500
 
 
+@submittal_routes_bp.route("/get_submittal", methods=["GET"])
+async def get_submittal():
+    try:
+        data = request.args
+        submittal_id: int = data.get("submittal_id")
+
+        submittal = await db.get_submittal(submittal_id)
+
+        return jsonify({"submittal": submittal}), 200
+    except Exception as e:
+        logger.error(f"Error getting submittal: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 @submittal_routes_bp.route("/submittals_by_package", methods=["GET"])
 async def submittals_by_package():
     try:
@@ -294,20 +294,53 @@ async def submittals_by_package():
         logger.error(f"Error getting submittals by package: {e}")
         return jsonify({"error": str(e)}), 500
 
+
+@submittal_routes_bp.route("/submittals_by_ids", methods=["GET"])
+async def submittals_by_ids():
+    try:
+        data = request.args
+        submittal_ids: List[int] = data.get("submittal_ids")
+
+        submittals = await db.get_submittals_by_ids(submittal_ids)
+
+        return jsonify({"submittals": submittals}), 200
+    except Exception as e:
+        logger.error(f"Error getting submittals by ids: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 @submittal_routes_bp.route("/compliance_runs_for_package", methods=["GET"])
 async def compliance_runs_for_package():
     try:
         data = request.args
         package_id: int = data.get("package_id")
+        submittal_id: Optional[int] = data.get("submittal_id", None)
 
         is_valid, missing_fields = required_fields(
             data, ["package_id"])
         if not is_valid:
             return jsonify({"error": f"Missing required fields: {', '.join(missing_fields)}"}), 400
 
-        compliance_runs = await db.get_compliance_runs(package_id)
+        compliance_runs = await db.get_compliance_runs(package_id, submittal_id=submittal_id)
+
+        if not compliance_runs:
+            return jsonify({"error": "No compliance runs found"}), 404
 
         return jsonify({"compliance_runs": compliance_runs}), 200
     except Exception as e:
         logger.error(f"Error getting compliance runs for package: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@submittal_routes_bp.route("/get_compliance_run", methods=["GET"])
+async def get_compliance_run():
+    try:
+        data = request.args
+        compliance_run_id: int = data.get("compliance_run_id")
+
+        compliance_run = await db.get_compliance_run(compliance_run_id)
+
+        return jsonify(compliance_run), 200
+    except Exception as e:
+        logger.error(f"Error getting compliance run: {e}")
         return jsonify({"error": str(e)}), 500

@@ -94,6 +94,9 @@ class Anthropic(S3Bucket):
 
         return schema
 
+    # def on_delta(self, delta: Any):
+    #     print(delta, end="", flush=True)
+
     async def claude(
         self,
         content_blocks: list[dict],
@@ -104,6 +107,7 @@ class Anthropic(S3Bucket):
         adaptive_thinking: bool = False,
         effort: str = "medium",
         cache_system_prompt: bool = False,
+        on_delta: callable = None,
     ) -> dict:
         try:
             # Cache system prompt if enabled
@@ -130,12 +134,12 @@ class Anthropic(S3Bucket):
 
             async with self.client.messages.stream(**kwargs) as stream:
                 async for event in stream:
-                    if event.type == "content_block_start":
-                        print(f"\nStarting {event.type} block...")
-                    elif event.type == "content_block_delta":
-                        if event.delta.type == "thinking_delta":
+                    if event.type == "content_block_delta":
+                        if event.delta.type == "thinking_delta" and on_delta:
+                            await on_delta(event.delta.thinking)
                             print(event.delta.thinking, end="", flush=True)
-                        elif event.delta.type == "text_delta":
+                        elif event.delta.type == "text_delta" and on_delta:
+                            await on_delta(event.delta.text)
                             print(event.delta.text, end="", flush=True)
 
                 response = await stream.get_final_message()
