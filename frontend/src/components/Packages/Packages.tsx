@@ -2,11 +2,11 @@ import React, { useEffect, useState, useMemo } from "react";
 import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import { CircularProgress } from "@mui/material";
 import UploadIcon from '@mui/icons-material/Upload';
-import { ArrowBackIosNew, ChevronRight, ExpandMore, ExpandLess, PlayArrow } from "@mui/icons-material";
+import FactCheckIcon from '@mui/icons-material/FactCheck';
+import { ArrowBackIosNew, ChevronRight, ExpandMore, ExpandLess } from "@mui/icons-material";
 import { toast } from "react-hot-toast";
 import "./Packages.css";
 
-// Components
 import UploadSubmittal from "../UploadSubmittal/UploadSubmittal";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -25,9 +25,11 @@ interface Package {
     company_name: string | null;
     compliance_score: number | null;
     status: string | null;
+    run_count: number;
+    last_checked_at: string | null;
+    checked_submittal_ids: number[] | null;
     created_at: string;
     submittals: Submittal[];
-    compliance_result: ComplianceResult | null;
 }
 
 interface RequirementFinding {
@@ -64,6 +66,18 @@ interface ComplianceResult {
     reviewer_notes: string;
 }
 
+interface ComplianceRun {
+    id: number;
+    compliance_result: ComplianceResult;
+    compliance_score: number;
+    is_compliant: boolean;
+    pipeline: string;
+    model: string;
+    submittal_ids: number[];
+    token_count: number;
+    created_at: string;
+}
+
 export default function Packages() {
     const { spec_id, package_id } = useParams();
     const [searchParams] = useSearchParams();
@@ -80,22 +94,24 @@ export default function Packages() {
     const [loading, setLoading] = useState(true);
     const [running, setRunning] = useState(false);
     const [showUpload, setShowUpload] = useState(false);
+    const [complianceRuns, setComplianceRuns] = useState<ComplianceRun[]>([]);
+    const [loadingResult, setLoadingResult] = useState(false);
 
     const activePackage = useMemo(
         () => packages.find((p) => p.id === activePackageId) ?? null,
         [packages, activePackageId]
     );
 
+    const latestRun = complianceRuns[0] ?? null;
+
     const fetchPackages = async () => {
-        if (!spec_id || !section_number) return;
+        if (!section_id) return;
         try {
             const res = await fetch(`${BACKEND_URL}/api/submittal/sections_packages/${section_id}`);
             const data = await res.json();
             const pkgs: Package[] = data.packages ?? [];
             setPackages(pkgs);
-            console.log(pkgs);
 
-            // Set active to the package_id from URL param, or first
             const urlId = package_id ? parseInt(package_id) : null;
             if (urlId && pkgs.find((p) => p.id === urlId)) {
                 setActivePackageId(urlId);
@@ -109,8 +125,20 @@ export default function Packages() {
         }
     };
 
+    const fetchComplianceRuns = async (pkgId: number) => {
+        setLoadingResult(true);
+        setComplianceRuns([]);
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/submittal/compliance_runs_for_package?package_id=${pkgId}`);
+            const data = await res.json();
+            setComplianceRuns(data.compliance_runs ?? []);
+        } finally {
+            setLoadingResult(false);
+        }
+    };
+
     const handleRunCheck = async () => {
-        if (!activePackage || !spec_id || !section_number) return;
+        if (!activePackage || !spec_id || !section_number || !section_id) return;
         setRunning(true);
         try {
             const res = await fetch(`${BACKEND_URL}/api/submittal/compliance_check`, {
@@ -118,6 +146,7 @@ export default function Packages() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     package_id: activePackage.id,
+                    section_id,
                     spec_id,
                     section_number,
                 }),
@@ -129,6 +158,7 @@ export default function Packages() {
             }
             toast.success("Compliance check complete.");
             await fetchPackages();
+            await fetchComplianceRuns(activePackage.id);
         } catch {
             toast.error("Network error running compliance check.");
         } finally {
@@ -150,27 +180,25 @@ export default function Packages() {
 
     useEffect(() => {
         fetchPackages();
-    }, [spec_id, section_number]);
+    }, [spec_id, section_id]);
 
-    // Reset highlight when active package changes
     useEffect(() => {
+        if (activePackageId) fetchComplianceRuns(activePackageId);
         setHighlightedSubmittalId(null);
     }, [activePackageId]);
 
-    // Filter findings to those referencing the highlighted submittal's pages
     const highlightedSubmittal = useMemo(() => {
         if (!highlightedSubmittalId || !activePackage) return null;
         return activePackage.submittals.find((s) => s.id === highlightedSubmittalId) ?? null;
     }, [highlightedSubmittalId, activePackage]);
 
     const filteredFindings = useMemo(() => {
-        if (!activePackage?.compliance_result) return [];
-        if (!highlightedSubmittalId) return activePackage.compliance_result.requirement_findings;
-        // Show findings that reference any submittal pages (non-empty submittal_pages)
-        return activePackage.compliance_result.requirement_findings.filter(
+        if (!latestRun?.compliance_result) return [];
+        if (!highlightedSubmittalId) return latestRun.compliance_result.requirement_findings;
+        return latestRun.compliance_result.requirement_findings.filter(
             (f) => f.submittal_pages && f.submittal_pages.length > 0
         );
-    }, [activePackage, highlightedSubmittalId]);
+    }, [latestRun, highlightedSubmittalId]);
 
     return (
         <>
@@ -210,7 +238,6 @@ export default function Packages() {
 
                                     return (
                                         <div key={pkg.id} className="pkg-sidebar-group">
-                                            {/* Package row */}
                                             <button
                                                 className={`pkg-sidebar-item ${isActive ? "active" : ""}`}
                                                 onClick={() => {
@@ -237,7 +264,6 @@ export default function Packages() {
                                                 </div>
                                             </button>
 
-                                            {/* Submittals sub-list */}
                                             {isExpanded && pkg.submittals.length > 0 && (
                                                 <div className="pkg-submittal-list">
                                                     {pkg.submittals.map((sub) => (
@@ -275,7 +301,6 @@ export default function Packages() {
                             <div className="pkg-main-empty">Select a package to view results.</div>
                         ) : (
                             <>
-                                {/* Main top bar */}
                                 <div className="pkg-main-topbar">
                                     <div className="pkg-main-topbar-left">
                                         <span className="pkg-main-package-name">{activePackage.package_name}</span>
@@ -288,39 +313,41 @@ export default function Packages() {
                                                 <button className="pkg-main-filter-clear" onClick={() => setHighlightedSubmittalId(null)}>✕</button>
                                             </span>
                                         )}
-                                    </div>
-
-                                    {/* Upload Submittal(s) button */}
-                                    <button
-                                        className={`pkg-run-btn ${running ? "loading" : ""}`}
-                                        onClick={() => setShowUpload(true)}
-                                        disabled={running}
-                                    >
-                                        {running ? (
-                                            <><CircularProgress size={12} sx={{ color: "inherit" }} /> Running…</>
-                                        ) : (
-                                            <><UploadIcon fontSize="small" /> Upload Submittal(s)</>
+                                        {activePackage.run_count > 0 && activePackage.last_checked_at && (
+                                            <span className="pkg-main-run-meta">
+                                                Run {activePackage.run_count} · {new Date(activePackage.last_checked_at).toLocaleDateString()}
+                                            </span>
                                         )}
-                                    </button>
-
-                                    {/* Run Compliance Check button */}
-                                    {activePackage.submittals.length > 0 && (
+                                    </div>
+                                    <div className="pkg-main-topbar-right">
                                         <button
-                                            className={`pkg-run-btn ${running ? "loading" : ""}`}
-                                            onClick={handleRunCheck}
+                                            className="pkg-run-btn pkg-upload-btn-secondary"
+                                            onClick={() => setShowUpload(true)}
                                             disabled={running}
                                         >
-                                            {running ? (
-                                                <><CircularProgress size={12} sx={{ color: "inherit" }} /> Running…</>
-                                            ) : (
-                                                <><PlayArrow fontSize="small" /> Run Compliance Check</>
-                                            )}
+                                            <UploadIcon fontSize="small" /> Upload Submittal(s)
                                         </button>
-                                    )}
+                                        {activePackage.submittals.length > 0 && (
+                                            <button
+                                                className={`pkg-run-btn ${running ? "loading" : ""}`}
+                                                onClick={handleRunCheck}
+                                                disabled={running}
+                                            >
+                                                {running ? (
+                                                    <><CircularProgress size={12} sx={{ color: "inherit" }} /> Running…</>
+                                                ) : (
+                                                    <><FactCheckIcon fontSize="small" /> Run Compliance Check</>
+                                                )}
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
 
-                                {/* Compliance report or empty state */}
-                                {!activePackage.compliance_result ? (
+                                {loadingResult ? (
+                                    <div className="pkg-no-results">
+                                        <CircularProgress size={24} sx={{ color: "rgba(255,255,255,0.3)" }} />
+                                    </div>
+                                ) : !latestRun ? (
                                     <div className="pkg-no-results">
                                         <div className="pkg-no-results-icon">◎</div>
                                         <p className="pkg-no-results-title">No compliance check yet</p>
@@ -328,9 +355,10 @@ export default function Packages() {
                                     </div>
                                 ) : (
                                     <ComplianceReport
-                                        result={activePackage.compliance_result}
+                                        result={latestRun.compliance_result}
                                         findings={filteredFindings}
                                         isFiltered={!!highlightedSubmittalId}
+                                        run={latestRun}
                                     />
                                 )}
                             </>
@@ -345,7 +373,10 @@ export default function Packages() {
                     package_id={activePackage.id}
                     package_name={activePackage.package_name}
                     onClose={() => setShowUpload(false)}
-                    onUploaded={fetchPackages}
+                    onUploaded={() => {
+                        fetchPackages();
+                        if (activePackageId) fetchComplianceRuns(activePackageId);
+                    }}
                 />
             )}
         </>
@@ -356,10 +387,12 @@ function ComplianceReport({
     result,
     findings,
     isFiltered,
+    run,
 }: {
     result: ComplianceResult;
     findings: RequirementFinding[];
     isFiltered: boolean;
+    run: ComplianceRun;
 }) {
     const scoreColor = result.compliance_score >= 0.7 ? "#3fb950" : result.compliance_score >= 0.4 ? "#d29922" : "#e74c3c";
 
@@ -375,8 +408,13 @@ function ComplianceReport({
                         <span className="pkg-report-score-label">Score</span>
                     </div>
                     <div className="pkg-report-verdict-block">
-                        <div className={`pkg-report-verdict-tag ${result.is_compliant ? "pass" : "fail"}`}>
-                            {result.is_compliant ? "✓ Compliant" : "✕ Non-Compliant"}
+                        <div className="pkg-report-verdict-top">
+                            <div className={`pkg-report-verdict-tag ${result.is_compliant ? "pass" : "fail"}`}>
+                                {result.is_compliant ? "✓ Compliant" : "✕ Non-Compliant"}
+                            </div>
+                            <span className="pkg-report-meta">
+                                {run.pipeline} · {new Date(run.created_at).toLocaleString()}
+                            </span>
                         </div>
                         <p className="pkg-report-summary-text">{result.summary}</p>
                     </div>
@@ -402,7 +440,7 @@ function ComplianceReport({
             )}
 
             {/* Requirement findings */}
-            <ReportSection title={isFiltered ? `Requirement Findings (Filtered)` : "Requirement Findings"}>
+            <ReportSection title={isFiltered ? "Requirement Findings (Filtered)" : "Requirement Findings"}>
                 <div className="pkg-findings-wrap">
                     <table className="pkg-findings-table">
                         <thead>

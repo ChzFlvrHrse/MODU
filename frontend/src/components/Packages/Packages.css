@@ -316,6 +316,28 @@
 
 .pkg-main-filter-clear:hover { opacity: 1; }
 
+.pkg-main-topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.pkg-main-run-meta {
+    font-size: 11px;
+    color: rgba(255,255,255,0.25);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.pkg-upload-btn-secondary {
+    background: rgba(255,255,255,0.05);
+    border-color: rgba(255,255,255,0.12);
+}
+
+.pkg-upload-btn-secondary:hover:not(:disabled) {
+    background: rgba(255,255,255,0.09);
+}
+
 /* Run button */
 .pkg-run-btn {
     display: inline-flex;
@@ -446,6 +468,21 @@
 
 .pkg-report-verdict-block { flex: 1; }
 
+.pkg-report-verdict-top {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+
+.pkg-report-meta {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 10px;
+    color: rgba(255,255,255,0.2);
+    letter-spacing: 0.03em;
+}
+
 .pkg-report-verdict-tag {
     display: inline-flex;
     align-items: center;
@@ -456,7 +493,6 @@
     letter-spacing: 0.08em;
     padding: 4px 10px;
     border-radius: 6px;
-    margin-bottom: 8px;
 }
 
 .pkg-report-verdict-tag.fail {
@@ -551,7 +587,7 @@
 
 .pkg-nc-spec {
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    font-size: 10px;
+    font-size: 12px;
     color: rgba(255,255,255,0.25);
     margin-bottom: 8px;
     letter-spacing: 0.03em;
