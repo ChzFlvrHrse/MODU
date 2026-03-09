@@ -1,6 +1,6 @@
 import logging
 import json
-from classes import db, S3Bucket, Anthropic, make_spec_check_schema, make_drawings_spec_check_schema
+from classes import db, S3Bucket, Anthropic, make_spec_check_schema
 from prompts import SPEC_CHECK_PROMPT, SPEC_CHECK_DRAWINGS_PROMPT
 
 logging.basicConfig(level=logging.INFO)
@@ -22,14 +22,12 @@ async def compliance_check(package_id: int, spec_id: str, section_number: str, s
             system_prompt = anthropic.build_prompt(
                 SPEC_CHECK_DRAWINGS_PROMPT, {"section_number": section_number})
             max_tokens = 25000
-            schema = make_drawings_spec_check_schema(section_number)
             effort = "high"
         else:
             logger.info("Submittals are not only shop drawings")
             system_prompt = anthropic.build_prompt(
                 SPEC_CHECK_PROMPT, {"section_number": section_number})
             max_tokens = 16000
-            schema = make_spec_check_schema(section_number)
             effort = "medium"
 
         section = await db.get_section(spec_id, section_number)
@@ -89,7 +87,7 @@ async def compliance_check(package_id: int, spec_id: str, section_number: str, s
         claude_request = await anthropic.claude(
             content_blocks=content_blocks,
             system_prompt=system_prompt,
-            schema=schema,
+            schema=make_spec_check_schema(section_number),
             max_tokens=max_tokens,
             adaptive_thinking=is_drawing_only,
             effort=effort,
@@ -99,11 +97,22 @@ async def compliance_check(package_id: int, spec_id: str, section_number: str, s
         if claude_request.get("status") == "success":
             logger.info(
                 f"Claude request succeeded for package_id={package_id}, section_number={section_number}")
-            return {"status": "success", "result": claude_request.get("response")}
+            return {
+                "status": "success",
+                "result": claude_request.get("response"),
+                "pipeline": "drawings" if is_drawing_only else "general",
+                "submittal_ids": [s.get("id") for s in submittals],
+                "input_tokens": claude_request.get("input_tokens"),
+                "output_tokens": claude_request.get("output_tokens"),
+                "total_tokens": claude_request.get("total_tokens"),
+            }
         else:
             logger.error(
                 f"Claude request failed: {claude_request.get('error')}")
-            return {"status": "error", "error": claude_request.get("error")}
+            return {
+                "status": "error",
+                "error": claude_request.get("error")
+            }
     except Exception as e:
         logger.error(f"Error in compliance_check: {e}")
         return {"status": "error", "error": str(e)}

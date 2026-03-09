@@ -64,7 +64,11 @@ class RequirementFinding(BaseModel):
     )
     evidence: Optional[str] = Field(
         default=None,
-        description="Direct evidence from the submittal that supports or contradicts this requirement."
+        description="Direct evidence from the submittal or drawing that supports or contradicts this requirement."
+    )
+    drawing_reference: Optional[str] = Field(
+        default=None,
+        description="Specific detail, section, or callout on the drawing where evidence was found (e.g. 'Detail 1/S300', 'Section A'). Only populated for shop drawing reviews."
     )
     notes: Optional[str] = Field(
         default=None,
@@ -143,67 +147,3 @@ def make_spec_check_schema(section_number: str) -> type[BaseModel]:
             description=f"Any additional observations or uncertainties noted during review of section {section_number}."
         )
     return SpecCheck
-
-# ------------------------------------------------------------ Drawings Spec Check Schema ------------------------------------------------------------
-
-class DrawingFinding(BaseModel):
-    requirement: str = Field(
-        description="The specific requirement from the specification being evaluated."
-    )
-    status: str = Field(
-        description="Compliance status: 'compliant', 'non_compliant', 'missing', 'unclear'."
-    )
-    evidence: Optional[str] = Field(
-        default=None,
-        description="Direct evidence from the drawing that supports or contradicts this requirement."
-    )
-    drawing_reference: Optional[str] = Field(
-        default=None,
-        description="Specific detail, section, or callout on the drawing where evidence was found (e.g. 'Detail 1/S300', 'Section A')."
-    )
-    notes: Optional[str] = Field(
-        default=None,
-        description="Additional context or clarification about this finding."
-    )
-    spec_pages: List[int] = Field(
-        default_factory=list,
-        description="0-based page numbers in the spec where this requirement appears."
-    )
-    submittal_pages: List[int] = Field(
-        default_factory=list,
-        description="0-based page numbers in the submittal where evidence was found."
-    )
-
-
-def make_drawings_spec_check_schema(section_number: str) -> type[BaseModel]:
-    class DrawingsSpecCheck(BaseModel):
-        is_compliant: bool = Field(
-            description=f"Overall compliance verdict for section {section_number}. True only if no critical non-conformances exist."
-        )
-        compliance_score: float = Field(
-            description=f"Compliance score for section {section_number} from 0.0 to 1.0 where 1.0 is fully compliant."
-        )
-        summary: str = Field(
-            description=f"High level summary of the shop drawing compliance review for section {section_number}."
-        )
-        requirement_findings: List[DrawingFinding] = Field(
-            default_factory=list,
-            description=f"Detailed findings for each requirement found in section {section_number}."
-        )
-        non_conformances: List[NonConformance] = Field(
-            default_factory=list,
-            description=f"List of identified non-conformances against section {section_number} requirements."
-        )
-        missing_items: List[MissingItem] = Field(
-            default_factory=list,
-            description=f"Items required by section {section_number} that are absent from the drawings."
-        )
-        recommendations: List[str] = Field(
-            default_factory=list,
-            description=f"Actionable recommendations for the contractor to achieve compliance with section {section_number}."
-        )
-        reviewer_notes: str = Field(
-            default="",
-            description=f"Any additional observations or uncertainties noted during shop drawing review of section {section_number}."
-        )
-    return DrawingsSpecCheck

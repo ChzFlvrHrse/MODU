@@ -209,6 +209,7 @@ async def compliance_check_route():
 
         package_id = data.get("package_id")
         spec_id = data.get("spec_id")
+        section_id = data.get("section_id")
         section_number = data.get("section_number")
         submittal_type_ids: List[int] | None = data.get(
             "submittal_type_ids", None)
@@ -217,7 +218,7 @@ async def compliance_check_route():
             f"Comparing submittals to spec: package_id={package_id}, spec_id={spec_id}, section_number={section_number}, submittal_type_ids={submittal_type_ids}")
 
         is_valid, missing_fields = required_fields(
-            data, ["package_id", "spec_id", "section_number"])
+            data, ["package_id", "spec_id", "section_number", "section_id"])
         if not is_valid:
             return jsonify({"error": f"Missing required fields: {', '.join(missing_fields)}"}), 400
 
@@ -235,7 +236,32 @@ async def compliance_check_route():
 
         result = await compliance_check(package_id=package_id, spec_id=spec_id, section_number=section_number, submittals=submittals)
 
-        return jsonify({"result": result}), 200
+        if result.get("status") == "success":
+            await db.create_compliance_run(
+                package_id=package_id,
+                spec_id=spec_id,
+                section_id=section_id,
+                submittal_ids=result.get("submittal_ids"),
+                compliance_result=result.get("result"),
+                compliance_score=result.get("result").get("compliance_score"),
+                is_compliant=result.get("result").get("is_compliant"),
+                pipeline=result.get("pipeline"),
+                model="claude-sonnet-4-6",
+                token_count=result.get("total_tokens"),
+            )
+
+            await db.update_package_after_run(
+                package_id=package_id,
+                compliance_result=result,
+                compliance_score=result.get("result").get("compliance_score"),
+                checked_submittal_ids=result.get("submittal_ids"),
+            )
+
+            return result, 200
+        else:
+            logger.error(f"Error creating compliance run: {result.get('error')}")
+            return jsonify({"error": result.get('error')}), 500
+
     except Exception as e:
         logger.error(f"Error comparing submittals: {e}")
         return jsonify({"error": str(e)}), 500

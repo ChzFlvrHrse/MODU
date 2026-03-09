@@ -149,9 +149,16 @@ class Anthropic(S3Bucket):
             except Exception:
                 parsed = {"raw": raw}
 
+            input_tokens = response.usage.input_tokens
+            output_tokens = response.usage.output_tokens
+            total_tokens = input_tokens + output_tokens
+
             return {
                 "status": "success",
                 "response": parsed,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "total_tokens": total_tokens,
             }
 
         except Exception as e:

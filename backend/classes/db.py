@@ -169,6 +169,24 @@ class ModuDB:
                 )
             """)
 
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS compliance_runs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    package_id INTEGER NOT NULL,
+                    spec_id TEXT NOT NULL,
+                    section_id INTEGER NOT NULL,
+                    submittal_ids TEXT NOT NULL,
+                    compliance_result TEXT DEFAULT NULL,
+                    compliance_score REAL DEFAULT NULL,
+                    is_compliant BOOLEAN DEFAULT NULL,
+                    prompt_version INTEGER DEFAULT NULL,
+                    model TEXT DEFAULT NULL,
+                    pipeline TEXT DEFAULT NULL,
+                    token_count INTEGER DEFAULT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (package_id) REFERENCES submittal_packages(id) ON DELETE CASCADE
+                )""")
+
             await conn.commit()
 
     async def create_project(
@@ -966,6 +984,68 @@ class ModuDB:
         except Exception as e:
             logger.error(f"Error deleting submittal: {e}")
             return {"error": str(e), "submittal_id": None}
+
+    async def create_compliance_run(
+        self,
+        package_id: int,
+        spec_id: str,
+        section_id: int,
+        submittal_ids: list[int],
+        compliance_result: dict,
+        compliance_score: float,
+        is_compliant: bool,
+        pipeline: str,
+        model: str = "claude-sonnet-4-6",
+        prompt_version: int = 1,
+        token_count: int = None,
+    ) -> int:
+        async with aiosqlite.connect(self.db_path) as conn:
+            cursor = await conn.execute("""
+                INSERT INTO compliance_runs (
+                    package_id, spec_id, section_id, submittal_ids,
+                    compliance_result, compliance_score, is_compliant,
+                    pipeline, model, prompt_version, token_count
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                package_id,
+                spec_id,
+                section_id,
+                json.dumps(submittal_ids),
+                json.dumps(compliance_result),
+                compliance_score,
+                is_compliant,
+                pipeline,
+                model,
+                prompt_version,
+                token_count,
+            ))
+            await conn.commit()
+            return cursor.lastrowid
+
+    async def update_package_after_run(
+        self,
+        package_id: int,
+        compliance_result: dict,
+        compliance_score: float,
+        checked_submittal_ids: list[int],
+    ) -> None:
+        async with aiosqlite.connect(self.db_path) as conn:
+            await conn.execute("""
+                UPDATE submittal_packages
+                SET compliance_result = ?,
+                    compliance_score = ?,
+                    checked_submittal_ids = ?,
+                    run_count = run_count + 1,
+                    last_checked_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (
+                json.dumps(compliance_result),
+                compliance_score,
+                json.dumps(checked_submittal_ids),
+                package_id,
+            ))
+            await conn.commit()
 
 
 db = ModuDB()
