@@ -1,8 +1,9 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import { CircularProgress } from "@mui/material";
-import UploadIcon from '@mui/icons-material/Upload';
-import FactCheckIcon from '@mui/icons-material/FactCheck';
+import UploadIcon from "@mui/icons-material/Upload";
+import FactCheckIcon from "@mui/icons-material/FactCheck";
+import CloseIcon from "@mui/icons-material/Close";
 import { ArrowBackIosNew, ChevronRight, ExpandMore, ExpandLess } from "@mui/icons-material";
 import { toast } from "react-hot-toast";
 import "./Packages.css";
@@ -10,6 +11,8 @@ import "./Packages.css";
 import UploadSubmittal from "../UploadSubmittal/UploadSubmittal";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+
+// ── Types ──────────────────────────────────────────────────────────────────────
 
 interface Submittal {
     id: number;
@@ -78,31 +81,263 @@ interface ComplianceRun {
     created_at: string;
 }
 
+type PaneTarget =
+    | { type: "package" }
+    | { type: "submittal"; submittalId: number; submittalTitle: string };
+
+interface DragState {
+    submittalId: number;
+    submittalTitle: string;
+}
+
+// ── Pane ──────────────────────────────────────────────────────────────────────
+
+interface PaneProps {
+    target: PaneTarget;
+    packageId: number;
+    spec_id: string;
+    section_id: string;
+    section_number: string;
+    packageName: string;
+    onClose?: () => void;
+    isDragOver: boolean;
+    onDragOver: (e: React.DragEvent) => void;
+    onDragLeave: () => void;
+    onDrop: () => void;
+    isDragging: boolean;
+    onRunComplete: () => void;
+}
+
+function CompliancePane({
+    target,
+    packageId,
+    spec_id,
+    section_id,
+    section_number,
+    packageName,
+    onClose,
+    isDragOver,
+    onDragOver,
+    onDragLeave,
+    onDrop,
+    isDragging,
+    onRunComplete,
+}: PaneProps) {
+    const [runs, setRuns] = useState<ComplianceRun[]>([]);
+    const [loadingRuns, setLoadingRuns] = useState(false);
+    const [running, setRunning] = useState(false);
+    const [streamText, setStreamText] = useState("");
+    const [showStream, setShowStream] = useState(false);
+    const streamEndRef = useRef<HTMLDivElement>(null);
+
+    const latestRun = runs[0] ?? null;
+
+    const fetchRuns = useCallback(async () => {
+        setLoadingRuns(true);
+        setRuns([]);
+        try {
+            const url =
+                target.type === "submittal"
+                    ? `${BACKEND_URL}/api/submittal/compliance_runs_for_package?package_id=${packageId}&submittal_id=${target.submittalId}`
+                    : `${BACKEND_URL}/api/submittal/compliance_runs_for_package?package_id=${packageId}`;
+            const res = await fetch(url);
+            const data = await res.json();
+            setRuns(data.compliance_runs ?? []);
+        } finally {
+            setLoadingRuns(false);
+        }
+    }, [target, packageId]);
+
+    useEffect(() => {
+        fetchRuns();
+    }, [fetchRuns]);
+
+    const handleRun = async () => {
+        setRunning(true);
+        setStreamText("");
+        setShowStream(true);
+        try {
+            const body: Record<string, unknown> = {
+                package_id: packageId,
+                spec_id,
+                section_id,
+                section_number,
+            };
+            if (target.type === "submittal") {
+                body.submittal_ids = [target.submittalId];
+            }
+
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 39 * 60 * 1000); // 39 minutes
+
+            const res = await fetch(`${BACKEND_URL}/api/submittal/compliance_check`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+                signal: controller.signal,
+            });
+
+            if (!res.ok) {
+                const err = await res.json();
+                toast.error(err.error ?? "Compliance check failed.");
+                setShowStream(false);
+                return;
+            }
+
+            const reader = res.body!.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+                buffer = lines.pop() ?? "";
+
+                for (const line of lines) {
+                    if (!line.startsWith("data: ")) continue;
+                    try {
+                        const event = JSON.parse(line.slice(6));
+                        if (event.type === "delta") {
+                            setStreamText((prev) => prev + event.text);
+                            setTimeout(() => streamEndRef.current?.scrollIntoView({ behavior: "smooth" }), 10);
+                        } else if (event.type === "done") {
+                            toast.success("Compliance check complete.");
+                            setShowStream(false);
+                            setStreamText("");
+                            await fetchRuns();
+                            onRunComplete();
+                        } else if (event.type === "error") {
+                            toast.error(event.error ?? "Compliance check failed.");
+                            setShowStream(false);
+                        }
+                    } catch {
+                        // malformed SSE line, skip
+                    }
+                }
+            }
+            clearTimeout(timeout);
+        } catch {
+            toast.error("Network error running compliance check.");
+            setShowStream(false);
+        } finally {
+            setRunning(false);
+        }
+    };
+
+    const label = target.type === "package" ? packageName : target.submittalTitle;
+    const sublabel = target.type === "package" ? "Full Package" : "Individual Submittal";
+
+    return (
+        <div
+            className={`pkg-pane${isDragOver ? " drag-over" : ""}${isDragging ? " drag-active" : ""}`}
+            onDragOver={onDragOver}
+            onDragLeave={onDragLeave}
+            onDrop={(e) => { e.preventDefault(); onDrop(); }}
+        >
+            {isDragging && (
+                <div className="pkg-pane-drop-overlay">
+                    <div className="pkg-pane-drop-hint">
+                        <span className="pkg-pane-drop-icon">⊕</span>
+                        <span>Drop to load here</span>
+                    </div>
+                </div>
+            )}
+
+            <div className="pkg-pane-topbar">
+                <div className="pkg-pane-topbar-left">
+                    <span className="pkg-pane-label">{label}</span>
+                    <span className={`pkg-pane-sublabel ${target.type}`}>{sublabel}</span>
+                </div>
+                <div className="pkg-pane-topbar-right">
+                    <button
+                        className={`pkg-run-btn${running ? " loading" : ""}`}
+                        onClick={handleRun}
+                        disabled={running}
+                    >
+                        {running ? (
+                            <><CircularProgress size={12} sx={{ color: "inherit" }} /> Running…</>
+                        ) : (
+                            <><FactCheckIcon fontSize="small" /> Run Check</>
+                        )}
+                    </button>
+                    {onClose && (
+                        <button className="pkg-pane-close" onClick={onClose} title="Close pane">
+                            <CloseIcon fontSize="small" />
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            <div className="pkg-pane-body">
+                {/* Stream overlay */}
+                {showStream && (
+                    <div className="pkg-stream-overlay">
+                        <div className="pkg-stream-header">
+                            <div className="pkg-stream-indicator">
+                                <span className="pkg-stream-dot" />
+                                <span className="pkg-stream-dot" />
+                                <span className="pkg-stream-dot" />
+                            </div>
+                            <span className="pkg-stream-title">Analyzing submittal…</span>
+                        </div>
+                        <div className="pkg-stream-body">
+                            <pre className="pkg-stream-text">{streamText}<span className="pkg-stream-cursor">▋</span></pre>
+                            <div ref={streamEndRef} />
+                        </div>
+                    </div>
+                )}
+                {loadingRuns ? (
+                    <div className="pkg-no-results">
+                        <CircularProgress size={24} sx={{ color: "rgba(255,255,255,0.3)" }} />
+                    </div>
+                ) : !latestRun ? (
+                    <div className="pkg-no-results">
+                        <div className="pkg-no-results-icon">◎</div>
+                        <p className="pkg-no-results-title">No compliance check yet</p>
+                        <p className="pkg-no-results-sub">
+                            {target.type === "submittal"
+                                ? "Run a check on this submittal to see individual findings."
+                                : "Run a compliance check to see AI-generated findings for this package."}
+                        </p>
+                    </div>
+                ) : (
+                    <ComplianceReport result={latestRun.compliance_result} run={latestRun} />
+                )}
+            </div>
+        </div>
+    );
+}
+
+// ── Main Page ──────────────────────────────────────────────────────────────────
+
 export default function Packages() {
     const { spec_id, package_id } = useParams();
     const [searchParams] = useSearchParams();
-    const section_number = searchParams.get("section_number");
+    const section_number = searchParams.get("section_number") ?? "";
     const section_title = searchParams.get("section_title");
-    const section_id = searchParams.get("section_id");
+    const section_id = searchParams.get("section_id") ?? "";
 
     const navigate = useNavigate();
 
     const [packages, setPackages] = useState<Package[]>([]);
     const [activePackageId, setActivePackageId] = useState<number | null>(null);
     const [expandedPackageIds, setExpandedPackageIds] = useState<Set<number>>(new Set());
-    const [highlightedSubmittalId, setHighlightedSubmittalId] = useState<number | null>(null);
     const [loading, setLoading] = useState(true);
-    const [running, setRunning] = useState(false);
     const [showUpload, setShowUpload] = useState(false);
-    const [complianceRuns, setComplianceRuns] = useState<ComplianceRun[]>([]);
-    const [loadingResult, setLoadingResult] = useState(false);
+
+    const [leftTarget, setLeftTarget] = useState<PaneTarget>({ type: "package" });
+    const [rightTarget, setRightTarget] = useState<PaneTarget | null>(null);
+    const [dragState, setDragState] = useState<DragState | null>(null);
+    const [dragOverPane, setDragOverPane] = useState<"left" | "right" | null>(null);
 
     const activePackage = useMemo(
         () => packages.find((p) => p.id === activePackageId) ?? null,
         [packages, activePackageId]
     );
 
-    const latestRun = complianceRuns[0] ?? null;
+    const isSplitView = rightTarget !== null;
 
     const fetchPackages = async () => {
         if (!section_id) return;
@@ -111,7 +346,6 @@ export default function Packages() {
             const data = await res.json();
             const pkgs: Package[] = data.packages ?? [];
             setPackages(pkgs);
-
             const urlId = package_id ? parseInt(package_id) : null;
             if (urlId && pkgs.find((p) => p.id === urlId)) {
                 setActivePackageId(urlId);
@@ -125,46 +359,14 @@ export default function Packages() {
         }
     };
 
-    const fetchComplianceRuns = async (pkgId: number) => {
-        setLoadingResult(true);
-        setComplianceRuns([]);
-        try {
-            const res = await fetch(`${BACKEND_URL}/api/submittal/compliance_runs_for_package?package_id=${pkgId}`);
-            const data = await res.json();
-            setComplianceRuns(data.compliance_runs ?? []);
-        } finally {
-            setLoadingResult(false);
-        }
-    };
+    useEffect(() => {
+        fetchPackages();
+    }, [spec_id, section_id]);
 
-    const handleRunCheck = async () => {
-        if (!activePackage || !spec_id || !section_number || !section_id) return;
-        setRunning(true);
-        try {
-            const res = await fetch(`${BACKEND_URL}/api/submittal/compliance_check`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    package_id: activePackage.id,
-                    section_id,
-                    spec_id,
-                    section_number,
-                }),
-            });
-            const data = await res.json();
-            if (!res.ok || data.error) {
-                toast.error(data.error ?? "Compliance check failed.");
-                return;
-            }
-            toast.success("Compliance check complete.");
-            await fetchPackages();
-            await fetchComplianceRuns(activePackage.id);
-        } catch {
-            toast.error("Network error running compliance check.");
-        } finally {
-            setRunning(false);
-        }
-    };
+    useEffect(() => {
+        setLeftTarget({ type: "package" });
+        setRightTarget(null);
+    }, [activePackageId]);
 
     const toggleExpand = (id: number) => {
         setExpandedPackageIds((prev) => {
@@ -174,36 +376,31 @@ export default function Packages() {
         });
     };
 
-    const handleSubmittalClick = (submittalId: number) => {
-        setHighlightedSubmittalId((prev) => (prev === submittalId ? null : submittalId));
+    const handleDragStart = (sub: Submittal) => {
+        setDragState({ submittalId: sub.id, submittalTitle: sub.submittal_title });
     };
 
-    useEffect(() => {
-        fetchPackages();
-    }, [spec_id, section_id]);
+    const handleDragEnd = () => {
+        setDragState(null);
+        setDragOverPane(null);
+    };
 
-    useEffect(() => {
-        if (activePackageId) fetchComplianceRuns(activePackageId);
-        setHighlightedSubmittalId(null);
-    }, [activePackageId]);
-
-    const highlightedSubmittal = useMemo(() => {
-        if (!highlightedSubmittalId || !activePackage) return null;
-        return activePackage.submittals.find((s) => s.id === highlightedSubmittalId) ?? null;
-    }, [highlightedSubmittalId, activePackage]);
-
-    const filteredFindings = useMemo(() => {
-        if (!latestRun?.compliance_result) return [];
-        if (!highlightedSubmittalId) return latestRun.compliance_result.requirement_findings;
-        return latestRun.compliance_result.requirement_findings.filter(
-            (f) => f.submittal_pages && f.submittal_pages.length > 0
-        );
-    }, [latestRun, highlightedSubmittalId]);
+    const handleDrop = (pane: "left" | "right") => {
+        if (!dragState) return;
+        const target: PaneTarget = {
+            type: "submittal",
+            submittalId: dragState.submittalId,
+            submittalTitle: dragState.submittalTitle,
+        };
+        if (pane === "left") setLeftTarget(target);
+        else setRightTarget(target);
+        setDragState(null);
+        setDragOverPane(null);
+    };
 
     return (
         <>
             <div className="pkg-page">
-                {/* Header */}
                 <div className="pkg-header">
                     <div>
                         <button className="pkg-back-btn" onClick={() => navigate(-1)}>
@@ -217,12 +414,20 @@ export default function Packages() {
                             </p>
                         )}
                     </div>
+                    <button
+                        className="pkg-run-btn pkg-upload-btn-secondary"
+                        onClick={() => setShowUpload(true)}
+                    >
+                        <UploadIcon fontSize="small" /> Upload Submittal(s)
+                    </button>
                 </div>
 
                 <div className="pkg-layout">
-                    {/* Sidebar */}
                     <aside className="pkg-sidebar">
                         <div className="pkg-sidebar-title">Packages</div>
+                        {dragState && (
+                            <div className="pkg-drag-hint">Drag to a pane to compare</div>
+                        )}
                         <div className="pkg-sidebar-list">
                             {loading ? (
                                 <div className="pkg-sidebar-loading">
@@ -235,11 +440,10 @@ export default function Packages() {
                                     const isActive = pkg.id === activePackageId;
                                     const isExpanded = expandedPackageIds.has(pkg.id);
                                     const score = pkg.compliance_score;
-
                                     return (
                                         <div key={pkg.id} className="pkg-sidebar-group">
                                             <button
-                                                className={`pkg-sidebar-item ${isActive ? "active" : ""}`}
+                                                className={`pkg-sidebar-item${isActive ? " active" : ""}`}
                                                 onClick={() => {
                                                     setActivePackageId(pkg.id);
                                                     toggleExpand(pkg.id);
@@ -267,20 +471,23 @@ export default function Packages() {
                                             {isExpanded && pkg.submittals.length > 0 && (
                                                 <div className="pkg-submittal-list">
                                                     {pkg.submittals.map((sub) => (
-                                                        <button
+                                                        <div
                                                             key={sub.id}
-                                                            className={`pkg-submittal-item ${highlightedSubmittalId === sub.id ? "highlighted" : ""}`}
-                                                            onClick={() => {
+                                                            className={`pkg-submittal-item${dragState?.submittalId === sub.id ? " dragging" : ""}`}
+                                                            draggable
+                                                            onDragStart={() => {
                                                                 setActivePackageId(pkg.id);
-                                                                handleSubmittalClick(sub.id);
+                                                                handleDragStart(sub);
                                                             }}
+                                                            onDragEnd={handleDragEnd}
                                                         >
                                                             <ChevronRight fontSize="small" sx={{ color: "rgba(255,255,255,0.2)", flexShrink: 0 }} />
                                                             <div className="pkg-submittal-info">
                                                                 <span className="pkg-submittal-title">{sub.submittal_title}</span>
                                                                 <span className="pkg-submittal-type">{sub.submittal_type_name}</span>
                                                             </div>
-                                                        </button>
+                                                            <span className="pkg-submittal-drag-handle" title="Drag to compare">⠿</span>
+                                                        </div>
                                                     ))}
                                                 </div>
                                             )}
@@ -295,75 +502,64 @@ export default function Packages() {
                         </div>
                     </aside>
 
-                    {/* Main content */}
-                    <main className="pkg-main">
-                        {!activePackage ? (
+                    {!activePackage ? (
+                        <main className="pkg-main">
                             <div className="pkg-main-empty">Select a package to view results.</div>
-                        ) : (
-                            <>
-                                <div className="pkg-main-topbar">
-                                    <div className="pkg-main-topbar-left">
-                                        <span className="pkg-main-package-name">{activePackage.package_name}</span>
-                                        {activePackage.company_name && (
-                                            <span className="pkg-main-company">{activePackage.company_name}</span>
-                                        )}
-                                        {highlightedSubmittal && (
-                                            <span className="pkg-main-filter-pill">
-                                                Filtered: {highlightedSubmittal.submittal_title}
-                                                <button className="pkg-main-filter-clear" onClick={() => setHighlightedSubmittalId(null)}>✕</button>
-                                            </span>
-                                        )}
-                                        {activePackage.run_count > 0 && activePackage.last_checked_at && (
-                                            <span className="pkg-main-run-meta">
-                                                Run {activePackage.run_count} · {new Date(activePackage.last_checked_at).toLocaleDateString()}
-                                            </span>
-                                        )}
-                                    </div>
-                                    <div className="pkg-main-topbar-right">
-                                        <button
-                                            className="pkg-run-btn pkg-upload-btn-secondary"
-                                            onClick={() => setShowUpload(true)}
-                                            disabled={running}
-                                        >
-                                            <UploadIcon fontSize="small" /> Upload Submittal(s)
-                                        </button>
-                                        {activePackage.submittals.length > 0 && (
-                                            <button
-                                                className={`pkg-run-btn ${running ? "loading" : ""}`}
-                                                onClick={handleRunCheck}
-                                                disabled={running}
-                                            >
-                                                {running ? (
-                                                    <><CircularProgress size={12} sx={{ color: "inherit" }} /> Running…</>
-                                                ) : (
-                                                    <><FactCheckIcon fontSize="small" /> Run Compliance Check</>
-                                                )}
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
+                        </main>
+                    ) : (
+                        <main className={`pkg-main pkg-main-panes${isSplitView ? " split" : ""}`}>
+                            <CompliancePane
+                                key={`left-${activePackage.id}-${JSON.stringify(leftTarget)}`}
+                                target={leftTarget}
+                                packageId={activePackage.id}
+                                spec_id={spec_id!}
+                                section_id={section_id}
+                                section_number={section_number}
+                                packageName={activePackage.package_name}
+                                isDragOver={dragOverPane === "left"}
+                                onDragOver={(e) => { e.preventDefault(); setDragOverPane("left"); }}
+                                onDragLeave={() => setDragOverPane(null)}
+                                onDrop={() => handleDrop("left")}
+                                isDragging={!!dragState}
+                                onRunComplete={fetchPackages}
+                            />
 
-                                {loadingResult ? (
-                                    <div className="pkg-no-results">
-                                        <CircularProgress size={24} sx={{ color: "rgba(255,255,255,0.3)" }} />
-                                    </div>
-                                ) : !latestRun ? (
-                                    <div className="pkg-no-results">
-                                        <div className="pkg-no-results-icon">◎</div>
-                                        <p className="pkg-no-results-title">No compliance check yet</p>
-                                        <p className="pkg-no-results-sub">Run a compliance check to see AI-generated findings for this package.</p>
-                                    </div>
-                                ) : (
-                                    <ComplianceReport
-                                        result={latestRun.compliance_result}
-                                        findings={filteredFindings}
-                                        isFiltered={!!highlightedSubmittalId}
-                                        run={latestRun}
+                            {isSplitView && rightTarget && (
+                                <>
+                                    <div className="pkg-pane-divider" />
+                                    <CompliancePane
+                                        key={`right-${activePackage.id}-${JSON.stringify(rightTarget)}`}
+                                        target={rightTarget}
+                                        packageId={activePackage.id}
+                                        spec_id={spec_id!}
+                                        section_id={section_id}
+                                        section_number={section_number}
+                                        packageName={activePackage.package_name}
+                                        onClose={() => setRightTarget(null)}
+                                        isDragOver={dragOverPane === "right"}
+                                        onDragOver={(e) => { e.preventDefault(); setDragOverPane("right"); }}
+                                        onDragLeave={() => setDragOverPane(null)}
+                                        onDrop={() => handleDrop("right")}
+                                        isDragging={!!dragState}
+                                        onRunComplete={fetchPackages}
                                     />
-                                )}
-                            </>
-                        )}
-                    </main>
+                                </>
+                            )}
+
+                            {/* Right drop zone — single view only, while dragging */}
+                            {!isSplitView && dragState && (
+                                <div
+                                    className={`pkg-drop-zone-right${dragOverPane === "right" ? " drag-over" : ""}`}
+                                    onDragOver={(e) => { e.preventDefault(); setDragOverPane("right"); }}
+                                    onDragLeave={() => setDragOverPane(null)}
+                                    onDrop={(e) => { e.preventDefault(); handleDrop("right"); }}
+                                >
+                                    <span className="pkg-drop-zone-icon">⊕</span>
+                                    <span className="pkg-drop-zone-label">Compare here</span>
+                                </div>
+                            )}
+                        </main>
+                    )}
                 </div>
             </div>
 
@@ -373,32 +569,22 @@ export default function Packages() {
                     package_id={activePackage.id}
                     package_name={activePackage.package_name}
                     onClose={() => setShowUpload(false)}
-                    onUploaded={() => {
-                        fetchPackages();
-                        if (activePackageId) fetchComplianceRuns(activePackageId);
-                    }}
+                    onUploaded={fetchPackages}
                 />
             )}
         </>
     );
 }
 
-function ComplianceReport({
-    result,
-    findings,
-    isFiltered,
-    run,
-}: {
-    result: ComplianceResult;
-    findings: RequirementFinding[];
-    isFiltered: boolean;
-    run: ComplianceRun;
-}) {
-    const scoreColor = result.compliance_score >= 0.7 ? "#3fb950" : result.compliance_score >= 0.4 ? "#d29922" : "#e74c3c";
+// ── ComplianceReport ───────────────────────────────────────────────────────────
+
+function ComplianceReport({ result, run }: { result: ComplianceResult; run: ComplianceRun }) {
+    const scoreColor =
+        result.compliance_score >= 0.7 ? "#3fb950" :
+            result.compliance_score >= 0.4 ? "#d29922" : "#e74c3c";
 
     return (
         <div className="pkg-report">
-            {/* Score header */}
             <div className="pkg-report-header">
                 <div className="pkg-report-score-row">
                     <div className="pkg-report-circle" style={{ borderColor: scoreColor }}>
@@ -413,7 +599,7 @@ function ComplianceReport({
                                 {result.is_compliant ? "✓ Compliant" : "✕ Non-Compliant"}
                             </div>
                             <span className="pkg-report-meta">
-                                {run.pipeline} · {new Date(run.created_at).toLocaleString()}
+                                {run.pipeline} · {run.model} · {run.token_count?.toLocaleString()} tokens · {new Date(run.created_at).toLocaleString()}
                             </span>
                         </div>
                         <p className="pkg-report-summary-text">{result.summary}</p>
@@ -421,7 +607,6 @@ function ComplianceReport({
                 </div>
             </div>
 
-            {/* Non-conformances */}
             {result.non_conformances.length > 0 && (
                 <ReportSection title="Non-Conformances">
                     <div className="pkg-nc-list">
@@ -439,8 +624,7 @@ function ComplianceReport({
                 </ReportSection>
             )}
 
-            {/* Requirement findings */}
-            <ReportSection title={isFiltered ? "Requirement Findings (Filtered)" : "Requirement Findings"}>
+            <ReportSection title="Requirement Findings">
                 <div className="pkg-findings-wrap">
                     <table className="pkg-findings-table">
                         <thead>
@@ -451,7 +635,7 @@ function ComplianceReport({
                             </tr>
                         </thead>
                         <tbody>
-                            {findings.map((f, i) => (
+                            {result.requirement_findings.map((f, i) => (
                                 <tr key={i}>
                                     <td>{f.requirement}</td>
                                     <td><span className={`pkg-status-pill status-${f.status}`}>{f.status.replace("_", " ")}</span></td>
@@ -462,15 +646,11 @@ function ComplianceReport({
                                     </td>
                                 </tr>
                             ))}
-                            {findings.length === 0 && (
-                                <tr><td colSpan={3} className="pkg-findings-empty">No findings match the selected submittal.</td></tr>
-                            )}
                         </tbody>
                     </table>
                 </div>
             </ReportSection>
 
-            {/* Missing items */}
             {result.missing_items.length > 0 && (
                 <ReportSection title="Missing Items">
                     <div className="pkg-missing-list">
@@ -489,7 +669,6 @@ function ComplianceReport({
                 </ReportSection>
             )}
 
-            {/* Recommendations */}
             {result.recommendations.length > 0 && (
                 <ReportSection title="Recommendations">
                     <div className="pkg-rec-list">
@@ -503,7 +682,6 @@ function ComplianceReport({
                 </ReportSection>
             )}
 
-            {/* Reviewer notes */}
             {result.reviewer_notes && (
                 <ReportSection title="Reviewer Notes">
                     <div className="pkg-reviewer-notes">{result.reviewer_notes}</div>
