@@ -293,3 +293,21 @@ async def submittals_by_package():
     except Exception as e:
         logger.error(f"Error getting submittals by package: {e}")
         return jsonify({"error": str(e)}), 500
+
+@submittal_routes_bp.route("/compliance_runs_for_package", methods=["GET"])
+async def compliance_runs_for_package():
+    try:
+        data = request.args
+        package_id: int = data.get("package_id")
+
+        is_valid, missing_fields = required_fields(
+            data, ["package_id"])
+        if not is_valid:
+            return jsonify({"error": f"Missing required fields: {', '.join(missing_fields)}"}), 400
+
+        compliance_runs = await db.get_compliance_runs(package_id)
+
+        return jsonify({"compliance_runs": compliance_runs}), 200
+    except Exception as e:
+        logger.error(f"Error getting compliance runs for package: {e}")
+        return jsonify({"error": str(e)}), 500

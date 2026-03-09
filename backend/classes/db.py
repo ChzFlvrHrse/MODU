@@ -1047,5 +1047,20 @@ class ModuDB:
             ))
             await conn.commit()
 
+    async def get_compliance_runs(self, package_id: int) -> List[Dict]:
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute("""
+                SELECT * FROM compliance_runs WHERE package_id = ?
+            """, (package_id,))
+            rows = await cursor.fetchall()
+            runs = [dict(row) for row in rows]
+            for run in runs:
+                if run.get("compliance_result"):
+                    run["compliance_result"] = json.loads(run["compliance_result"])
+                if run.get("submittal_ids"):
+                    run["submittal_ids"] = json.loads(run["submittal_ids"])
+            return runs
+
 
 db = ModuDB()
