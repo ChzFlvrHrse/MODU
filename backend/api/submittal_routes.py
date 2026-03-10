@@ -73,7 +73,7 @@ async def create_submittal_package():
         return jsonify({
             "message": "Submittal package created successfully",
             "package": {
-                "submittal_package_id": submittal_package_id,
+                "id": submittal_package_id,
                 **data,
                 "status": status
             }
