@@ -179,6 +179,7 @@ class ModuDB:
                     compliance_result TEXT DEFAULT NULL,
                     compliance_score REAL DEFAULT NULL,
                     is_compliant BOOLEAN DEFAULT NULL,
+                    run_type TEXT DEFAULT 'cumulative',
                     prompt_version INTEGER DEFAULT NULL,
                     model TEXT DEFAULT NULL,
                     pipeline TEXT DEFAULT NULL,
@@ -811,22 +812,73 @@ class ModuDB:
         checked_submittal_ids: list[int],
     ) -> None:
         async with aiosqlite.connect(self.db_path) as conn:
-            await conn.execute("""
-                UPDATE submittal_packages
-                SET compliance_result = ?,
-                    compliance_score = ?,
-                    checked_submittal_ids = ?,
-                    run_count = run_count + 1,
-                    last_checked_at = CURRENT_TIMESTAMP,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-            """, (
-                json.dumps(compliance_result),
-                compliance_score,
-                json.dumps(checked_submittal_ids),
-                package_id,
-            ))
+            # Get all submittal IDs for this package
+            async with conn.execute(
+                "SELECT id FROM submittals WHERE package_id = ?", (package_id,)
+            ) as cursor:
+                rows = await cursor.fetchall()
+                all_submittal_ids = {row[0] for row in rows}
+
+            # Get current checked_submittal_ids from package
+            async with conn.execute(
+                "SELECT checked_submittal_ids FROM submittal_packages WHERE id = ?", (package_id,)
+            ) as cursor:
+                row = await cursor.fetchone()
+                existing = json.loads(row[0]) if row and row[0] else []
+
+            # Merge
+            merged = list(set(existing) | set(checked_submittal_ids))
+            all_checked = set(merged) >= all_submittal_ids
+
+            if all_checked:
+                await conn.execute("""
+                    UPDATE submittal_packages
+                    SET compliance_result = ?,
+                        compliance_score = ?,
+                        checked_submittal_ids = ?,
+                        run_count = run_count + 1,
+                        last_checked_at = CURRENT_TIMESTAMP,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """, (
+                    json.dumps(compliance_result),
+                    compliance_score,
+                    json.dumps(merged),
+                    package_id,
+                ))
+            else:
+                await conn.execute("""
+                    UPDATE submittal_packages
+                    SET checked_submittal_ids = ?,
+                        run_count = run_count + 1,
+                        last_checked_at = CURRENT_TIMESTAMP,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """, (
+                    json.dumps(merged),
+                    package_id,
+                ))
+
             await conn.commit()
+
+    async def get_package_result(self, package_id: int) -> Optional[Dict]:
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute("""
+                SELECT id, compliance_result, compliance_score,
+                       checked_submittal_ids, run_count, last_checked_at, created_at
+                FROM submittal_packages
+                WHERE id = ?
+            """, (package_id,))
+            row = await cursor.fetchone()
+            if not row:
+                return None
+            result = dict(row)
+            if result.get("compliance_result"):
+                result["compliance_result"] = json.loads(result["compliance_result"])
+            if result.get("checked_submittal_ids"):
+                result["checked_submittal_ids"] = json.loads(result["checked_submittal_ids"])
+            return result
 
     async def delete_submittal_package(self, submittal_package_id: int):
         """Delete submittal package from db and s3 bucket"""
@@ -999,6 +1051,7 @@ class ModuDB:
         compliance_score: float,
         is_compliant: bool,
         pipeline: str,
+        run_type: str = "cumulative",
         model: str = "claude-sonnet-4-6",
         prompt_version: int = 1,
         token_count: int = None,
@@ -1008,8 +1061,8 @@ class ModuDB:
                 INSERT INTO compliance_runs (
                     package_id, spec_id, section_id, submittal_ids,
                     compliance_result, compliance_score, is_compliant,
-                    pipeline, model, prompt_version, token_count
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    pipeline, run_type, model, prompt_version, token_count
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 package_id,
                 spec_id,
@@ -1019,6 +1072,7 @@ class ModuDB:
                 compliance_score,
                 is_compliant,
                 pipeline,
+                run_type,
                 model,
                 prompt_version,
                 token_count,
@@ -1034,6 +1088,7 @@ class ModuDB:
         compliance_score: float,
         is_compliant: bool,
         pipeline: str,
+        run_type: str = "cumulative",
         model: str = "claude-sonnet-4-6",
         prompt_version: int = None,
         token_count: int = None,
@@ -1046,15 +1101,21 @@ class ModuDB:
                     compliance_score = ?,
                     is_compliant = ?,
                     pipeline = ?,
+                    run_type = ?,
                     model = ?,
                     prompt_version = ?,
                     token_count = ?
                 WHERE id = ?
-            """, (json.dumps(submittal_ids), json.dumps(compliance_result), compliance_score, is_compliant, pipeline, model, prompt_version, token_count, compliance_run_id))
+            """, (json.dumps(submittal_ids), json.dumps(compliance_result), compliance_score, is_compliant, pipeline, run_type, model, prompt_version, token_count, compliance_run_id))
             await conn.commit()
             return cursor.lastrowid
 
-    async def get_compliance_runs(self, package_id: int, submittal_id: Optional[int] = None) -> List[Dict]:
+    async def get_compliance_runs(
+        self,
+        package_id: int,
+        submittal_id: Optional[int] = None,
+        run_type: Optional[str] = None,
+    ) -> List[Dict]:
         async with aiosqlite.connect(self.db_path) as conn:
             conn.row_factory = aiosqlite.Row
             if submittal_id:
@@ -1065,6 +1126,13 @@ class ModuDB:
                     AND json_extract(submittal_ids, '$[0]') = ?
                     ORDER BY created_at DESC
                 """, (package_id, int(submittal_id)))
+            elif run_type:
+                cursor = await conn.execute("""
+                    SELECT * FROM compliance_runs
+                    WHERE package_id = ?
+                    AND run_type = ?
+                    ORDER BY created_at DESC
+                """, (package_id, run_type))
             else:
                 cursor = await conn.execute("""
                     SELECT * FROM compliance_runs
@@ -1075,8 +1143,7 @@ class ModuDB:
             runs = [dict(row) for row in rows]
             for run in runs:
                 if run.get("compliance_result"):
-                    run["compliance_result"] = json.loads(
-                        run["compliance_result"])
+                    run["compliance_result"] = json.loads(run["compliance_result"])
                 if run.get("submittal_ids"):
                     run["submittal_ids"] = json.loads(run["submittal_ids"])
             return runs

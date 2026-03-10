@@ -4,7 +4,7 @@ import uuid
 from classes import db, S3Bucket, Anthropic
 from quart import Blueprint, jsonify, request, Response
 from quart.datastructures import FileStorage
-from functions import stream_compliance_check
+from functions import compliance_check
 from typing import List, Optional
 
 submittal_routes_bp = Blueprint("submittal_routes", __name__)
@@ -227,30 +227,99 @@ async def compliance_check_route():
         if not submittals:
             return jsonify({"status": "error", "error": "No submittals found"}), 404
 
-        # Billing gate (testing)
-        # prev_runs = await db.get_compliance_runs(package_id, submittal_id=submittal_ids[0] if submittal_ids else None)
-        # if prev_runs:
-        #     return jsonify({"error": "..."}), 400
-
-        return Response(
-            stream_compliance_check(
-                package_id,
-                spec_id,
-                section_id,
-                section_number,
-                submittals,
-                submittal_ids
-            ),
-            mimetype="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "X-Accel-Buffering": "no",
-            }
+        result = await compliance_check(
+            package_id,
+            spec_id,
+            section_id,
+            section_number,
+            submittals,
+            submittal_ids
         )
+
+        if result.get("status") == "success":
+            if submittal_ids:
+                # Individual run — find by single submittal id
+                prev_runs = await db.get_compliance_runs(package_id, submittal_id=submittal_ids[0])
+                if prev_runs:
+                    await db.update_compliance_run(
+                        compliance_run_id=prev_runs[0].get("id"),
+                        submittal_ids=result.get("submittal_ids"),
+                        compliance_result=result.get("result"),
+                        compliance_score=result.get(
+                            "result").get("compliance_score"),
+                        is_compliant=result.get("result").get("is_compliant"),
+                        pipeline=result.get("pipeline"),
+                        run_type="individual",
+                        prompt_version=int(
+                            prev_runs[0].get("prompt_version")) + 1,
+                        token_count=result.get("total_tokens"),
+                    )
+                else:
+                    await db.create_compliance_run(
+                        package_id=package_id,
+                        spec_id=spec_id,
+                        section_id=section_id,
+                        submittal_ids=result.get("submittal_ids"),
+                        compliance_result=result.get("result"),
+                        compliance_score=result.get(
+                            "result").get("compliance_score"),
+                        is_compliant=result.get("result").get("is_compliant"),
+                        pipeline=result.get("pipeline"),
+                        run_type="individual",
+                        model="claude-sonnet-4-6",
+                        token_count=result.get("total_tokens"),
+                    )
+            else:
+                # Package/cumulative run — find by run_type
+                prev_run = await db.get_compliance_runs(package_id, run_type="package")
+                prev_run = prev_run[0] if prev_run else None
+                if prev_run:
+                    await db.update_compliance_run(
+                        compliance_run_id=prev_run.get("id"),
+                        submittal_ids=result.get("submittal_ids"),
+                        compliance_result=result.get("result"),
+                        compliance_score=result.get(
+                            "result").get("compliance_score"),
+                        is_compliant=result.get("result").get("is_compliant"),
+                        pipeline=result.get("pipeline"),
+                        run_type="package",
+                        prompt_version=int(prev_run.get("prompt_version")) + 1,
+                        token_count=result.get("total_tokens"),
+                    )
+                else:
+                    await db.create_compliance_run(
+                        package_id=package_id,
+                        spec_id=spec_id,
+                        section_id=section_id,
+                        submittal_ids=result.get("submittal_ids"),
+                        compliance_result=result.get("result"),
+                        compliance_score=result.get(
+                            "result").get("compliance_score"),
+                        is_compliant=result.get("result").get("is_compliant"),
+                        pipeline=result.get("pipeline"),
+                        run_type="package",
+                        model="claude-sonnet-4-6",
+                        token_count=result.get("total_tokens"),
+                    )
+
+            await db.update_package_after_run(
+                package_id=package_id,
+                compliance_result=result.get("result"),
+                compliance_score=result.get("result").get("compliance_score"),
+                checked_submittal_ids=result.get("submittal_ids"),
+            )
+
+            return jsonify({
+                "message": "Compliance check completed successfully",
+                "compliance_check": result,
+                "success": True,
+            }), 200
+
+        return jsonify({"error": result.get("error"), "success": False}), 500
 
     except Exception as e:
         logger.error(f"Error in compliance_check_route: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": str(e), "success": False}), 500
 
 
 @submittal_routes_bp.route("/all_submittals", methods=["GET"])
@@ -287,7 +356,7 @@ async def submittals_by_package():
         data = request.args
         package_id = data.get("package_id")
 
-        submittals = await db.get_all_submittals_by_package(package_id)
+        submittals = await db.get_submittals_by_package(package_id)
 
         return jsonify({"submittals": submittals}), 200
     except Exception as e:
@@ -343,4 +412,16 @@ async def get_compliance_run():
         return jsonify(compliance_run), 200
     except Exception as e:
         logger.error(f"Error getting compliance run: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@submittal_routes_bp.route("/package_result/<int:package_id>", methods=["GET"])
+async def package_result(package_id: int):
+    try:
+        result = await db.get_package_result(package_id)
+        if not result or not result.get("compliance_result"):
+            return jsonify({"error": "No compliance result found"}), 404
+        return jsonify({"result": result}), 200
+    except Exception as e:
+        logger.error(f"Error getting package result: {e}")
         return jsonify({"error": str(e)}), 500

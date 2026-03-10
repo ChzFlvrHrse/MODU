@@ -106,8 +106,7 @@ class Anthropic(S3Bucket):
         model: str = "claude-sonnet-4-6",
         adaptive_thinking: bool = False,
         effort: str = "medium",
-        cache_system_prompt: bool = False,
-        on_delta: callable = None,
+        cache_system_prompt: bool = False
     ) -> dict:
         try:
             # Cache system prompt if enabled
@@ -135,11 +134,9 @@ class Anthropic(S3Bucket):
             async with self.client.messages.stream(**kwargs) as stream:
                 async for event in stream:
                     if event.type == "content_block_delta":
-                        if event.delta.type == "thinking_delta" and on_delta:
-                            await on_delta(event.delta.thinking)
+                        if event.delta.type == "thinking_delta":
                             print(event.delta.thinking, end="", flush=True)
-                        elif event.delta.type == "text_delta" and on_delta:
-                            await on_delta(event.delta.text)
+                        elif event.delta.type == "text_delta":
                             print(event.delta.text, end="", flush=True)
 
                 response = await stream.get_final_message()

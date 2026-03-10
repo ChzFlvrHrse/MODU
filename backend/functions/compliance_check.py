@@ -1,7 +1,7 @@
 import logging
 import json
 import asyncio
-from typing import Optional, List, Callable, Awaitable
+from typing import Optional, List
 from classes import db, S3Bucket, Anthropic, make_spec_check_schema
 from prompts import SPEC_CHECK_PROMPT, SPEC_CHECK_DRAWINGS_PROMPT
 
@@ -19,8 +19,7 @@ async def compliance_check(
     section_number: str,
     submittals: list[dict],
     submittal_ids: Optional[List[int]],
-    on_delta: Optional[Callable[[str], Awaitable[None]]] = None,
-):
+) -> dict:
     try:
 
         # Check if the submittals are only shop drawings
@@ -102,8 +101,7 @@ async def compliance_check(
             max_tokens=max_tokens,
             adaptive_thinking=is_drawing_only,
             effort=effort,
-            cache_system_prompt=True,
-            on_delta=on_delta,
+            cache_system_prompt=True
         )
 
         if claude_request.get("status") == "success":
@@ -130,79 +128,89 @@ async def compliance_check(
         return {"status": "error", "error": str(e)}
 
 
-async def stream_compliance_check(
-    package_id: int,
-    spec_id: str,
-    section_id: int,
-    section_number: str,
-    submittals: list[dict],
-    submittal_ids: Optional[List[int]],
-):
-    queue = asyncio.Queue()
+# async def stream_compliance_check(
+#     package_id: int,
+#     spec_id: str,
+#     section_id: int,
+#     section_number: str,
+#     submittals: list[dict],
+#     submittal_ids: Optional[List[int]],
+# ):
+#     queue = asyncio.Queue()
 
-    async def on_delta(text: str):
-        await queue.put({"type": "delta", "text": text})
+#     async def on_delta(text: str):
+#         await queue.put({"type": "delta", "text": text})
 
-    async def run_check():
-        result = await compliance_check(
-            package_id=package_id,
-            spec_id=spec_id,
-            section_id=section_id,
-            section_number=section_number,
-            submittals=submittals,
-            submittal_ids=submittal_ids,
-            on_delta=on_delta,
-        )
-        await queue.put({"type": "done", "result": result})
+#     async def run_check():
+#         result = await compliance_check(
+#             package_id=package_id,
+#             spec_id=spec_id,
+#             section_id=section_id,
+#             section_number=section_number,
+#             submittals=submittals,
+#             submittal_ids=submittal_ids,
+#             on_delta=on_delta,
+#         )
+#         await queue.put({"type": "done", "result": result})
 
-    task = asyncio.create_task(run_check())
+#     task = asyncio.create_task(run_check())
 
-    while True:
-        item = await queue.get()
-        if item["type"] == "delta":
-            yield f"data: {json.dumps(item)}\n\n"
-        elif item["type"] == "done":
-            result = item["result"]
-            if result.get("status") == "success":
-                prev_runs = await db.get_compliance_runs(
-                    package_id,
-                    submittal_id=submittal_ids[0] if submittal_ids else None
-                )
-                if prev_runs:
-                    latest = prev_runs[0]
-                    await db.update_compliance_run(
-                        compliance_run_id=latest.get("id"),
-                        submittal_ids=result.get("submittal_ids"),
-                        compliance_result=result.get("result"),
-                        compliance_score=result.get(
-                            "result").get("compliance_score"),
-                        is_compliant=result.get("result").get("is_compliant"),
-                        pipeline=result.get("pipeline"),
-                        prompt_version=latest.get("prompt_version") + 1,
-                        token_count=result.get("total_tokens"),
-                    )
-                else:
-                    await db.create_compliance_run(
-                        package_id=package_id,
-                        spec_id=spec_id,
-                        section_id=section_id,
-                        submittal_ids=result.get("submittal_ids"),
-                        compliance_result=result.get("result"),
-                        compliance_score=result.get(
-                            "result").get("compliance_score"),
-                        is_compliant=result.get("result").get("is_compliant"),
-                        pipeline=result.get("pipeline"),
-                        model="claude-sonnet-4-6",
-                        token_count=result.get("total_tokens"),
-                    )
-                await db.update_package_after_run(
-                    package_id=package_id,
-                    compliance_result=result.get("result"),
-                    compliance_score=result.get(
-                        "result").get("compliance_score"),
-                    checked_submittal_ids=result.get("submittal_ids"),
-                )
-                yield f"data: {json.dumps({'type': 'done', 'result': result})}\n\n"
-            else:
-                yield f"data: {json.dumps({'type': 'error', 'error': result.get('error')})}\n\n"
-            break
+#     while True:
+#         try:
+#             item = await asyncio.wait_for(queue.get(), timeout=5)
+#         except asyncio.TimeoutError:
+#             logger.info("Stream timeout, sending keepalive")
+#             yield ": keepalive\n\n"
+#             continue
+#         except Exception as e:
+#             logger.error(f"Error in stream_compliance_check: {e}")
+#             yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+#             break
+
+#         if item["type"] == "delta":
+#             yield f"data: {json.dumps(item)}\n\n"
+#         elif item["type"] == "done":
+#             result = item["result"]
+#             if result.get("status") == "success":
+#                 prev_runs = await db.get_compliance_runs(
+#                     package_id,
+#                     submittal_id=submittal_ids[0] if submittal_ids else None
+#                 )
+#                 if prev_runs:
+#                     latest = prev_runs[0]
+#                     await db.update_compliance_run(
+#                         compliance_run_id=latest.get("id"),
+#                         submittal_ids=result.get("submittal_ids"),
+#                         compliance_result=result.get("result"),
+#                         compliance_score=result.get(
+#                             "result").get("compliance_score"),
+#                         is_compliant=result.get("result").get("is_compliant"),
+#                         pipeline=result.get("pipeline"),
+#                         prompt_version=latest.get("prompt_version") + 1,
+#                         token_count=result.get("total_tokens"),
+#                     )
+#                 else:
+#                     await db.create_compliance_run(
+#                         package_id=package_id,
+#                         spec_id=spec_id,
+#                         section_id=section_id,
+#                         submittal_ids=result.get("submittal_ids"),
+#                         compliance_result=result.get("result"),
+#                         compliance_score=result.get(
+#                             "result").get("compliance_score"),
+#                         is_compliant=result.get("result").get("is_compliant"),
+#                         pipeline=result.get("pipeline"),
+#                         model="claude-sonnet-4-6",
+#                         token_count=result.get("total_tokens"),
+#                     )
+#                 await db.update_package_after_run(
+#                     package_id=package_id,
+#                     compliance_result=result.get("result"),
+#                     compliance_score=result.get(
+#                         "result").get("compliance_score"),
+#                     checked_submittal_ids=result.get("submittal_ids"),
+#                 )
+#                 yield f"data: {json.dumps({'type': 'done', 'result': result})}\n\n"
+#             else:
+#                 yield f"data: {json.dumps({'type': 'error', 'error': result.get('error')})}\n\n"
+#             break
