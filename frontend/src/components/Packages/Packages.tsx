@@ -599,7 +599,7 @@ function ComplianceReport({ result, run }: { result: ComplianceResult; run: Comp
                                 {result.is_compliant ? "✓ Compliant" : "✕ Non-Compliant"}
                             </div>
                             <span className="pkg-report-meta">
-                                {run.pipeline} · {run.model} · {run.token_count?.toLocaleString()} tokens · {new Date(run.created_at).toLocaleString()}
+                                {run.pipeline} · {new Date(run.created_at).toLocaleString()}
                             </span>
                         </div>
                         <p className="pkg-report-summary-text">{result.summary}</p>
