@@ -126,9 +126,6 @@ function CompliancePane({
     const [runs, setRuns] = useState<ComplianceRun[]>([]);
     const [loadingRuns, setLoadingRuns] = useState(false);
     const [running, setRunning] = useState(false);
-    const [streamText, setStreamText] = useState("");
-    const [showStream, setShowStream] = useState(false);
-    const streamEndRef = useRef<HTMLDivElement>(null);
 
     const latestRun = runs[0] ?? null;
 
@@ -136,13 +133,31 @@ function CompliancePane({
         setLoadingRuns(true);
         setRuns([]);
         try {
-            const url =
-                target.type === "submittal"
-                    ? `${BACKEND_URL}/api/submittal/compliance_runs_for_package?package_id=${packageId}&submittal_id=${target.submittalId}`
-                    : `${BACKEND_URL}/api/submittal/compliance_runs_for_package?package_id=${packageId}`;
-            const res = await fetch(url);
-            const data = await res.json();
-            setRuns(data.compliance_runs ?? []);
+            if (target.type === "package") {
+                const res = await fetch(`${BACKEND_URL}/api/submittal/package_result/${packageId}`);
+                if (!res.ok) { setRuns([]); return; }
+                const data = await res.json();
+                if (data.result?.compliance_result) {
+                    // Shape it to match ComplianceRun interface
+                    setRuns([{
+                        id: data.result.id,
+                        compliance_result: data.result.compliance_result,
+                        compliance_score: data.result.compliance_score,
+                        is_compliant: data.result.compliance_result.is_compliant,
+                        pipeline: "package",
+                        model: "claude-sonnet-4-6",
+                        submittal_ids: data.result.checked_submittal_ids ?? [],
+                        token_count: 0,
+                        created_at: data.result.last_checked_at,
+                    }]);
+                }
+            } else {
+                const res = await fetch(
+                    `${BACKEND_URL}/api/submittal/compliance_runs_for_package?package_id=${packageId}&submittal_id=${target.submittalId}`
+                );
+                const data = await res.json();
+                setRuns(data.compliance_runs ?? []);
+            }
         } finally {
             setLoadingRuns(false);
         }
@@ -154,8 +169,6 @@ function CompliancePane({
 
     const handleRun = async () => {
         setRunning(true);
-        setStreamText("");
-        setShowStream(true);
         try {
             const body: Record<string, unknown> = {
                 package_id: packageId,
@@ -163,64 +176,28 @@ function CompliancePane({
                 section_id,
                 section_number,
             };
+
             if (target.type === "submittal") {
                 body.submittal_ids = [target.submittalId];
             }
-
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 39 * 60 * 1000); // 39 minutes
 
             const res = await fetch(`${BACKEND_URL}/api/submittal/compliance_check`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(body),
-                signal: controller.signal,
             });
 
             if (!res.ok) {
                 const err = await res.json();
                 toast.error(err.error ?? "Compliance check failed.");
-                setShowStream(false);
                 return;
             }
 
-            const reader = res.body!.getReader();
-            const decoder = new TextDecoder();
-            let buffer = "";
-
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split("\n");
-                buffer = lines.pop() ?? "";
-
-                for (const line of lines) {
-                    if (!line.startsWith("data: ")) continue;
-                    try {
-                        const event = JSON.parse(line.slice(6));
-                        if (event.type === "delta") {
-                            setStreamText((prev) => prev + event.text);
-                            setTimeout(() => streamEndRef.current?.scrollIntoView({ behavior: "smooth" }), 10);
-                        } else if (event.type === "done") {
-                            toast.success("Compliance check complete.");
-                            setShowStream(false);
-                            setStreamText("");
-                            await fetchRuns();
-                            onRunComplete();
-                        } else if (event.type === "error") {
-                            toast.error(event.error ?? "Compliance check failed.");
-                            setShowStream(false);
-                        }
-                    } catch {
-                        // malformed SSE line, skip
-                    }
-                }
-            }
-            clearTimeout(timeout);
+            toast.success("Compliance check complete.");
+            await fetchRuns();
+            onRunComplete();
         } catch {
             toast.error("Network error running compliance check.");
-            setShowStream(false);
         } finally {
             setRunning(false);
         }
@@ -271,8 +248,7 @@ function CompliancePane({
             </div>
 
             <div className="pkg-pane-body">
-                {/* Stream overlay */}
-                {showStream && (
+                {running && (
                     <div className="pkg-stream-overlay">
                         <div className="pkg-stream-header">
                             <div className="pkg-stream-indicator">
@@ -281,10 +257,6 @@ function CompliancePane({
                                 <span className="pkg-stream-dot" />
                             </div>
                             <span className="pkg-stream-title">Analyzing submittal…</span>
-                        </div>
-                        <div className="pkg-stream-body">
-                            <pre className="pkg-stream-text">{streamText}<span className="pkg-stream-cursor">▋</span></pre>
-                            <div ref={streamEndRef} />
                         </div>
                     </div>
                 )}
@@ -339,7 +311,7 @@ export default function Packages() {
 
     const isSplitView = rightTarget !== null;
 
-    const fetchPackages = async () => {
+    const fetchPackages = useCallback(async () => {
         if (!section_id) return;
         try {
             const res = await fetch(`${BACKEND_URL}/api/submittal/sections_packages/${section_id}`);
@@ -357,11 +329,11 @@ export default function Packages() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [section_id, package_id]);
 
     useEffect(() => {
         fetchPackages();
-    }, [spec_id, section_id]);
+    }, [fetchPackages]);
 
     useEffect(() => {
         setLeftTarget({ type: "package" });
@@ -470,11 +442,22 @@ export default function Packages() {
 
                                             {isExpanded && pkg.submittals.length > 0 && (
                                                 <div className="pkg-submittal-list">
+                                                    <button
+                                                        className="pkg-cumulative-btn"
+                                                        onClick={() => setLeftTarget({ type: "package" })}
+                                                    >
+                                                        <span className="pkg-cumulative-icon">◎</span>
+                                                        <div className="pkg-submittal-info">
+                                                            <span className="pkg-submittal-title">Cumulative Summary</span>
+                                                            <span className="pkg-submittal-type">Full Package</span>
+                                                        </div>
+                                                    </button>
                                                     {pkg.submittals.map((sub) => (
                                                         <div
                                                             key={sub.id}
                                                             className={`pkg-submittal-item${dragState?.submittalId === sub.id ? " dragging" : ""}`}
                                                             draggable
+                                                            onClick={() => setLeftTarget({ type: "submittal", submittalId: sub.id, submittalTitle: sub.submittal_title })}
                                                             onDragStart={() => {
                                                                 setActivePackageId(pkg.id);
                                                                 handleDragStart(sub);

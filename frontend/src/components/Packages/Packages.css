@@ -191,7 +191,7 @@
     background: none;
     border: 1px solid transparent;
     color: #fff;
-    cursor: pointer;
+    cursor: grab;
     text-align: left;
     transition: background 0.12s, border-color 0.12s;
 }
@@ -204,6 +204,10 @@
 .pkg-submittal-item.highlighted {
     background: rgba(92,120,255,0.08);
     border-color: rgba(92,120,255,0.3);
+}
+
+.pkg-submittal-item.dragging {
+    opacity: 0.4;
 }
 
 .pkg-submittal-info {
@@ -237,14 +241,29 @@
     font-style: italic;
 }
 
+.pkg-submittal-drag-handle {
+    font-size: 14px;
+    color: rgba(255,255,255,0.15);
+    flex-shrink: 0;
+    margin-left: auto;
+    cursor: grab;
+    transition: color 0.12s;
+}
+
+.pkg-submittal-item:hover .pkg-submittal-drag-handle {
+    color: rgba(255,255,255,0.35);
+}
+
 /* ── Main ── */
 .pkg-main {
     border-radius: 14px;
     border: 1px solid rgba(255,255,255,0.08);
     background: rgba(255,255,255,0.03);
     min-height: 70vh;
+    height: 80vh;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
 }
 
 .pkg-main-empty {
@@ -254,88 +273,6 @@
     justify-content: center;
     color: rgba(255,255,255,0.3);
     font-size: 13px;
-}
-
-/* Topbar */
-.pkg-main-topbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    padding: 14px 18px;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
-    flex-shrink: 0;
-}
-
-.pkg-main-topbar-left {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-width: 0;
-    flex-wrap: wrap;
-}
-
-.pkg-main-package-name {
-    font-size: 15px;
-    font-weight: 700;
-    color: rgba(255,255,255,0.95);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.pkg-main-company {
-    font-size: 12px;
-    color: rgba(255,255,255,0.4);
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-}
-
-.pkg-main-filter-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 11px;
-    font-weight: 600;
-    color: rgba(92,120,255,0.9);
-    background: rgba(92,120,255,0.1);
-    border: 1px solid rgba(92,120,255,0.35);
-    border-radius: 999px;
-    padding: 3px 10px;
-}
-
-.pkg-main-filter-clear {
-    background: none;
-    border: none;
-    color: inherit;
-    cursor: pointer;
-    font-size: 11px;
-    padding: 0;
-    line-height: 1;
-    opacity: 0.7;
-}
-
-.pkg-main-filter-clear:hover { opacity: 1; }
-
-.pkg-main-topbar-right {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-shrink: 0;
-}
-
-.pkg-main-run-meta {
-    font-size: 11px;
-    color: rgba(255,255,255,0.25);
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-}
-
-.pkg-upload-btn-secondary {
-    background: rgba(255,255,255,0.05);
-    border-color: rgba(255,255,255,0.12);
-}
-
-.pkg-upload-btn-secondary:hover:not(:disabled) {
-    background: rgba(255,255,255,0.09);
 }
 
 /* Run button */
@@ -383,6 +320,15 @@
     100% { transform: translateX(100%); }
 }
 
+.pkg-upload-btn-secondary {
+    background: rgba(255,255,255,0.05);
+    border-color: rgba(255,255,255,0.12);
+}
+
+.pkg-upload-btn-secondary:hover:not(:disabled) {
+    background: rgba(255,255,255,0.09);
+}
+
 /* No results empty state */
 .pkg-no-results {
     flex: 1;
@@ -422,7 +368,6 @@
     display: flex;
     flex-direction: column;
     gap: 24px;
-    overflow-y: auto;
 }
 
 .pkg-report-header {
@@ -751,6 +696,7 @@
     gap: 0;
     overflow: hidden;
     position: relative;
+    flex: 1;
 }
 
 .pkg-main-panes.split .pkg-pane {
@@ -773,6 +719,7 @@
     min-width: 0;
     position: relative;
     transition: background 0.15s;
+    overflow-y: auto;
 }
 
 .pkg-pane.drag-over {
@@ -788,6 +735,11 @@
     padding: 12px 16px;
     border-bottom: 1px solid rgba(255,255,255,0.08);
     flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: rgba(10, 12, 18, 0.97);
+    backdrop-filter: blur(8px);
 }
 
 .pkg-pane-topbar-left {
@@ -974,28 +926,6 @@
     to   { opacity: 1; transform: translateY(0); }
 }
 
-/* ── Submittal drag handle & dragging state ── */
-.pkg-submittal-item {
-    cursor: grab;
-}
-
-.pkg-submittal-item.dragging {
-    opacity: 0.4;
-}
-
-.pkg-submittal-drag-handle {
-    font-size: 14px;
-    color: rgba(255,255,255,0.15);
-    flex-shrink: 0;
-    margin-left: auto;
-    cursor: grab;
-    transition: color 0.12s;
-}
-
-.pkg-submittal-item:hover .pkg-submittal-drag-handle {
-    color: rgba(255,255,255,0.35);
-}
-
 /* ── Stream overlay ── */
 .pkg-stream-overlay {
     position: absolute;
@@ -1080,4 +1010,31 @@
 @keyframes pkg-cursor-blink {
     0%, 100% { opacity: 1; }
     50%       { opacity: 0; }
+}
+
+.pkg-cumulative-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 10px;
+    border-radius: 8px;
+    background: rgba(92,120,255,0.06);
+    border: 1px solid rgba(92,120,255,0.2);
+    color: #fff;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.12s, border-color 0.12s;
+    margin-bottom: 4px;
+}
+
+.pkg-cumulative-btn:hover {
+    background: rgba(92,120,255,0.12);
+    border-color: rgba(92,120,255,0.4);
+}
+
+.pkg-cumulative-icon {
+    font-size: 14px;
+    color: rgba(92,120,255,0.7);
+    flex-shrink: 0;
 }
