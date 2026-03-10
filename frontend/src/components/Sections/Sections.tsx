@@ -7,28 +7,27 @@ import "./Sections.css";
 import { CircularProgress } from "@mui/material";
 import { ArrowBackIosNew, AdsClickRounded, Error } from '@mui/icons-material';
 import SectionModal from "../../modals/SectionModal/SectionModal";
+import PackageModal from "../../modals/PackageModal/PackageModal";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-
-function fmtPages(pages?: number[]) {
-    if (!pages?.length) return "—";
-    if (pages.length <= 6) return pages.join(", ");
-    return `${pages.slice(0, 6).join(", ")} +${pages.length - 6}`;
-}
 
 export default function Sections() {
     const [sections, setSections] = useState<Record<string, Section[]>>({});
     const [activeDivision, setActiveDivision] = useState<string>("");
     const [query, setQuery] = useState("");
     const [statusFilter, setStatusFilter] = useState<string>("all");
-    // const [divisionErrors, setDivisionErrors] = useState<Record<string, number>>({});
 
     const [sectionModalsOpen, setSectionModalsOpen] = useState<boolean>(false);
     const [sectionModalSectionNumber, setSectionModalSectionNumber] = useState<string>("");
     const [sectionModalSectionTitle, setSectionModalSectionTitle] = useState<string>("");
     const [sectionModalSectionId, setSectionModalSectionId] = useState<number>(0);
 
-    const [generatingSummaries, setGeneratingSummaries] = useState<Set<string>>(new Set());;
+    const [packagesModalOpen, setPackagesModalOpen] = useState<boolean>(false);
+    const [packagesModalSectionId, setPackagesModalSectionId] = useState<number>(0);
+    const [packagesModalSectionNumber, setPackagesModalSectionNumber] = useState<string>("");
+    const [packagesModalSectionTitle, setPackagesModalSectionTitle] = useState<string>("");
+
+    const [generatingSummaries, setGeneratingSummaries] = useState<Set<string>>(new Set());
 
     const { spec_id } = useParams();
     const [searchParams] = useSearchParams();
@@ -41,14 +40,12 @@ export default function Sections() {
     const isDivisionClassificationComplete = (division: string) => {
         const list = sections[division] ?? [];
         if (list.length === 0) return false;
-
         return list.every((s) => (s.classification_status ?? "").toLowerCase() === "complete" || (s.classification_status ?? "").toLowerCase() === "failed");
     };
 
     const isDivisionClassificationPending = (division: string) => {
         const list = sections[division] ?? [];
         if (list.length === 0) return false;
-
         return list.some((s) => (s.classification_status ?? "").toLowerCase() === "pending" || (s.classification_status ?? "").toLowerCase() === "error");
     };
 
@@ -57,34 +54,23 @@ export default function Sections() {
         return divisions.every((d) => isDivisionClassificationComplete(d));
     }, [divisions, sections]);
 
-    // Is also complete if the satus is 'manual'
     const isDivisionSummaryComplete = (division: string) => {
         const list = sections[division] ?? [];
         if (list.length === 0) return false;
-
         return list.every((s) => (s.summary_status ?? "").toLowerCase() === "complete" || (s.summary_status ?? "").toLowerCase() === "failed" || (s.summary_status ?? "").toLowerCase() === "manual");
     };
 
     const isDivisionSummaryPending = (division: string) => {
         const list = sections[division] ?? [];
         if (list.length === 0) return false;
-
         return list.some((s) => (s.summary_status ?? "").toLowerCase() === "pending");
     };
 
     const isDivisionSummaryError = (division: string) => {
         const list = sections[division] ?? [];
         if (list.length === 0) return false;
-
         return list.some((s) => (s.summary_status ?? "").toLowerCase() === "error");
     };
-
-    // const getDivisionErrors = (division: string) => {
-    //     const list = sections[division] ?? [];
-    //     if (list.length === 0) return [];
-
-    //     return list.filter((s) => (s.summary_status ?? "").toLowerCase() === "error").map((s) => s.section_number).join(", ");
-    // };
 
     const allDivisionsSummaryComplete = useMemo(() => {
         if (divisions.length === 0) return false;
@@ -97,20 +83,12 @@ export default function Sections() {
     const fetchSections = async () => {
         const response = await fetch(`${BACKEND_URL}/api/spec/spec_sections/${spec_id}`);
         const data = await response.json();
-
         const specSections = data.spec_sections ?? {};
         setSections(specSections);
-
         setActiveDivision((prev) => {
             const keys = normalizeDivisions(specSections);
-
-            // if nothing selected yet, choose the first sorted division
             if (!prev) return keys[0] ?? "";
-
-            // if current selection still exists, keep it
             if (specSections[prev]) return prev;
-
-            // otherwise fall back to first available
             return keys[0] ?? "";
         });
     };
@@ -120,21 +98,16 @@ export default function Sections() {
         if (activeDivision === "all") {
             list = Object.values(sections).flat();
         }
-
         const q = query.trim().toLowerCase();
         const filtered = list.filter((s) => {
             const matchesQuery =
                 !q ||
                 s.section_title?.toLowerCase().includes(q) ||
                 s.section_number?.toLowerCase().includes(q);
-
             const matchesStatus =
                 statusFilter === "all" || (s.classification_status ?? "none") === statusFilter;
-
             return matchesQuery && matchesStatus;
         });
-
-        // sort by section_number (string numeric-ish)
         return filtered.sort((a, b) =>
             (a.section_number ?? "").localeCompare(b.section_number ?? "")
         );
@@ -155,6 +128,13 @@ export default function Sections() {
         setSectionModalSectionNumber(section_number);
         setSectionModalSectionTitle(section_title ?? "Undocumented Section Number (MSF2020)");
         setSectionModalsOpen(true);
+    };
+
+    const openPackagesModal = (section_id: number, section_number: string, section_title?: string) => {
+        setPackagesModalSectionId(section_id);
+        setPackagesModalSectionNumber(section_number);
+        setPackagesModalSectionTitle(section_title ?? "");
+        setPackagesModalOpen(true);
     };
 
     function getStatusIcon(status: string) {
@@ -188,8 +168,6 @@ export default function Sections() {
         };
         return statusTextMap[status] ?? "CLASSIFICATION UNKNOWN";
     }
-
-    console.log(activeList);
 
     const handleGenerateSummary = async (e: React.MouseEvent<HTMLButtonElement>, spec_id: string, section_number: string) => {
         e.stopPropagation();
@@ -226,7 +204,6 @@ export default function Sections() {
 
     useEffect(() => {
         if (allDivisionsClassificationComplete) return;
-
         const interval = setInterval(fetchSections, 5000);
         return () => clearInterval(interval);
     }, [allDivisionsClassificationComplete]);
@@ -237,7 +214,7 @@ export default function Sections() {
 
     return (
         <>
-            {sectionModalsOpen &&
+            {sectionModalsOpen && (
                 <SectionModal
                     spec_id={spec_id ?? ""}
                     section_id={sectionModalSectionId}
@@ -245,7 +222,17 @@ export default function Sections() {
                     section_title={sectionModalSectionTitle}
                     onClose={() => setSectionModalsOpen(false)}
                 />
-            }
+            )}
+
+            {packagesModalOpen && (
+                <PackageModal
+                    spec_id={spec_id ?? ""}
+                    section_id={packagesModalSectionId}
+                    section_number={packagesModalSectionNumber}
+                    section_title={packagesModalSectionTitle}
+                    onClose={() => setPackagesModalOpen(false)}
+                />
+            )}
 
             <div className="sections-page">
                 <div className="sections-header">
@@ -265,7 +252,6 @@ export default function Sections() {
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
                         />
-
                         <select
                             className="sections-select"
                             value={statusFilter}
@@ -282,10 +268,8 @@ export default function Sections() {
                 </div>
 
                 <div className="sections-layout">
-                    {/* LEFT SIDEBAR */}
                     <aside className="division-panel">
                         <div className="division-panel-title">Divisions</div>
-
                         <div className="division-list">
                             <button
                                 className={`division-item ${activeDivision === "all" ? "active" : ""}`}
@@ -294,11 +278,8 @@ export default function Sections() {
                                 <span className="division-left">
                                     <span className="division-code">All</span>
                                 </span>
-
                                 <span className="division-right">
-                                    <span className="division-count">
-                                        {totalSections} sections
-                                    </span>
+                                    <span className="division-count">{totalSections} sections</span>
                                 </span>
                             </button>
 
@@ -314,19 +295,15 @@ export default function Sections() {
                                         key={d}
                                         className={`division-item ${d === activeDivision ? "active" : ""}`}
                                         onClick={() => setActiveDivision(d)}
-                                        // title={summary_error ? "Summary error" : undefined}
                                     >
                                         <span className="division-left">
                                             <span className="division-code">{d}</span>
                                         </span>
-
                                         <span className="division-right">
-                                            <span className="division-count">
-                                                {sections[d]?.length ?? 0} sections
-                                            </span>
+                                            <span className="division-count">{sections[d]?.length ?? 0} sections</span>
                                             {(classification_done && summary_done) && <span className="division-check" title="All sections complete">✓</span>}
                                             {(classification_pending || summary_pending) && <CircularProgress size={18} />}
-                                            {(summary_error) && <Error sx={{ fontSize: 18, color: 'rgba(231,76,60,0.9)' }} />}
+                                            {summary_error && <Error sx={{ fontSize: 18, color: 'rgba(231,76,60,0.9)' }} />}
                                         </span>
                                     </button>
                                 );
@@ -334,15 +311,10 @@ export default function Sections() {
                         </div>
                     </aside>
 
-                    {/* MAIN */}
-                    <main className="section-panel">
+                    <div className="section-panel">
                         <div className="section-panel-top">
-                            <div className="section-panel-title">
-                                Division {activeDivision || "—"}
-                            </div>
-                            <div className="section-panel-meta">
-                                {activeList.length} sections
-                            </div>
+                            <div className="section-panel-title">Division {activeDivision || "—"}</div>
+                            <div className="section-panel-meta">{activeList.length} sections</div>
                         </div>
 
                         <div className="section-grid">
@@ -351,15 +323,12 @@ export default function Sections() {
                                 const summary_status = s.summary_status ?? "NONE";
 
                                 return (
-                                    <div key={s.id} className="section-card" onClick={() => openSectionModal(s.section_number, s.section_title)}>
-
-                                        {/* Row 1: Section number + name */}
+                                    <div key={s.id} className="section-card">
                                         <div className="section-card-header">
                                             <span className="section-number">{s.section_number}</span>
                                             <span className="section-name">{s.section_title}</span>
                                         </div>
 
-                                        {/* Row 2: Status pills */}
                                         <div className="section-card-status">
                                             <span className={`pill pill-${classification_status}`}>
                                                 {getStatusIcon(classification_status)} {getClassificationStatusText(classification_status)}
@@ -382,7 +351,6 @@ export default function Sections() {
                                             )}
                                         </div>
 
-                                        {/* Row 3: Inline page metrics */}
                                         <div className="section-metrics">
                                             <div className="section-metric">
                                                 <div className="section-metric-value">{s.primary_pages?.length ?? "—"}</div>
@@ -395,34 +363,32 @@ export default function Sections() {
                                             </div>
                                         </div>
 
-                                        {/* Row 4: Footer */}
-                                        <div className="section-footer">
-                                            <div className="section-footer-col">
-                                                <div className="meta-label">Created</div>
-                                                <div className="meta-value">{s.created_at ?? "—"}</div>
-                                            </div>
-                                            <div className="section-footer-col" style={{ textAlign: 'right' }}>
-                                                <div className="meta-label">Updated</div>
-                                                <div className="meta-value">{s.updated_at ?? "—"}</div>
-                                            </div>
+                                        <div className="section-actions">
+                                            <button
+                                                className="section-action-btn"
+                                                onClick={() => openSectionModal(s.section_number, s.section_title)}
+                                            >
+                                                Summary
+                                            </button>
+                                            <button
+                                                className="section-action-btn section-action-btn--packages"
+                                                onClick={() => openPackagesModal(s.id, s.section_number, s.section_title)}
+                                            >
+                                                Packages
+                                            </button>
                                         </div>
                                     </div>
                                 );
                             })}
 
                             {activeDivision && activeList.length === 0 && (
-                                <div className="sections-empty">
-                                    No sections match your filters.
-                                </div>
+                                <div className="sections-empty">No sections match your filters.</div>
                             )}
-
                             {!activeDivision && (
-                                <div className="sections-empty">
-                                    No divisions found.
-                                </div>
+                                <div className="sections-empty">No divisions found.</div>
                             )}
                         </div>
-                    </main>
+                    </div>
                 </div>
             </div>
         </>

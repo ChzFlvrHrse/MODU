@@ -228,7 +228,7 @@
 /* ---- Section card ---- */
 
 .section-card {
-    cursor: pointer;
+    cursor: default;
     border-radius: 14px;
     border: 1px solid rgba(255, 255, 255, 0.08);
     background: rgba(0, 0, 0, 0.18);
@@ -240,7 +240,7 @@
 }
 
 .section-card:hover {
-    transform: translateY(-2px);
+    transform: none;
     border-color: rgba(255, 255, 255, 0.14);
     background: rgba(0, 0, 0, 0.24);
 }
@@ -403,4 +403,44 @@
 
 .generate-summary-btn:active {
     transform: translateY(0);
+}
+
+/* Row 4: Actions */
+.section-actions {
+    display: flex;
+    gap: 8px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.section-action-btn {
+    flex: 1;
+    padding: 7px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.75);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    letter-spacing: 0.02em;
+}
+
+.section-action-btn:hover {
+    background: rgba(255, 255, 255, 0.09);
+    border-color: rgba(255, 255, 255, 0.18);
+    color: rgba(255, 255, 255, 0.95);
+}
+
+.section-action-btn--packages {
+    border-color: rgba(92, 120, 255, 0.35);
+    background: rgba(92, 120, 255, 0.08);
+    color: rgba(92, 120, 255, 0.9);
+}
+
+.section-action-btn--packages:hover {
+    background: rgba(92, 120, 255, 0.15);
+    border-color: rgba(92, 120, 255, 0.55);
+    color: rgba(92, 120, 255, 1);
 }
