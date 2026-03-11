@@ -430,12 +430,14 @@ async def package_result(package_id: int):
 async def compare_compliance():
     try:
         data: dict = await request.get_json()
+
         package_id_1: int = data.get("package_id_1")
         package_id_2: int = data.get("package_id_2")
+        section_id: int = data.get("section_id")
         section_number: str = data.get("section_number")
 
         is_valid, missing_fields = required_fields(
-            data, ["package_id_1", "package_id_2", "section_number"])
+            data, ["package_id_1", "package_id_2", "section_number", "section_id"])
         if not is_valid:
             return jsonify({"error": f"Missing required fields: {', '.join(missing_fields)}"}), 400
 
@@ -445,7 +447,47 @@ async def compare_compliance():
             section_number
         )
 
-        return jsonify(result), 200
+        if result.get("status") == "success":
+            await db.create_compliance_comparison(
+                package_id_a=package_id_1,
+                package_id_b=package_id_2,
+                section_id=section_id,
+                section_number=section_number,
+                overall_winner=result.get("result").get("overall_winner"),
+                package_name_a=result.get("package_a_name"),
+                package_name_b=result.get("package_b_name"),
+                score_a=result.get("result").get("score_a"),
+                score_b=result.get("result").get("score_b"),
+                score_delta=result.get("result").get("score_delta"),
+                executive_summary=result.get("result").get("executive_summary"),
+                recommendation=result.get("result").get("recommendation"),
+                comparison_result=json.dumps(result.get("result")),
+                model_version="claude-sonnet-4-6",
+            )
+
+            return jsonify({
+                **result,
+                "success": True,
+            }), 200
+        else:
+            return jsonify({"error": result.get("error"), "success": False}), 500
+
     except Exception as e:
         logger.error(f"Error comparing compliance results: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@submittal_routes_bp.route("/get_compliance_comparisons", methods=["GET"])
+async def get_compliance_comparisons():
+    try:
+        data = request.args
+        id: Optional[int] = data.get("id", None)
+        section_id: Optional[int] = data.get("section_id", None)
+
+        compliance_comparisons = await db.get_compliance_comparisons(id=id, section_id=section_id)
+        if not compliance_comparisons:
+            return jsonify({"error": "No compliance comparisons found"}), 404
+
+        return jsonify(compliance_comparisons), 200
+    except Exception as e:
+        logger.error(f"Error getting compliance comparisons: {e}")
         return jsonify({"error": str(e)}), 500

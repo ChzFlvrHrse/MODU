@@ -188,6 +188,26 @@ class ModuDB:
                     FOREIGN KEY (package_id) REFERENCES submittal_packages(id) ON DELETE CASCADE
                 )""")
 
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS compliance_comparisons (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    package_id_a INTEGER NOT NULL REFERENCES submittal_packages(id),
+                    package_id_b INTEGER NOT NULL REFERENCES submittal_packages(id),
+                    section_id INTEGER NOT NULL REFERENCES spec_sections(id),
+                    section_number TEXT NOT NULL,
+                    overall_winner TEXT NOT NULL CHECK(overall_winner IN ('A', 'B', 'tie')),
+                    package_name_a TEXT NOT NULL,
+                    package_name_b TEXT NOT NULL,
+                    score_a REAL NOT NULL,
+                    score_b REAL NOT NULL,
+                    score_delta REAL NOT NULL,
+                    executive_summary TEXT,
+                    recommendation TEXT,
+                    comparison_result TEXT,
+                    model_version TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )""")
+
             await conn.commit()
 
     async def create_project(
@@ -821,7 +841,8 @@ class ModuDB:
 
             # Get current checked_submittal_ids from package
             async with conn.execute(
-                "SELECT checked_submittal_ids FROM submittal_packages WHERE id = ?", (package_id,)
+                "SELECT checked_submittal_ids FROM submittal_packages WHERE id = ?", (
+                    package_id,)
             ) as cursor:
                 row = await cursor.fetchone()
                 existing = json.loads(row[0]) if row and row[0] else []
@@ -875,9 +896,11 @@ class ModuDB:
                 return None
             result = dict(row)
             if result.get("compliance_result"):
-                result["compliance_result"] = json.loads(result["compliance_result"])
+                result["compliance_result"] = json.loads(
+                    result["compliance_result"])
             if result.get("checked_submittal_ids"):
-                result["checked_submittal_ids"] = json.loads(result["checked_submittal_ids"])
+                result["checked_submittal_ids"] = json.loads(
+                    result["checked_submittal_ids"])
             return result
 
     async def delete_submittal_package(self, submittal_package_id: int):
@@ -1143,7 +1166,8 @@ class ModuDB:
             runs = [dict(row) for row in rows]
             for run in runs:
                 if run.get("compliance_result"):
-                    run["compliance_result"] = json.loads(run["compliance_result"])
+                    run["compliance_result"] = json.loads(
+                        run["compliance_result"])
                 if run.get("submittal_ids"):
                     run["submittal_ids"] = json.loads(run["submittal_ids"])
             return runs
@@ -1165,6 +1189,67 @@ class ModuDB:
             if run.get("submittal_ids"):
                 run["submittal_ids"] = json.loads(run["submittal_ids"])
             return run
+
+    async def create_compliance_comparison(
+        self,
+        package_id_a: int,
+        package_id_b: int,
+        section_id: int,
+        section_number: str,
+        overall_winner: str,
+        package_name_a: str,
+        package_name_b: str,
+        score_a: float,
+        score_b: float,
+        score_delta: float,
+        executive_summary: str,
+        recommendation: str,
+        comparison_result: str,
+        model_version: str,
+    ) -> int:
+        async with aiosqlite.connect(self.db_path) as conn:
+            cursor = await conn.execute("""
+                INSERT INTO compliance_comparisons (
+                    package_id_a, package_id_b, section_id, section_number,
+                    overall_winner, package_name_a, package_name_b,
+                    score_a, score_b, score_delta,
+                    executive_summary, recommendation, comparison_result,
+                    model_version
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                package_id_a, package_id_b, section_id, section_number,
+                overall_winner, package_name_a, package_name_b,
+                score_a, score_b, score_delta,
+                executive_summary, recommendation, comparison_result,
+                model_version
+            ))
+            await conn.commit()
+            return cursor.lastrowid
+
+    async def get_compliance_comparisons(self, id: int = None, section_id: int = None) -> List[Dict]:
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            if id:
+                cursor = await conn.execute("""
+                    SELECT * FROM compliance_comparisons WHERE id = ?
+                """, (id,))
+            elif section_id:
+                cursor = await conn.execute("""
+                    SELECT * FROM compliance_comparisons WHERE section_id = ?
+                """, (section_id,))
+            else:
+                return []
+            rows = await cursor.fetchall()
+            comparisons = [dict(row) for row in rows]
+            for comparison in comparisons:
+                if comparison.get("comparison_result"):
+                    comparison["comparison_result"] = json.loads(comparison["comparison_result"])
+            if id:
+                return comparisons[0]
+            elif section_id:
+                return comparisons
+            else:
+                return []
 
 
 db = ModuDB()

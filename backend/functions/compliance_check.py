@@ -278,6 +278,8 @@ async def compare_compliance_runs(
             return {
                 "status": "success",
                 "result": claude_request.get("response"),
+                "package_a_name": package_1.get("package_name"),
+                "package_b_name": package_2.get("package_name"),
                 "input_tokens": claude_request.get("input_tokens"),
                 "output_tokens": claude_request.get("output_tokens"),
                 "total_tokens": claude_request.get("total_tokens"),
