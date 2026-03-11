@@ -9,6 +9,8 @@ import { toast } from "react-hot-toast";
 import "./Packages.css";
 
 import UploadSubmittal from "../UploadSubmittal/UploadSubmittal";
+import type { ComparisonSummary, ComparisonRecord } from "../ComparisonSection/ComparisonSection";
+import { ExpandedComparison } from "../ComparisonSection/ComparisonSection";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -83,13 +85,44 @@ interface ComplianceRun {
 
 type PaneTarget =
     | { type: "package"; packageId: number }
-    | { type: "submittal"; packageId: number; submittalId: number; submittalTitle: string };
+    | { type: "submittal"; packageId: number; submittalId: number; submittalTitle: string }
+    | { type: "comparison"; comparisonId: number };
 
 interface DragState {
     packageId: number;
     submittalId: number;
     submittalTitle: string;
 }
+
+// ── Comparison Detail ──────────────────────────────────────────────────────────
+
+function ComparisonDetail({ comparisonId }: { comparisonId: number }) {
+    const [detail, setDetail] = useState<ComparisonRecord | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        setLoading(true);
+        setDetail(null);
+        fetch(`${BACKEND_URL}/api/submittal/compliance_comparisons?id=${comparisonId}`)
+            .then(r => r.json())
+            .then(data => setDetail(data ?? null))
+            .finally(() => setLoading(false));
+    }, [comparisonId]);
+
+    if (loading) return (
+        <div className="pkg-no-results">
+            <CircularProgress size={24} sx={{ color: "rgba(255,255,255,0.3)" }} />
+        </div>
+    );
+    if (!detail) return (
+        <div className="pkg-no-results">
+            <p className="pkg-no-results-title">Comparison not found.</p>
+        </div>
+    );
+
+    return <ExpandedComparison record={detail} />;
+}
+
 // ── Pane ──────────────────────────────────────────────────────────────────────
 
 interface PaneProps {
@@ -132,18 +165,15 @@ function CompliancePane({
     const latestRun = runs[0] ?? null;
 
     const fetchRuns = useCallback(async () => {
+        if (target.type === "comparison") return;
         setLoadingRuns(true);
         setRuns([]);
         try {
             if (target.type === "package") {
                 const res = await fetch(`${BACKEND_URL}/api/submittal/package_result/${target.packageId}`);
-                if (!res.ok) {
-                    setRuns([]);
-                    return;
-                }
+                if (!res.ok) { setRuns([]); return; }
                 const data = await res.json();
                 if (data.result?.compliance_result) {
-                    // Shape it to match ComplianceRun interface
                     setRuns([{
                         id: data.result.id,
                         compliance_result: data.result.compliance_result,
@@ -173,6 +203,7 @@ function CompliancePane({
     }, [fetchRuns]);
 
     const handleRun = async () => {
+        if (target.type === "comparison") return;
         setRunning(true);
         try {
             const body: Record<string, unknown> = {
@@ -181,23 +212,19 @@ function CompliancePane({
                 section_id,
                 section_number,
             };
-
             if (target.type === "submittal") {
                 body.submittal_ids = [target.submittalId];
             }
-
             const res = await fetch(`${BACKEND_URL}/api/submittal/compliance_check`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(body),
             });
-
             if (!res.ok) {
                 const err = await res.json();
                 toast.error(err.error ?? "Compliance check failed.");
                 return;
             }
-
             toast.success("Compliance check complete.");
             await fetchRuns();
             onRunComplete();
@@ -208,10 +235,19 @@ function CompliancePane({
         }
     };
 
-    const label = target.type === "package"
-        ? (packages.find(p => p.id === target.packageId)?.package_name ?? "Package")
-        : target.submittalTitle;
-    const sublabel = target.type === "package" ? "Full Package" : "Individual Submittal";
+    const label = target.type === "comparison"
+        ? "Comparison"
+        : target.type === "package"
+            ? (packages.find(p => p.id === target.packageId)?.package_name ?? "Package")
+            : target.submittalTitle;
+
+    const sublabel = target.type === "comparison"
+        ? "comparison"
+        : target.type === "package" ? "package" : "submittal";
+
+    const sublabelText = target.type === "comparison"
+        ? "Submittal Comparison"
+        : target.type === "package" ? "Full Package" : "Individual Submittal";
 
     return (
         <div
@@ -232,20 +268,22 @@ function CompliancePane({
             <div className="pkg-pane-topbar">
                 <div className="pkg-pane-topbar-left">
                     <span className="pkg-pane-label">{label}</span>
-                    <span className={`pkg-pane-sublabel ${target.type}`}>{sublabel}</span>
+                    <span className={`pkg-pane-sublabel ${sublabel}`}>{sublabelText}</span>
                 </div>
                 <div className="pkg-pane-topbar-right">
-                    <button
-                        className={`pkg-run-btn${running ? " loading" : ""}`}
-                        onClick={handleRun}
-                        disabled={running}
-                    >
-                        {running ? (
-                            <><CircularProgress size={12} sx={{ color: "inherit" }} /> Running…</>
-                        ) : (
-                            <><FactCheckIcon fontSize="small" /> Run Check</>
-                        )}
-                    </button>
+                    {target.type !== "comparison" && (
+                        <button
+                            className={`pkg-run-btn${running ? " loading" : ""}`}
+                            onClick={handleRun}
+                            disabled={running}
+                        >
+                            {running ? (
+                                <><CircularProgress size={12} sx={{ color: "inherit" }} /> Running…</>
+                            ) : (
+                                <><FactCheckIcon fontSize="small" /> Run Check</>
+                            )}
+                        </button>
+                    )}
                     {onClose && (
                         <button className="pkg-pane-close" onClick={onClose} title="Close pane">
                             <CloseIcon fontSize="small" />
@@ -255,34 +293,40 @@ function CompliancePane({
             </div>
 
             <div className="pkg-pane-body">
-                {running && (
-                    <div className="pkg-stream-overlay">
-                        <div className="pkg-stream-header">
-                            <div className="pkg-stream-indicator">
-                                <span className="pkg-stream-dot" />
-                                <span className="pkg-stream-dot" />
-                                <span className="pkg-stream-dot" />
-                            </div>
-                            <span className="pkg-stream-title">Analyzing submittal…</span>
-                        </div>
-                    </div>
-                )}
-                {loadingRuns ? (
-                    <div className="pkg-no-results">
-                        <CircularProgress size={24} sx={{ color: "rgba(255,255,255,0.3)" }} />
-                    </div>
-                ) : !latestRun ? (
-                    <div className="pkg-no-results">
-                        <div className="pkg-no-results-icon">◎</div>
-                        <p className="pkg-no-results-title">No compliance check yet</p>
-                        <p className="pkg-no-results-sub">
-                            {target.type === "submittal"
-                                ? "Run a check on this submittal to see individual findings."
-                                : "Run a compliance check to see AI-generated findings for this package."}
-                        </p>
-                    </div>
+                {target.type === "comparison" ? (
+                    <ComparisonDetail comparisonId={target.comparisonId} />
                 ) : (
-                    <ComplianceReport result={latestRun.compliance_result} run={latestRun} />
+                    <>
+                        {running && (
+                            <div className="pkg-stream-overlay">
+                                <div className="pkg-stream-header">
+                                    <div className="pkg-stream-indicator">
+                                        <span className="pkg-stream-dot" />
+                                        <span className="pkg-stream-dot" />
+                                        <span className="pkg-stream-dot" />
+                                    </div>
+                                    <span className="pkg-stream-title">Analyzing submittal…</span>
+                                </div>
+                            </div>
+                        )}
+                        {loadingRuns ? (
+                            <div className="pkg-no-results">
+                                <CircularProgress size={24} sx={{ color: "rgba(255,255,255,0.3)" }} />
+                            </div>
+                        ) : !latestRun ? (
+                            <div className="pkg-no-results">
+                                <div className="pkg-no-results-icon">◎</div>
+                                <p className="pkg-no-results-title">No compliance check yet</p>
+                                <p className="pkg-no-results-sub">
+                                    {target.type === "submittal"
+                                        ? "Run a check on this submittal to see individual findings."
+                                        : "Run a compliance check to see AI-generated findings for this package."}
+                                </p>
+                            </div>
+                        ) : (
+                            <ComplianceReport result={latestRun.compliance_result} run={latestRun} />
+                        )}
+                    </>
                 )}
             </div>
         </div>
@@ -305,6 +349,7 @@ export default function Packages() {
     const [expandedPackageIds, setExpandedPackageIds] = useState<Set<number>>(new Set());
     const [loading, setLoading] = useState(true);
     const [showUpload, setShowUpload] = useState(false);
+    const [comparisons, setComparisons] = useState<ComparisonSummary[]>([]);
 
     const [leftTarget, setLeftTarget] = useState<PaneTarget>({ type: "package", packageId: activePackageId ?? 0 });
     const [rightTarget, setRightTarget] = useState<PaneTarget | null>(null);
@@ -340,9 +385,15 @@ export default function Packages() {
         }
     }, [section_id, package_id]);
 
-    useEffect(() => {
-        fetchPackages();
-    }, [fetchPackages]);
+    const fetchComparisons = useCallback(async () => {
+        if (!section_id) return;
+        const res = await fetch(`${BACKEND_URL}/api/submittal/get_compliance_comparisons_list?section_id=${section_id}`);
+        const data = await res.json();
+        setComparisons(data.comparisons ?? []);
+    }, [section_id]);
+
+    useEffect(() => { fetchPackages(); }, [fetchPackages]);
+    useEffect(() => { fetchComparisons(); }, [fetchComparisons]);
 
     useEffect(() => {
         if (dragState) return;
@@ -407,124 +458,145 @@ export default function Packages() {
 
                 <div className="pkg-layout">
                     <aside className="pkg-sidebar">
-                        <div className="pkg-sidebar-title">Packages</div>
-                        {dragState && (
-                            <div className="pkg-drag-hint">Drag to a pane to compare</div>
-                        )}
-                        <div className="pkg-sidebar-list">
-                            {loading ? (
-                                <div className="pkg-sidebar-loading">
-                                    <CircularProgress size={18} sx={{ color: "rgba(255,255,255,0.4)" }} />
-                                </div>
-                            ) : packages.length === 0 ? (
-                                <div className="pkg-sidebar-empty">No packages found.</div>
-                            ) : (
-                                packages.map((pkg) => {
-                                    const isActive = pkg.id === activePackageId;
-                                    const isExpanded = expandedPackageIds.has(pkg.id);
-                                    const score = pkg.compliance_score;
-
-                                    return (
-                                        <div key={pkg.id} className="pkg-sidebar-group">
-                                            <button
-                                                className={`pkg-sidebar-item${isActive ? " active" : ""}`}
-                                                onClick={() => {
-                                                    setActivePackageId(pkg.id);
-                                                    toggleExpand(pkg.id);
-                                                }}
-                                            >
-                                                <div className="pkg-sidebar-item-left">
-                                                    <span className="pkg-sidebar-name">{pkg.package_name}</span>
-                                                    {pkg.company_name && (
-                                                        <span className="pkg-sidebar-company">{pkg.company_name}</span>
-                                                    )}
-                                                </div>
-                                                <div className="pkg-sidebar-item-right">
-                                                    {score !== null && (
-                                                        <span className={`pkg-score-badge ${score >= 0.7 ? "good" : score >= 0.4 ? "warn" : "bad"}`}>
-                                                            {Math.round(score * 100)}%
-                                                        </span>
-                                                    )}
-                                                    {isExpanded
-                                                        ? <ExpandLess fontSize="small" sx={{ color: "rgba(255,255,255,0.3)", flexShrink: 0 }} />
-                                                        : <ExpandMore fontSize="small" sx={{ color: "rgba(255,255,255,0.3)", flexShrink: 0 }} />
-                                                    }
-                                                </div>
-                                            </button>
-
-                                            {isExpanded && pkg.submittals.length > 0 && (
-                                                <div className="pkg-submittal-list">
-                                                    <button
-                                                        className="pkg-cumulative-btn"
-                                                        onClick={() => setLeftTarget({ type: "package", packageId: pkg.id })}
-                                                    >
-                                                        <span className="pkg-cumulative-icon">◎</span>
-                                                        <div className="pkg-submittal-info">
-                                                            <span className="pkg-submittal-title">Cumulative Summary</span>
-                                                            <span className="pkg-submittal-type">Full Package</span>
-                                                        </div>
-                                                    </button>
-                                                    {pkg.submittals.map((sub) => (
-                                                        <div
-                                                            key={sub.id}
-                                                            className={`pkg-submittal-item${dragState?.submittalId === sub.id ? " dragging" : ""}`}
-                                                            draggable
-                                                            onClick={() => {
-                                                                if (didDrag) {
-                                                                    didDrag.current = false;
-                                                                    return;
-                                                                }
-                                                                setLeftTarget({ type: "submittal", packageId: pkg.id, submittalId: sub.id, submittalTitle: sub.submittal_title });
-                                                                // setActivePackageId(pkg.id);
-                                                            }}
-                                                            onDragStart={(e) => {
-                                                                e.stopPropagation();
-                                                                didDrag.current = true;
-                                                                // setActivePackageId(pkg.id);
-                                                                handleDragStart(pkg, sub);
-                                                            }}
-                                                            onDragEnd={() => {
-                                                                handleDragEnd();
-                                                                setTimeout(() => {
-                                                                    didDrag.current = false;
-                                                                }, 0);
-                                                            }}
-                                                        >
-                                                            <ChevronRight fontSize="small" sx={{ color: "rgba(255,255,255,0.2)", flexShrink: 0 }} />
-                                                            <div className="pkg-submittal-info">
-                                                                <span className="pkg-submittal-title">{sub.submittal_title}</span>
-                                                                <span className="pkg-submittal-type">{sub.submittal_type_name}</span>
-                                                            </div>
-                                                            <span className="pkg-submittal-drag-handle" title="Drag to compare">⠿</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
-
-                                            {isExpanded && pkg.submittals.length === 0 && (
-                                                <div className="pkg-submittal-empty">No submittals uploaded yet.</div>
-                                            )}
-                                        </div>
-                                    );
-                                })
+                        {/* ── Packages section ── */}
+                        <div className="pkg-sidebar-section">
+                            <div className="pkg-sidebar-title">Packages</div>
+                            {dragState && (
+                                <div className="pkg-drag-hint">Drag to a pane to compare</div>
                             )}
+                            <div className="pkg-sidebar-list">
+                                {loading ? (
+                                    <div className="pkg-sidebar-loading">
+                                        <CircularProgress size={18} sx={{ color: "rgba(255,255,255,0.4)" }} />
+                                    </div>
+                                ) : packages.length === 0 ? (
+                                    <div className="pkg-sidebar-empty">No packages found.</div>
+                                ) : (
+                                    packages.map((pkg) => {
+                                        const isActive = pkg.id === activePackageId;
+                                        const isExpanded = expandedPackageIds.has(pkg.id);
+                                        const score = pkg.compliance_score;
+
+                                        return (
+                                            <div key={pkg.id} className="pkg-sidebar-group">
+                                                <button
+                                                    className={`pkg-sidebar-item${isActive ? " active" : ""}`}
+                                                    onClick={() => {
+                                                        setActivePackageId(pkg.id);
+                                                        toggleExpand(pkg.id);
+                                                    }}
+                                                >
+                                                    <div className="pkg-sidebar-item-left">
+                                                        <span className="pkg-sidebar-name">{pkg.package_name}</span>
+                                                        {pkg.company_name && (
+                                                            <span className="pkg-sidebar-company">{pkg.company_name}</span>
+                                                        )}
+                                                    </div>
+                                                    <div className="pkg-sidebar-item-right">
+                                                        {score !== null && (
+                                                            <span className={`pkg-score-badge ${score >= 0.7 ? "good" : score >= 0.4 ? "warn" : "bad"}`}>
+                                                                {Math.round(score * 100)}%
+                                                            </span>
+                                                        )}
+                                                        {isExpanded
+                                                            ? <ExpandLess fontSize="small" sx={{ color: "rgba(255,255,255,0.3)", flexShrink: 0 }} />
+                                                            : <ExpandMore fontSize="small" sx={{ color: "rgba(255,255,255,0.3)", flexShrink: 0 }} />
+                                                        }
+                                                    </div>
+                                                </button>
+
+                                                {isExpanded && pkg.submittals.length > 0 && (
+                                                    <div className="pkg-submittal-list">
+                                                        <button
+                                                            className="pkg-cumulative-btn"
+                                                            onClick={() => setLeftTarget({ type: "package", packageId: pkg.id })}
+                                                        >
+                                                            <span className="pkg-cumulative-icon">◎</span>
+                                                            <div className="pkg-submittal-info">
+                                                                <span className="pkg-submittal-title">Cumulative Summary</span>
+                                                                <span className="pkg-submittal-type">Full Package</span>
+                                                            </div>
+                                                        </button>
+                                                        {pkg.submittals.map((sub) => (
+                                                            <div
+                                                                key={sub.id}
+                                                                className={`pkg-submittal-item${dragState?.submittalId === sub.id ? " dragging" : ""}`}
+                                                                draggable
+                                                                onClick={() => {
+                                                                    if (didDrag.current) { didDrag.current = false; return; }
+                                                                    setLeftTarget({ type: "submittal", packageId: pkg.id, submittalId: sub.id, submittalTitle: sub.submittal_title });
+                                                                }}
+                                                                onDragStart={(e) => {
+                                                                    e.stopPropagation();
+                                                                    didDrag.current = true;
+                                                                    handleDragStart(pkg, sub);
+                                                                }}
+                                                                onDragEnd={() => {
+                                                                    handleDragEnd();
+                                                                    setTimeout(() => { didDrag.current = false; }, 0);
+                                                                }}
+                                                            >
+                                                                <ChevronRight fontSize="small" sx={{ color: "rgba(255,255,255,0.2)", flexShrink: 0 }} />
+                                                                <div className="pkg-submittal-info">
+                                                                    <span className="pkg-submittal-title">{sub.submittal_title}</span>
+                                                                    <span className="pkg-submittal-type">{sub.submittal_type_name}</span>
+                                                                </div>
+                                                                <span className="pkg-submittal-drag-handle" title="Drag to compare">⠿</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                {isExpanded && pkg.submittals.length === 0 && (
+                                                    <div className="pkg-submittal-empty">No submittals uploaded yet.</div>
+                                                )}
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
                         </div>
+
+                        {/* ── Comparisons section ── */}
+                        {comparisons.length > 0 && (
+                            <div className="pkg-sidebar-section pkg-sidebar-section-comparisons">
+                                <div className="pkg-sidebar-title">Comparisons</div>
+                                <div className="pkg-sidebar-list">
+                                    {comparisons.map((c) => (
+                                        <button
+                                            key={c.id}
+                                            className={`pkg-comparison-item${leftTarget.type === "comparison" && leftTarget.comparisonId === c.id ? " active" : ""}`}
+                                            onClick={() => setLeftTarget({ type: "comparison", comparisonId: c.id })}
+                                        >
+                                            <div className="pkg-comparison-item-names">
+                                                <span className="pkg-comparison-name-a">{c.package_name_a}</span>
+                                                <span className="pkg-comparison-vs">vs</span>
+                                                <span className="pkg-comparison-name-b">{c.package_name_b}</span>
+                                            </div>
+                                            <span className={`pkg-comparison-winner winner-${c.overall_winner}`}>
+                                                {c.overall_winner === "tie" ? "TIE" : `PKG ${c.overall_winner}`}
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </aside>
 
-                    {!activePackage ? (
+                    {!activePackage && leftTarget.type !== "comparison" ? (
                         <main className="pkg-main">
                             <div className="pkg-main-empty">Select a package to view results.</div>
                         </main>
                     ) : (
                         <main className={`pkg-main pkg-main-panes${isSplitView ? " split" : ""}`}>
                             <CompliancePane
-                                key={`left-${activePackage.id}-${JSON.stringify(leftTarget)}`}
+                                key={`left-${JSON.stringify(leftTarget)}`}
                                 target={leftTarget}
-                                packageId={activePackage.id}
+                                packageId={activePackage?.id ?? 0}
                                 spec_id={spec_id!}
                                 section_id={section_id}
                                 section_number={section_number}
-                                packageName={activePackage.package_name}
+                                packageName={activePackage?.package_name ?? ""}
                                 isDragOver={dragOverPane === "left"}
                                 onDragOver={(e) => { e.preventDefault(); setDragOverPane("left"); }}
                                 onDragLeave={() => setDragOverPane(null)}
@@ -538,13 +610,13 @@ export default function Packages() {
                                 <>
                                     <div className="pkg-pane-divider" />
                                     <CompliancePane
-                                        key={`right-${activePackage.id}-${JSON.stringify(rightTarget)}`}
+                                        key={`right-${JSON.stringify(rightTarget)}`}
                                         target={rightTarget}
-                                        packageId={activePackage.id}
+                                        packageId={activePackage?.id ?? 0}
                                         spec_id={spec_id!}
                                         section_id={section_id}
                                         section_number={section_number}
-                                        packageName={activePackage.package_name}
+                                        packageName={activePackage?.package_name ?? ""}
                                         onClose={() => setRightTarget(null)}
                                         isDragOver={dragOverPane === "right"}
                                         onDragOver={(e) => { e.preventDefault(); setDragOverPane("right"); }}
@@ -557,7 +629,6 @@ export default function Packages() {
                                 </>
                             )}
 
-                            {/* Right drop zone — single view only, while dragging */}
                             {!isSplitView && dragState && (
                                 <div
                                     className={`pkg-drop-zone-right${dragOverPane === "right" ? " drag-over" : ""}`}

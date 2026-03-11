@@ -1,0 +1,452 @@
+/* ── Wrapper ──────────────────────────────────────────────────── */
+.cmp-section {
+    margin-top: 40px;
+    padding: 0 0 40px 0;
+}
+
+.cmp-section-header {
+    font-family: "JetBrains Mono", "Fira Mono", monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    color: #6b7280;
+    padding: 0 0 14px 0;
+    border-bottom: 1px solid #1f2937;
+    margin-bottom: 12px;
+}
+
+/* ── Tiles ────────────────────────────────────────────────────── */
+.cmp-tiles {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.cmp-tile {
+    background: #111827;
+    border: 1px solid #1f2937;
+    border-radius: 6px;
+    overflow: hidden;
+    transition: border-color 0.15s;
+}
+
+.cmp-tile:hover {
+    border-color: #374151;
+}
+
+.cmp-tile.expanded {
+    border-color: #374151;
+}
+
+/* ── Tile Header (collapsed) ─────────────────────────────────── */
+.cmp-tile-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.cmp-tile-left {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.cmp-tile-packages {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.cmp-pkg-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #e5e7eb;
+}
+
+.cmp-pkg-label.pkg-a {
+    color: #93c5fd;
+}
+
+.cmp-pkg-label.pkg-b {
+    color: #fca5a5;
+}
+
+.cmp-tile-vs {
+    font-size: 11px;
+    color: #4b5563;
+    font-family: "JetBrains Mono", monospace;
+}
+
+.cmp-tile-scores {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.cmp-tile-score {
+    font-family: "JetBrains Mono", "Fira Mono", monospace;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.cmp-tile-score.score-a {
+    color: #93c5fd;
+}
+
+.cmp-tile-score.score-b {
+    color: #fca5a5;
+}
+
+.cmp-tile-score-sep {
+    color: #374151;
+    font-size: 12px;
+}
+
+.cmp-tile-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.cmp-chevron {
+    color: #6b7280;
+    font-size: 20px;
+    line-height: 1;
+    transition: transform 0.2s;
+    display: inline-block;
+}
+
+.cmp-chevron.open {
+    transform: rotate(90deg);
+}
+
+/* ── Winner / Confidence badges ──────────────────────────────── */
+.winner-badge {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    padding: 3px 8px;
+    border-radius: 3px;
+}
+
+.winner-badge.win {
+    background: rgba(74, 222, 128, 0.12);
+    color: #4ade80;
+    border: 1px solid rgba(74, 222, 128, 0.25);
+}
+
+.winner-badge.tie {
+    background: rgba(156, 163, 175, 0.1);
+    color: #9ca3af;
+    border: 1px solid rgba(156, 163, 175, 0.2);
+}
+
+.confidence-badge {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    padding: 3px 8px;
+    border-radius: 3px;
+}
+
+.confidence-high {
+    background: rgba(74, 222, 128, 0.08);
+    color: #4ade80;
+    border: 1px solid rgba(74, 222, 128, 0.18);
+}
+
+.confidence-medium {
+    background: rgba(245, 158, 11, 0.08);
+    color: #f59e0b;
+    border: 1px solid rgba(245, 158, 11, 0.18);
+}
+
+.confidence-low {
+    background: rgba(239, 68, 68, 0.08);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.18);
+}
+
+/* ── Expanded content ────────────────────────────────────────── */
+.cmp-expanded {
+    padding: 0 18px 20px;
+    border-top: 1px solid #1f2937;
+}
+
+/* ── Score row ───────────────────────────────────────────────── */
+.cmp-scores-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 0 16px;
+}
+
+.cmp-score-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+}
+
+.cmp-vs-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 140px;
+}
+
+.cmp-delta {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    color: #6b7280;
+}
+
+.cmp-pkg-name {
+    font-size: 11px;
+    color: #9ca3af;
+    text-align: center;
+    max-width: 160px;
+}
+
+/* ── Score ring ──────────────────────────────────────────────── */
+.cmp-score-ring {
+    position: relative;
+    width: 72px;
+    height: 72px;
+}
+
+.cmp-score-ring svg {
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+.cmp-ring-bg {
+    fill: none;
+    stroke: #1f2937;
+    stroke-width: 5;
+}
+
+.cmp-ring-fill {
+    fill: none;
+    stroke-width: 5;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.6s ease;
+}
+
+.cmp-ring-label {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.cmp-ring-pct {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.cmp-ring-sub {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9px;
+    color: #6b7280;
+    margin-top: 2px;
+}
+
+/* ── Section blocks ──────────────────────────────────────────── */
+.cmp-section-block {
+    margin-top: 16px;
+}
+
+.cmp-section-label {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    color: #6b7280;
+    margin-bottom: 8px;
+}
+
+.cmp-section-label.strength-a {
+    color: #60a5fa;
+}
+
+.cmp-section-label.strength-b {
+    color: #f87171;
+}
+
+.cmp-section-label.failure-label {
+    color: #ef4444;
+}
+
+.cmp-section-label.shared-label {
+    color: #f59e0b;
+}
+
+.cmp-summary-text,
+.cmp-recommendation {
+    font-size: 13px;
+    line-height: 1.6;
+    color: #d1d5db;
+    margin: 0;
+}
+
+/* ── Dimension table ─────────────────────────────────────────── */
+.dim-header {
+    display: flex;
+    justify-content: space-between;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    color: #4b5563;
+    padding: 0 0 6px 0;
+    border-bottom: 1px solid #1f2937;
+    margin-bottom: 4px;
+}
+
+.dim-header-right {
+    display: flex;
+    gap: 32px;
+}
+
+.dim-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.dim-row {
+    padding: 9px 0;
+    border-bottom: 1px solid #111827;
+}
+
+.dim-name {
+    font-size: 12px;
+    color: #e5e7eb;
+    margin-bottom: 5px;
+}
+
+.dim-cells {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 5px;
+}
+
+.dim-status {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    padding: 2px 6px;
+    border-radius: 2px;
+    flex: 1;
+    text-align: center;
+}
+
+.status-compliant {
+    background: rgba(74, 222, 128, 0.1);
+    color: #4ade80;
+    border: 1px solid rgba(74, 222, 128, 0.2);
+}
+
+.status-non-compliant {
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.status-missing {
+    background: rgba(107, 114, 128, 0.1);
+    color: #9ca3af;
+    border: 1px solid rgba(107, 114, 128, 0.2);
+}
+
+.status-partial {
+    background: rgba(245, 158, 11, 0.1);
+    color: #f59e0b;
+    border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.status-unclear {
+    background: rgba(139, 92, 246, 0.1);
+    color: #a78bfa;
+    border: 1px solid rgba(139, 92, 246, 0.2);
+}
+
+.dim-winner-indicator {
+    font-size: 14px;
+    font-weight: 700;
+    flex: 0 0 20px;
+    text-align: center;
+}
+
+.winner-A {
+    color: #60a5fa;
+}
+
+.winner-B {
+    color: #f87171;
+}
+
+.winner-tie {
+    color: #4b5563;
+}
+
+.dim-rationale {
+    font-size: 11px;
+    color: #6b7280;
+    line-height: 1.5;
+}
+
+/* ── Lists ───────────────────────────────────────────────────── */
+.cmp-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.cmp-list li {
+    font-size: 12px;
+    color: #d1d5db;
+    line-height: 1.5;
+    padding-left: 12px;
+    position: relative;
+}
+
+.cmp-list li::before {
+    content: "→";
+    position: absolute;
+    left: 0;
+    color: #4b5563;
+    font-size: 11px;
+}
+
+.failure-list li::before {
+    color: #ef4444;
+}
+
+.shared-list li::before {
+    color: #f59e0b;
+}
+
+/* ── Two-col layout ──────────────────────────────────────────── */
+.cmp-two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-top: 4px;
+}

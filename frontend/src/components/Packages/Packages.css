@@ -61,9 +61,25 @@
     border-radius: 14px;
     border: 1px solid rgba(255,255,255,0.08);
     background: rgba(255,255,255,0.03);
-    padding: 14px;
     position: sticky;
     top: 18px;
+    display: flex;
+    flex-direction: column;
+    height: 70vh;
+    overflow: hidden;
+}
+
+.pkg-sidebar-section {
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 50%;
+    min-height: 0;
+    padding: 14px;
+}
+
+.pkg-sidebar-section-comparisons {
+    border-top: 1px solid rgba(255,255,255,0.07);
+    flex: 1;
 }
 
 .pkg-sidebar-title {
@@ -73,13 +89,14 @@
     font-size: 13px;
     text-transform: uppercase;
     letter-spacing: 0.05em;
+    flex-shrink: 0;
 }
 
 .pkg-sidebar-list {
     display: flex;
     flex-direction: column;
     gap: 4px;
-    height: 70vh;
+    flex: 1;
     overflow-y: auto;
     scrollbar-width: thin;
     scrollbar-color: rgba(255,255,255,0.18) transparent;
@@ -100,7 +117,6 @@
     flex-direction: column;
 }
 
-/* Package item */
 .pkg-sidebar-item {
     width: 100%;
     display: flex;
@@ -1047,4 +1063,121 @@
     font-size: 14px;
     color: rgba(92,120,255,0.7);
     flex-shrink: 0;
+}
+
+/* ── Sidebar sections (split) ── */
+.pkg-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    overflow: hidden;
+}
+
+.pkg-sidebar-section {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    padding: 14px;
+}
+
+.pkg-sidebar-section-comparisons {
+    border-top: 1px solid rgba(255,255,255,0.07);
+    flex: 1;
+    max-height: 35%;
+}
+
+/* ── Comparison sidebar items ── */
+.pkg-comparison-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 9px 12px;
+    border-radius: 8px;
+    background: rgba(0,0,0,0.18);
+    border: 1px solid rgba(255,255,255,0.07);
+    color: #fff;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.12s, border-color 0.12s;
+    margin-bottom: 4px;
+}
+
+.pkg-comparison-item:hover {
+    background: rgba(0,0,0,0.28);
+    border-color: rgba(255,255,255,0.12);
+}
+
+.pkg-comparison-item.active {
+    border-color: rgba(92,120,255,0.5);
+    background: rgba(92,120,255,0.08);
+}
+
+.pkg-comparison-item-names {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+}
+
+.pkg-comparison-name-a {
+    font-size: 11px;
+    font-weight: 600;
+    color: #93c5fd;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pkg-comparison-name-b {
+    font-size: 11px;
+    font-weight: 600;
+    color: #fca5a5;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pkg-comparison-vs {
+    font-size: 9px;
+    color: rgba(255,255,255,0.2);
+    font-family: ui-monospace, monospace;
+}
+
+.pkg-comparison-winner {
+    font-family: ui-monospace, monospace;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    padding: 2px 6px;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+
+.pkg-comparison-winner.winner-A {
+    background: rgba(74,222,128,0.1);
+    color: #4ade80;
+    border: 1px solid rgba(74,222,128,0.2);
+}
+
+.pkg-comparison-winner.winner-B {
+    background: rgba(239,68,68,0.1);
+    color: #ef4444;
+    border: 1px solid rgba(239,68,68,0.2);
+}
+
+.pkg-comparison-winner.winner-tie {
+    background: rgba(156,163,175,0.08);
+    color: #9ca3af;
+    border: 1px solid rgba(156,163,175,0.15);
+}
+
+/* sublabel for comparison pane */
+.pkg-pane-sublabel.comparison {
+    color: rgba(147,197,253,0.8);
+    background: rgba(147,197,253,0.08);
+    border: 1px solid rgba(147,197,253,0.2);
 }
