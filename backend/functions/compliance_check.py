@@ -2,8 +2,8 @@ import logging
 import json
 import asyncio
 from typing import Optional, List
-from classes import db, S3Bucket, Anthropic, make_spec_check_schema
-from prompts import SPEC_CHECK_PROMPT, SPEC_CHECK_DRAWINGS_PROMPT
+from classes import db, S3Bucket, Anthropic, make_spec_check_schema, make_compare_compliance_runs_schema
+from prompts import SPEC_CHECK_PROMPT, SPEC_CHECK_DRAWINGS_PROMPT, COMPARE_COMPLIANCE_RUNS_PROMPT
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -214,3 +214,78 @@ async def compliance_check(
 #             else:
 #                 yield f"data: {json.dumps({'type': 'error', 'error': result.get('error')})}\n\n"
 #             break
+
+async def compare_compliance_runs(
+    package_id_1: int,
+    package_id_2: int,
+    section_number: str,
+):
+    try:
+        package_1 = await db.get_submittal_package(package_id_1)
+        package_2 = await db.get_submittal_package(package_id_2)
+
+        compliance_result_1 = package_1.get("compliance_result")
+        compliance_result_2 = package_2.get("compliance_result")
+
+        if not compliance_result_1 or not compliance_result_2:
+            return {"status": "error", "error": "One or both packages missing compliance_result"}
+
+        # compliance_result is stored as a JSON string in the DB
+        if isinstance(compliance_result_1, str):
+            compliance_result_1 = json.loads(compliance_result_1)
+        if isinstance(compliance_result_2, str):
+            compliance_result_2 = json.loads(compliance_result_2)
+
+        system_prompt = anthropic.build_prompt(
+            COMPARE_COMPLIANCE_RUNS_PROMPT, {"section_number": section_number}
+        )
+
+        content_blocks = [
+            {
+                "type": "text",
+                "text": (
+                    f"Compare the following two compliance runs for spec section {section_number}.\n\n"
+                    f"PACKAGE A (id={package_id_1}, name={package_1.get('package_name', 'Unknown')}):\n"
+                    f"{json.dumps(compliance_result_1, indent=2)}"
+                )
+            },
+            {
+                "type": "text",
+                "text": (
+                    f"PACKAGE B (id={package_id_2}, name={package_2.get('package_name', 'Unknown')}):\n"
+                    f"{json.dumps(compliance_result_2, indent=2)}"
+                )
+            },
+        ]
+
+        token_count = await anthropic.count_tokens_content_blocks(content_blocks, system_prompt)
+        logger.info(f"Token count: {token_count}")
+
+        claude_request = await anthropic.claude(
+            content_blocks=content_blocks,
+            system_prompt=system_prompt,
+            schema=make_compare_compliance_runs_schema(section_number),
+            max_tokens=16000,
+            effort="medium",
+            cache_system_prompt=True
+        )
+
+        if claude_request.get("status") == "success":
+            logger.info(
+                f"Comparison succeeded: package_id_1={package_id_1}, "
+                f"package_id_2={package_id_2}, section={section_number}"
+            )
+            return {
+                "status": "success",
+                "result": claude_request.get("response"),
+                "input_tokens": claude_request.get("input_tokens"),
+                "output_tokens": claude_request.get("output_tokens"),
+                "total_tokens": claude_request.get("total_tokens"),
+            }
+        else:
+            logger.error(f"Claude request failed: {claude_request.get('error')}")
+            return {"status": "error", "error": claude_request.get("error")}
+
+    except Exception as e:
+        logger.error(f"Error in compare_compliance_runs: {e}")
+        return {"status": "error", "error": str(e)}

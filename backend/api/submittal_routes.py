@@ -2,9 +2,8 @@ import logging
 import json
 import uuid
 from classes import db, S3Bucket, Anthropic
-from quart import Blueprint, jsonify, request, Response
-from quart.datastructures import FileStorage
-from functions import compliance_check
+from quart import Blueprint, jsonify, request
+from functions import compliance_check, compare_compliance_runs
 from typing import List, Optional
 
 submittal_routes_bp = Blueprint("submittal_routes", __name__)
@@ -424,4 +423,29 @@ async def package_result(package_id: int):
         return jsonify({"result": result}), 200
     except Exception as e:
         logger.error(f"Error getting package result: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@submittal_routes_bp.route("/compare_compliance", methods=["POST"])
+async def compare_compliance():
+    try:
+        data: dict = await request.get_json()
+        package_id_1: int = data.get("package_id_1")
+        package_id_2: int = data.get("package_id_2")
+        section_number: str = data.get("section_number")
+
+        is_valid, missing_fields = required_fields(
+            data, ["package_id_1", "package_id_2", "section_number"])
+        if not is_valid:
+            return jsonify({"error": f"Missing required fields: {', '.join(missing_fields)}"}), 400
+
+        result = await compare_compliance_runs(
+            package_id_1,
+            package_id_2,
+            section_number
+        )
+
+        return jsonify(result), 200
+    except Exception as e:
+        logger.error(f"Error comparing compliance results: {e}")
         return jsonify({"error": str(e)}), 500

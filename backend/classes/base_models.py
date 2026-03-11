@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Literal
 
 # ------------------------------------------------------------ Classification Schema ------------------------------------------------------------
 
@@ -147,3 +147,74 @@ def make_spec_check_schema(section_number: str) -> type[BaseModel]:
             description=f"Any additional observations or uncertainties noted during review of section {section_number}."
         )
     return SpecCheck
+
+# ------------------------------------------------------------ Compare Compliance Runs Schema ------------------------------------------------------------
+
+
+class DimensionComparison(BaseModel):
+    dimension: str = Field(
+        description="The requirement or category being compared (e.g. 'CMU certification', 'grout documentation')."
+    )
+    winner: Literal["A", "B", "tie"] = Field(
+        description="Which package wins this dimension, or tie if equivalent."
+    )
+    a_status: Literal["compliant", "non_compliant", "missing", "partial", "unclear"] = Field(
+        description="Compliance status of package A for this dimension."
+    )
+    b_status: Literal["compliant", "non_compliant", "missing", "partial", "unclear"] = Field(
+        description="Compliance status of package B for this dimension."
+    )
+    rationale: str = Field(
+        description="1-2 sentences explaining why one package wins this dimension over the other."
+    )
+
+
+def make_compare_compliance_runs_schema(section_number: str) -> type[BaseModel]:
+
+    class ComplianceComparison(BaseModel):
+        overall_winner: Literal["A", "B", "tie"] = Field(
+            description=f"The package with superior overall compliance for section {section_number}. Tie only if scores and documentation quality are genuinely equivalent."
+        )
+        score_a: float = Field(
+            description=f"Compliance score from run A for section {section_number}, 0.0 to 1.0."
+        )
+        score_b: float = Field(
+            description=f"Compliance score from run B for section {section_number}, 0.0 to 1.0."
+        )
+        score_delta: float = Field(
+            description="Absolute difference between score_a and score_b."
+        )
+        confidence: Literal["high", "medium", "low"] = Field(
+            description="Confidence in the comparison. Low if both packages have extensive missing items making meaningful comparison difficult."
+        )
+        executive_summary: str = Field(
+            description=f"2-3 sentence plain-language summary of which package wins section {section_number} and the primary reasons why."
+        )
+        dimension_comparisons: List[DimensionComparison] = Field(
+            default_factory=list,
+            description=f"Head-to-head comparison for each major requirement or documentation category in section {section_number}."
+        )
+        a_exclusive_strengths: List[str] = Field(
+            default_factory=list,
+            description="Things package A does well that package B does not."
+        )
+        b_exclusive_strengths: List[str] = Field(
+            default_factory=list,
+            description="Things package B does well that package A does not."
+        )
+        shared_deficiencies: List[str] = Field(
+            default_factory=list,
+            description=f"Non-conformances or missing items present in both packages for section {section_number}, regardless of which wins."
+        )
+        a_critical_failures: List[str] = Field(
+            default_factory=list,
+            description="Critical or major non-conformances unique to package A."
+        )
+        b_critical_failures: List[str] = Field(
+            default_factory=list,
+            description="Critical or major non-conformances unique to package B."
+        )
+        recommendation: str = Field(
+            description=f"Actionable recommendation for section {section_number} — which package to prefer, what the losing package must resubmit to become competitive, and whether either package is approvable as-is."
+        )
+    return ComplianceComparison

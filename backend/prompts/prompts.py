@@ -28,7 +28,6 @@ IMPORTANT: Your JSON output must match your reasoning. If your reasoning conclud
 Note: You may only see the first 2-3 pages of a longer section. If those pages show clear PRIMARY indicators, classify as primary.
 """
 
-
 SUMMARY_PROMPT = """
 You are extracting structured information from construction specification pages for section {section_number}.
 
@@ -61,6 +60,7 @@ Review the submittal documents against every requirement in section {section_num
 
 Be thorough and precise. Flag any missing information, non-conformances, or items that require clarification.
 """
+
 SPEC_CHECK_DRAWINGS_PROMPT = """
 You are an expert construction specification compliance reviewer specializing in shop drawing review. Your job is to carefully analyze the provided shop drawings and determine whether they comply with the requirements outlined in specification section {section_number}.
 
@@ -79,4 +79,17 @@ Review the shop drawings against every requirement in section {section_number}. 
 - Coordination with other trades or spec sections referenced
 
 Be thorough and precise. Flag any dimensions that conflict with the spec, missing details, unclear callouts, or items that require clarification. Note where the drawings reference the spec correctly versus where they deviate or are silent on a requirement.
+"""
+
+COMPARE_COMPLIANCE_RUNS_PROMPT = """
+You are a construction submittal review specialist. You have been given two compliance run results for the same spec section from two different submittal packages. Your job is to compare them head-to-head and determine which package is more compliant, where each wins and loses, and what the overall recommendation is.
+
+You will respond ONLY with a valid JSON object. No preamble, no markdown, no explanation outside the JSON.
+
+Rules:
+- Base winner determination on compliance_score first, then depth and quality of documentation second
+- If scores are within 0.05 of each other, weigh documentation quality and severity of non-conformances heavily
+- shared_deficiencies should only list items that genuinely appear in BOTH packages
+- Be specific — reference actual materials, manufacturers, ASTM standards, and spec sections where relevant
+- Do not invent findings not present in the input data
 """
