@@ -476,8 +476,8 @@ async def compare_compliance():
         logger.error(f"Error comparing compliance results: {e}")
         return jsonify({"error": str(e)}), 500
 
-@submittal_routes_bp.route("/get_compliance_comparisons", methods=["GET"])
-async def get_compliance_comparisons():
+@submittal_routes_bp.route("/compliance_comparisons", methods=["GET"])
+async def compliance_comparisons():
     try:
         data = request.args
         id: Optional[int] = data.get("id", None)
@@ -490,4 +490,17 @@ async def get_compliance_comparisons():
         return jsonify(compliance_comparisons), 200
     except Exception as e:
         logger.error(f"Error getting compliance comparisons: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@submittal_routes_bp.route("/get_compliance_comparisons_list", methods=["GET"])
+async def get_compliance_comparisons_list ():
+    try:
+        section_id = request.args.get("section_id", None)
+        if not section_id:
+            return jsonify({"error": "section_id is required"}), 400
+
+        comparison_ids = await db.get_compliance_comparisons_list(section_id=int(section_id))
+        return jsonify({"comparisons": comparison_ids}), 200
+    except Exception as e:
+        logger.error(f"Error getting compliance comparison ids: {e}")
         return jsonify({"error": str(e)}), 500

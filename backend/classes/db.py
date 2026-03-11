@@ -1243,13 +1243,24 @@ class ModuDB:
             comparisons = [dict(row) for row in rows]
             for comparison in comparisons:
                 if comparison.get("comparison_result"):
-                    comparison["comparison_result"] = json.loads(comparison["comparison_result"])
+                    comparison["comparison_result"] = json.loads(
+                        comparison["comparison_result"])
             if id:
                 return comparisons[0]
             elif section_id:
                 return comparisons
             else:
                 return []
+
+    async def get_compliance_comparisons_list(self, section_id: int) -> list[int]:
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute("""
+            SELECT id, package_name_a, package_name_b, score_a, score_b, overall_winner
+                FROM compliance_comparisons WHERE section_id = ?
+            """, (section_id,))
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
 
 
 db = ModuDB()
