@@ -82,14 +82,14 @@ interface ComplianceRun {
 }
 
 type PaneTarget =
-    | { type: "package" }
-    | { type: "submittal"; submittalId: number; submittalTitle: string };
+    | { type: "package"; packageId: number }
+    | { type: "submittal"; packageId: number; submittalId: number; submittalTitle: string };
 
 interface DragState {
+    packageId: number;
     submittalId: number;
     submittalTitle: string;
 }
-
 // ── Pane ──────────────────────────────────────────────────────────────────────
 
 interface PaneProps {
@@ -106,6 +106,7 @@ interface PaneProps {
     onDrop: () => void;
     isDragging: boolean;
     onRunComplete: () => void;
+    packages: Package[];
 }
 
 function CompliancePane({
@@ -122,6 +123,7 @@ function CompliancePane({
     onDrop,
     isDragging,
     onRunComplete,
+    packages,
 }: PaneProps) {
     const [runs, setRuns] = useState<ComplianceRun[]>([]);
     const [loadingRuns, setLoadingRuns] = useState(false);
@@ -134,8 +136,11 @@ function CompliancePane({
         setRuns([]);
         try {
             if (target.type === "package") {
-                const res = await fetch(`${BACKEND_URL}/api/submittal/package_result/${packageId}`);
-                if (!res.ok) { setRuns([]); return; }
+                const res = await fetch(`${BACKEND_URL}/api/submittal/package_result/${target.packageId}`);
+                if (!res.ok) {
+                    setRuns([]);
+                    return;
+                }
                 const data = await res.json();
                 if (data.result?.compliance_result) {
                     // Shape it to match ComplianceRun interface
@@ -153,7 +158,7 @@ function CompliancePane({
                 }
             } else {
                 const res = await fetch(
-                    `${BACKEND_URL}/api/submittal/compliance_runs_for_package?package_id=${packageId}&submittal_id=${target.submittalId}`
+                    `${BACKEND_URL}/api/submittal/compliance_runs_for_package?package_id=${target.packageId}&submittal_id=${target.submittalId}`
                 );
                 const data = await res.json();
                 setRuns(data.compliance_runs ?? []);
@@ -161,7 +166,7 @@ function CompliancePane({
         } finally {
             setLoadingRuns(false);
         }
-    }, [target, packageId]);
+    }, [target]);
 
     useEffect(() => {
         fetchRuns();
@@ -171,7 +176,7 @@ function CompliancePane({
         setRunning(true);
         try {
             const body: Record<string, unknown> = {
-                package_id: packageId,
+                package_id: target.packageId,
                 spec_id,
                 section_id,
                 section_number,
@@ -203,7 +208,9 @@ function CompliancePane({
         }
     };
 
-    const label = target.type === "package" ? packageName : target.submittalTitle;
+    const label = target.type === "package"
+        ? (packages.find(p => p.id === target.packageId)?.package_name ?? "Package")
+        : target.submittalTitle;
     const sublabel = target.type === "package" ? "Full Package" : "Individual Submittal";
 
     return (
@@ -299,10 +306,12 @@ export default function Packages() {
     const [loading, setLoading] = useState(true);
     const [showUpload, setShowUpload] = useState(false);
 
-    const [leftTarget, setLeftTarget] = useState<PaneTarget>({ type: "package" });
+    const [leftTarget, setLeftTarget] = useState<PaneTarget>({ type: "package", packageId: activePackageId ?? 0 });
     const [rightTarget, setRightTarget] = useState<PaneTarget | null>(null);
     const [dragState, setDragState] = useState<DragState | null>(null);
     const [dragOverPane, setDragOverPane] = useState<"left" | "right" | null>(null);
+
+    const didDrag = useRef(false);
 
     const activePackage = useMemo(
         () => packages.find((p) => p.id === activePackageId) ?? null,
@@ -336,7 +345,8 @@ export default function Packages() {
     }, [fetchPackages]);
 
     useEffect(() => {
-        setLeftTarget({ type: "package" });
+        if (dragState) return;
+        setLeftTarget({ type: "package", packageId: activePackageId ?? 0 });
         setRightTarget(null);
     }, [activePackageId]);
 
@@ -348,8 +358,8 @@ export default function Packages() {
         });
     };
 
-    const handleDragStart = (sub: Submittal) => {
-        setDragState({ submittalId: sub.id, submittalTitle: sub.submittal_title });
+    const handleDragStart = (pkg: Package, sub: Submittal) => {
+        setDragState({ packageId: pkg.id, submittalId: sub.id, submittalTitle: sub.submittal_title });
     };
 
     const handleDragEnd = () => {
@@ -361,6 +371,7 @@ export default function Packages() {
         if (!dragState) return;
         const target: PaneTarget = {
             type: "submittal",
+            packageId: dragState.packageId,
             submittalId: dragState.submittalId,
             submittalTitle: dragState.submittalTitle,
         };
@@ -412,6 +423,7 @@ export default function Packages() {
                                     const isActive = pkg.id === activePackageId;
                                     const isExpanded = expandedPackageIds.has(pkg.id);
                                     const score = pkg.compliance_score;
+
                                     return (
                                         <div key={pkg.id} className="pkg-sidebar-group">
                                             <button
@@ -444,7 +456,7 @@ export default function Packages() {
                                                 <div className="pkg-submittal-list">
                                                     <button
                                                         className="pkg-cumulative-btn"
-                                                        onClick={() => setLeftTarget({ type: "package" })}
+                                                        onClick={() => setLeftTarget({ type: "package", packageId: pkg.id })}
                                                     >
                                                         <span className="pkg-cumulative-icon">◎</span>
                                                         <div className="pkg-submittal-info">
@@ -457,12 +469,26 @@ export default function Packages() {
                                                             key={sub.id}
                                                             className={`pkg-submittal-item${dragState?.submittalId === sub.id ? " dragging" : ""}`}
                                                             draggable
-                                                            onClick={() => setLeftTarget({ type: "submittal", submittalId: sub.id, submittalTitle: sub.submittal_title })}
-                                                            onDragStart={() => {
-                                                                setActivePackageId(pkg.id);
-                                                                handleDragStart(sub);
+                                                            onClick={() => {
+                                                                if (didDrag) {
+                                                                    didDrag.current = false;
+                                                                    return;
+                                                                }
+                                                                setLeftTarget({ type: "submittal", packageId: pkg.id, submittalId: sub.id, submittalTitle: sub.submittal_title });
+                                                                // setActivePackageId(pkg.id);
                                                             }}
-                                                            onDragEnd={handleDragEnd}
+                                                            onDragStart={(e) => {
+                                                                e.stopPropagation();
+                                                                didDrag.current = true;
+                                                                // setActivePackageId(pkg.id);
+                                                                handleDragStart(pkg, sub);
+                                                            }}
+                                                            onDragEnd={() => {
+                                                                handleDragEnd();
+                                                                setTimeout(() => {
+                                                                    didDrag.current = false;
+                                                                }, 0);
+                                                            }}
                                                         >
                                                             <ChevronRight fontSize="small" sx={{ color: "rgba(255,255,255,0.2)", flexShrink: 0 }} />
                                                             <div className="pkg-submittal-info">
@@ -505,6 +531,7 @@ export default function Packages() {
                                 onDrop={() => handleDrop("left")}
                                 isDragging={!!dragState}
                                 onRunComplete={fetchPackages}
+                                packages={packages}
                             />
 
                             {isSplitView && rightTarget && (
@@ -525,6 +552,7 @@ export default function Packages() {
                                         onDrop={() => handleDrop("right")}
                                         isDragging={!!dragState}
                                         onRunComplete={fetchPackages}
+                                        packages={packages}
                                     />
                                 </>
                             )}

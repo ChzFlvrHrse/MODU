@@ -84,7 +84,7 @@ function PackagesList({
                     key={pkg.id}
                     className="pm-package-row"
                     onClick={() => navigate(
-                        `/projects/${spec_id}/packages/${pkg.id}?section_number=${section_number}&section_title=${encodeURIComponent(section_title)}&section_id=${section_id}`
+                        `/packages/${spec_id}/${pkg.id}?section_number=${section_number}&section_title=${encodeURIComponent(section_title)}&section_id=${section_id}`
                     )}
                 >
                     <div className="pm-package-row-left">
