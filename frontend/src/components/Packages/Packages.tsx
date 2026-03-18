@@ -4,7 +4,7 @@ import { CircularProgress } from "@mui/material";
 import UploadIcon from "@mui/icons-material/Upload";
 import FactCheckIcon from "@mui/icons-material/FactCheck";
 import CloseIcon from "@mui/icons-material/Close";
-import { ArrowBackIosNew, ChevronRight, ExpandMore, ExpandLess } from "@mui/icons-material";
+import { ArrowBackIosNew, ChevronRight, ExpandMore, ExpandLess, CompareArrows } from "@mui/icons-material";
 import { toast } from "react-hot-toast";
 import "./Packages.css";
 
@@ -350,6 +350,7 @@ export default function Packages() {
     const [loading, setLoading] = useState(true);
     const [showUpload, setShowUpload] = useState(false);
     const [comparisons, setComparisons] = useState<ComparisonSummary[]>([]);
+    const [runningComparison, setRunningComparison] = useState(false);
 
     const [leftTarget, setLeftTarget] = useState<PaneTarget>({ type: "package", packageId: activePackageId ?? 0 });
     const [rightTarget, setRightTarget] = useState<PaneTarget | null>(null);
@@ -364,6 +365,11 @@ export default function Packages() {
     );
 
     const isSplitView = rightTarget !== null;
+
+    const canRunComparison =
+        leftTarget.type === "package" &&
+        rightTarget?.type === "package" &&
+        leftTarget.packageId !== rightTarget?.packageId;
 
     const fetchPackages = useCallback(async () => {
         if (!section_id) return;
@@ -418,6 +424,15 @@ export default function Packages() {
         setDragOverPane(null);
     };
 
+    // For cumulative button: drop sets a package target instead of submittal
+    const handleDropPackage = (pane: "left" | "right", pkgId: number) => {
+        const target: PaneTarget = { type: "package", packageId: pkgId };
+        if (pane === "left") setLeftTarget(target);
+        else setRightTarget(target);
+        setDragState(null);
+        setDragOverPane(null);
+    };
+
     const handleDrop = (pane: "left" | "right") => {
         if (!dragState) return;
         const target: PaneTarget = {
@@ -430,6 +445,37 @@ export default function Packages() {
         else setRightTarget(target);
         setDragState(null);
         setDragOverPane(null);
+    };
+
+    const handleRunComparison = async () => {
+        if (leftTarget.type !== "package" || rightTarget?.type !== "package" || leftTarget.packageId === rightTarget?.packageId) return;
+        const idA = leftTarget.packageId;
+        const idB = rightTarget.packageId;
+        setRunningComparison(true);
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/submittal/compare_compliance`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    package_id_1: idA,
+                    package_id_2: idB,
+                    section_id,
+                    section_number,
+                }),
+            });
+            if (!res.ok) {
+                const err = await res.json();
+                toast.error(err.error ?? "Comparison failed.");
+                return;
+            }
+            toast.success("Comparison complete.");
+            await fetchComparisons();
+            setRightTarget(null);
+        } catch {
+            toast.error("Network error running comparison.");
+        } finally {
+            setRunningComparison(false);
+        }
     };
 
     return (
@@ -448,12 +494,27 @@ export default function Packages() {
                             </p>
                         )}
                     </div>
-                    <button
-                        className="pkg-run-btn pkg-upload-btn-secondary"
-                        onClick={() => setShowUpload(true)}
-                    >
-                        <UploadIcon fontSize="small" /> Upload Submittal(s)
-                    </button>
+                    <div className="pkg-header-actions">
+                        {canRunComparison && (
+                            <button
+                                className={`pkg-run-btn pkg-compare-btn${runningComparison ? " loading" : ""}`}
+                                onClick={handleRunComparison}
+                                disabled={runningComparison}
+                            >
+                                {runningComparison ? (
+                                    <><CircularProgress size={12} sx={{ color: "inherit" }} /> Comparing…</>
+                                ) : (
+                                    <><CompareArrows fontSize="small" /> Run Comparison</>
+                                )}
+                            </button>
+                        )}
+                        <button
+                            className="pkg-run-btn pkg-upload-btn-secondary"
+                            onClick={() => setShowUpload(true)}
+                        >
+                            <UploadIcon fontSize="small" /> Upload Submittal(s)
+                        </button>
+                    </div>
                 </div>
 
                 <div className="pkg-layout">
@@ -507,16 +568,32 @@ export default function Packages() {
 
                                                 {isExpanded && pkg.submittals.length > 0 && (
                                                     <div className="pkg-submittal-list">
-                                                        <button
+                                                        {/* Cumulative button — draggable as a package target */}
+                                                        <div
                                                             className="pkg-cumulative-btn"
-                                                            onClick={() => setLeftTarget({ type: "package", packageId: pkg.id })}
+                                                            draggable
+                                                            onClick={() => {
+                                                                if (didDrag.current) { didDrag.current = false; return; }
+                                                                setLeftTarget({ type: "package", packageId: pkg.id });
+                                                            }}
+                                                            onDragStart={(e) => {
+                                                                e.dataTransfer.setData("text/plain", String(pkg.id));
+                                                                e.stopPropagation();
+                                                                didDrag.current = true;
+                                                                // Use a sentinel submittalId of -1 to indicate package drag
+                                                                setDragState({ packageId: pkg.id, submittalId: -1, submittalTitle: "" });
+                                                            }}
+                                                            onDragEnd={() => {
+                                                                handleDragEnd();
+                                                                setTimeout(() => { didDrag.current = false; }, 0);
+                                                            }}
                                                         >
                                                             <span className="pkg-cumulative-icon">◎</span>
                                                             <div className="pkg-submittal-info">
                                                                 <span className="pkg-submittal-title">Cumulative Summary</span>
                                                                 <span className="pkg-submittal-type">Full Package</span>
                                                             </div>
-                                                        </button>
+                                                        </div>
                                                         {pkg.submittals.map((sub) => (
                                                             <div
                                                                 key={sub.id}
@@ -527,6 +604,7 @@ export default function Packages() {
                                                                     setLeftTarget({ type: "submittal", packageId: pkg.id, submittalId: sub.id, submittalTitle: sub.submittal_title });
                                                                 }}
                                                                 onDragStart={(e) => {
+                                                                    e.dataTransfer.setData("text/plain", String(sub.id));
                                                                     e.stopPropagation();
                                                                     didDrag.current = true;
                                                                     handleDragStart(pkg, sub);
@@ -600,7 +678,10 @@ export default function Packages() {
                                 isDragOver={dragOverPane === "left"}
                                 onDragOver={(e) => { e.preventDefault(); setDragOverPane("left"); }}
                                 onDragLeave={() => setDragOverPane(null)}
-                                onDrop={() => handleDrop("left")}
+                                onDrop={() => {
+                                    if (dragState?.submittalId === -1) handleDropPackage("left", dragState.packageId);
+                                    else handleDrop("left");
+                                }}
                                 isDragging={!!dragState}
                                 onRunComplete={fetchPackages}
                                 packages={packages}
@@ -621,7 +702,10 @@ export default function Packages() {
                                         isDragOver={dragOverPane === "right"}
                                         onDragOver={(e) => { e.preventDefault(); setDragOverPane("right"); }}
                                         onDragLeave={() => setDragOverPane(null)}
-                                        onDrop={() => handleDrop("right")}
+                                        onDrop={() => {
+                                            if (dragState?.submittalId === -1) handleDropPackage("right", dragState.packageId);
+                                            else handleDrop("right");
+                                        }}
                                         isDragging={!!dragState}
                                         onRunComplete={fetchPackages}
                                         packages={packages}
@@ -634,7 +718,11 @@ export default function Packages() {
                                     className={`pkg-drop-zone-right${dragOverPane === "right" ? " drag-over" : ""}`}
                                     onDragOver={(e) => { e.preventDefault(); setDragOverPane("right"); }}
                                     onDragLeave={() => setDragOverPane(null)}
-                                    onDrop={(e) => { e.preventDefault(); handleDrop("right"); }}
+                                    onDrop={(e) => {
+                                        e.preventDefault();
+                                        if (dragState?.submittalId === -1) handleDropPackage("right", dragState.packageId);
+                                        else handleDrop("right");
+                                    }}
                                 >
                                     <span className="pkg-drop-zone-icon">⊕</span>
                                     <span className="pkg-drop-zone-label">Compare here</span>

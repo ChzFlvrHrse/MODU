@@ -211,7 +211,6 @@
     text-align: left;
     transition: background 0.12s, border-color 0.12s;
     user-select: none;
-    cursor: grab;
 }
 
 .pkg-submittal-item:active {
@@ -1057,6 +1056,11 @@
 .pkg-cumulative-btn:hover {
     background: rgba(92,120,255,0.12);
     border-color: rgba(92,120,255,0.4);
+    cursor: grab;
+}
+
+.pkg-cumulative-btn:active {
+    cursor: grabbing;
 }
 
 .pkg-cumulative-icon {
