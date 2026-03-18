@@ -1185,3 +1185,24 @@
     background: rgba(147,197,253,0.08);
     border: 1px solid rgba(147,197,253,0.2);
 }
+
+.packages-comparisons-tabs {
+    display: flex;
+    justify-content: space-evenly;
+    margin-bottom: 10px;
+}
+
+.packages-comparisons-tabs button {
+    background: rgba(0,0,0,0.18);
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    width: 100%;
+    padding: 10px 0;
+}
+
+.packages-comparisons-tabs button.active {
+    background: rgba(92,120,255,0.06);
+    border: 1px solid rgba(92,120,255,0.2);
+    color: #fff;
+}
