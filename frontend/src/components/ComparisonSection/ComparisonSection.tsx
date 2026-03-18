@@ -128,7 +128,6 @@ function WinnerBadge({ winner }: { winner: "A" | "B" | "tie" }) {
 }
 
 function ConfidenceBadge({ confidence }: { confidence: "high" | "medium" | "low" }) {
-    console.log("confidence", confidence);
     return (
         <span className={`confidence-badge confidence-${confidence}`}>
             {confidence.toUpperCase()} CONFIDENCE
@@ -162,7 +161,6 @@ export function ExpandedComparison({
     record: ComparisonRecord;
 }) {
     const r = record.comparison_result;
-    console.log("record", record);
 
     return (
         <div className="cmp-expanded">
