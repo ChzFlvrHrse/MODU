@@ -128,6 +128,7 @@ function WinnerBadge({ winner }: { winner: "A" | "B" | "tie" }) {
 }
 
 function ConfidenceBadge({ confidence }: { confidence: "high" | "medium" | "low" }) {
+    console.log("confidence", confidence);
     return (
         <span className={`confidence-badge confidence-${confidence}`}>
             {confidence.toUpperCase()} CONFIDENCE
@@ -161,21 +162,24 @@ export function ExpandedComparison({
     record: ComparisonRecord;
 }) {
     const r = record.comparison_result;
+    console.log("record", record);
 
     return (
         <div className="cmp-expanded">
             {/* Score header */}
             <div className="cmp-scores-row">
                 <div className="cmp-score-block">
+                    <div className="cmp-pkg-name">PKG A</div>
                     <ScoreRing score={record.score_a} label="PKG A" />
                     <div className="cmp-pkg-name">{record.package_name_a}</div>
                 </div>
                 <div className="cmp-vs-col">
                     <WinnerBadge winner={record.overall_winner} />
                     <div className="cmp-delta">Δ {pct(record.score_delta)}</div>
-                    <ConfidenceBadge confidence={record.confidence} />
+                    <ConfidenceBadge confidence={record.comparison_result.confidence} />
                 </div>
                 <div className="cmp-score-block">
+                    <div className="cmp-pkg-name">PKG B</div>
                     <ScoreRing score={record.score_b} label="PKG B" />
                     <div className="cmp-pkg-name">{record.package_name_b}</div>
                 </div>
@@ -192,11 +196,10 @@ export function ExpandedComparison({
                 <div className="cmp-section-block">
                     <div className="cmp-section-label">DIMENSION BREAKDOWN</div>
                     <div className="dim-header">
-                        <span>REQUIREMENT</span>
+                        <span className="reqs-header">REQUIREMENT</span>
                         <span className="dim-header-right">
-                            <span>PKG A</span>
-                            <span></span>
-                            <span>PKG B</span>
+                            <span className="pkg-a-header">PKG A</span>
+                            <span className="pkg-b-header">PKG B</span>
                         </span>
                     </div>
                     <div className="dim-list">
@@ -209,63 +212,53 @@ export function ExpandedComparison({
 
             {/* Strengths */}
             <div className="cmp-two-col">
-                {r.a_exclusive_strengths?.filter(s => !s.toLowerCase().startsWith("no exclusive")).length > 0 && (
-                    <div className="cmp-section-block">
-                        <div className="cmp-section-label strength-a">PKG A STRENGTHS</div>
-                        <ul className="cmp-list">
-                            {r.a_exclusive_strengths.map((s, i) => (
-                                <li key={i}>{s}</li>
-                            ))}
-                        </ul>
-                    </div>
-                )}
-                {r.b_exclusive_strengths?.filter(s => !s.toLowerCase().startsWith("none")).length > 0 && (
-                    <div className="cmp-section-block">
-                        <div className="cmp-section-label strength-b">PKG B STRENGTHS</div>
-                        <ul className="cmp-list">
-                            {r.b_exclusive_strengths.map((s, i) => (
-                                <li key={i}>{s}</li>
-                            ))}
-                        </ul>
-                    </div>
-                )}
-            </div>
-
-            {/* Critical failures */}
-            <div className="cmp-two-col">
-                {r.a_critical_failures?.length > 0 && (
-                    <div className="cmp-section-block">
-                        <div className="cmp-section-label failure-label">PKG A CRITICAL FAILURES</div>
-                        <ul className="cmp-list failure-list">
-                            {r.a_critical_failures.map((s, i) => (
-                                <li key={i}>{s}</li>
-                            ))}
-                        </ul>
-                    </div>
-                )}
-                {r.b_critical_failures?.length > 0 && (
-                    <div className="cmp-section-block">
-                        <div className="cmp-section-label failure-label">PKG B CRITICAL FAILURES</div>
-                        <ul className="cmp-list failure-list">
-                            {r.b_critical_failures.map((s, i) => (
-                                <li key={i}>{s}</li>
-                            ))}
-                        </ul>
-                    </div>
-                )}
-            </div>
-
-            {/* Shared deficiencies */}
-            {r.shared_deficiencies?.length > 0 && (
                 <div className="cmp-section-block">
-                    <div className="cmp-section-label shared-label">SHARED DEFICIENCIES</div>
-                    <ul className="cmp-list shared-list">
-                        {r.shared_deficiencies.map((s, i) => (
+                    <div className="cmp-section-label strength-a">PKG A STRENGTHS</div>
+                    <ul className="cmp-list">
+                        {r.a_exclusive_strengths.map((s, i) => (
                             <li key={i}>{s}</li>
                         ))}
                     </ul>
                 </div>
-            )}
+                <div className="cmp-section-block">
+                    <div className="cmp-section-label strength-b">PKG B STRENGTHS</div>
+                    <ul className="cmp-list">
+                        {r.b_exclusive_strengths.map((s, i) => (
+                            <li key={i}>{s}</li>
+                        ))}
+                    </ul>
+                </div>
+            </div>
+
+            {/* Critical failures */}
+            <div className="cmp-two-col">
+                <div className="cmp-section-block">
+                    <div className="cmp-section-label failure-label">PKG A CRITICAL FAILURES</div>
+                    <ul className="cmp-list failure-list">
+                        {r.a_critical_failures.map((s, i) => (
+                            <li key={i}>{s}</li>
+                        ))}
+                    </ul>
+                </div>
+                <div className="cmp-section-block">
+                    <div className="cmp-section-label failure-label">PKG B CRITICAL FAILURES</div>
+                    <ul className="cmp-list failure-list">
+                        {r.b_critical_failures.map((s, i) => (
+                            <li key={i}>{s}</li>
+                        ))}
+                    </ul>
+                </div>
+            </div>
+
+            {/* Shared deficiencies */}
+            <div className="cmp-section-block">
+                <div className="cmp-section-label shared-label">SHARED DEFICIENCIES</div>
+                <ul className="cmp-list shared-list">
+                    {r.shared_deficiencies.map((s, i) => (
+                        <li key={i}>{s}</li>
+                    ))}
+                </ul>
+            </div>
 
             {/* Recommendation */}
             <div className="cmp-section-block">

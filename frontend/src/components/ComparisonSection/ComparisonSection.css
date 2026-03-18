@@ -174,7 +174,7 @@
 
 /* ── Expanded content ────────────────────────────────────────── */
 .cmp-expanded {
-    padding: 0 18px 20px;
+    padding: 0 24px 28px;
     border-top: 1px solid #1f2937;
 }
 
@@ -183,7 +183,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 20px 0 16px;
+    padding: 24px 0 20px;
 }
 
 .cmp-score-block {
@@ -204,12 +204,12 @@
 
 .cmp-delta {
     font-family: "JetBrains Mono", monospace;
-    font-size: 11px;
-    color: #6b7280;
+    font-size: 18px;
+    color: #9ca3af;
 }
 
 .cmp-pkg-name {
-    font-size: 11px;
+    font-size: 12px;
     color: #9ca3af;
     text-align: center;
     max-width: 160px;
@@ -266,25 +266,23 @@
 
 /* ── Section blocks ──────────────────────────────────────────── */
 .cmp-section-block {
-    margin-top: 16px;
+    margin-top: 24px;
 }
 
 .cmp-section-label {
     font-family: "JetBrains Mono", monospace;
-    font-size: 10px;
+    font-size: 14px;
     font-weight: 600;
     letter-spacing: 0.12em;
-    color: #6b7280;
-    margin-bottom: 8px;
+    color: rgba(255, 255, 255, 0.4);
+    margin-bottom: 10px;
+    text-decoration: underline;
 }
 
-.cmp-section-label.strength-a {
+.cmp-section-label.strength-a, .cmp-section-label.strength-b {
     color: #60a5fa;
 }
 
-.cmp-section-label.strength-b {
-    color: #f87171;
-}
 
 .cmp-section-label.failure-label {
     color: #ef4444;
@@ -296,8 +294,8 @@
 
 .cmp-summary-text,
 .cmp-recommendation {
-    font-size: 13px;
-    line-height: 1.6;
+    font-size: 14px;
+    line-height: 1.7;
     color: #d1d5db;
     margin: 0;
 }
@@ -307,10 +305,10 @@
     display: flex;
     justify-content: space-between;
     font-family: "JetBrains Mono", monospace;
-    font-size: 9px;
+    font-size: 10px;
     letter-spacing: 0.1em;
     color: #4b5563;
-    padding: 0 0 6px 0;
+    padding: 0 0 8px 0;
     border-bottom: 1px solid #1f2937;
     margin-bottom: 4px;
 }
@@ -326,29 +324,30 @@
 }
 
 .dim-row {
-    padding: 9px 0;
+    padding: 14px 0;
     border-bottom: 1px solid #111827;
 }
 
 .dim-name {
-    font-size: 12px;
+    font-size: 14px;
+    font-weight: 600;
     color: #e5e7eb;
-    margin-bottom: 5px;
+    margin-bottom: 8px;
 }
 
 .dim-cells {
     display: flex;
     align-items: center;
     gap: 10px;
-    margin-bottom: 5px;
+    margin-bottom: 8px;
 }
 
 .dim-status {
     font-family: "JetBrains Mono", monospace;
-    font-size: 9px;
+    font-size: 10px;
     font-weight: 600;
     letter-spacing: 0.07em;
-    padding: 2px 6px;
+    padding: 3px 8px;
     border-radius: 2px;
     flex: 1;
     text-align: center;
@@ -404,9 +403,10 @@
 }
 
 .dim-rationale {
-    font-size: 11px;
-    color: #6b7280;
-    line-height: 1.5;
+    font-size: 12px;
+    color: #a1a8b4;
+    line-height: 1.6;
+    padding-left: 2px;
 }
 
 /* ── Lists ───────────────────────────────────────────────────── */
@@ -416,14 +416,14 @@
     list-style: none;
     display: flex;
     flex-direction: column;
-    gap: 5px;
+    gap: 8px;
 }
 
 .cmp-list li {
-    font-size: 12px;
+    font-size: 13px;
     color: #d1d5db;
-    line-height: 1.5;
-    padding-left: 12px;
+    line-height: 1.6;
+    padding-left: 14px;
     position: relative;
 }
 
@@ -433,6 +433,7 @@
     left: 0;
     color: #4b5563;
     font-size: 11px;
+    top: 2px;
 }
 
 .failure-list li::before {
@@ -447,6 +448,26 @@
 .cmp-two-col {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 16px;
+    gap: 20px;
     margin-top: 4px;
+}
+
+/* ── Shared deficiencies scroll cap ─────────────────────────── */
+.cmp-section-block:has(.shared-list) {
+    max-height: 320px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #374151 transparent;
+}
+
+.reqs-header {
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.pkg-a-header {
+    color: #93c5fd;
+}
+
+.pkg-b-header {
+    color: #fca5a5;
 }
