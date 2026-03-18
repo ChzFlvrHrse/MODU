@@ -215,17 +215,23 @@ export function ExpandedComparison({
                 <div className="cmp-section-block">
                     <div className="cmp-section-label strength-a">PKG A STRENGTHS</div>
                     <ul className="cmp-list">
-                        {r.a_exclusive_strengths.map((s, i) => (
-                            <li key={i}>{s}</li>
-                        ))}
+                        {r.a_exclusive_strengths?.filter(s => !s.toLowerCase().startsWith("none")).length > 0
+                            ? r.a_exclusive_strengths.map((s, i) => (
+                                <li key={i}>{s}</li>
+                            ))
+                            : <li>No strengths found for PKG A</li>
+                        }
                     </ul>
                 </div>
                 <div className="cmp-section-block">
                     <div className="cmp-section-label strength-b">PKG B STRENGTHS</div>
                     <ul className="cmp-list">
-                        {r.b_exclusive_strengths.map((s, i) => (
-                            <li key={i}>{s}</li>
-                        ))}
+                        {r.b_exclusive_strengths?.filter(s => !s.toLowerCase().startsWith("none")).length > 0
+                            ? r.b_exclusive_strengths.map((s, i) => (
+                                <li key={i}>{s}</li>
+                            ))
+                            : <li>No strengths found for PKG B</li>
+                        }
                     </ul>
                 </div>
             </div>
@@ -235,17 +241,23 @@ export function ExpandedComparison({
                 <div className="cmp-section-block">
                     <div className="cmp-section-label failure-label">PKG A CRITICAL FAILURES</div>
                     <ul className="cmp-list failure-list">
-                        {r.a_critical_failures.map((s, i) => (
-                            <li key={i}>{s}</li>
-                        ))}
+                        {r.a_critical_failures?.filter(s => !s.toLowerCase().startsWith("none")).length > 0
+                            ? r.a_critical_failures.map((s, i) => (
+                                <li key={i}>{s}</li>
+                            ))
+                            : <li>No critical failures found for PKG A</li>
+                        }
                     </ul>
                 </div>
                 <div className="cmp-section-block">
                     <div className="cmp-section-label failure-label">PKG B CRITICAL FAILURES</div>
                     <ul className="cmp-list failure-list">
-                        {r.b_critical_failures.map((s, i) => (
-                            <li key={i}>{s}</li>
-                        ))}
+                        {r.b_critical_failures?.filter(s => !s.toLowerCase().startsWith("none")).length > 0
+                            ? r.b_critical_failures.map((s, i) => (
+                                <li key={i}>{s}</li>
+                            ))
+                            : <li>No critical failures found for PKG B</li>
+                        }
                     </ul>
                 </div>
             </div>
@@ -254,9 +266,12 @@ export function ExpandedComparison({
             <div className="cmp-section-block">
                 <div className="cmp-section-label shared-label">SHARED DEFICIENCIES</div>
                 <ul className="cmp-list shared-list">
-                    {r.shared_deficiencies.map((s, i) => (
-                        <li key={i}>{s}</li>
-                    ))}
+                    {r.shared_deficiencies?.filter(s => !s.toLowerCase().startsWith("none")).length > 0
+                        ? r.shared_deficiencies.map((s, i) => (
+                            <li key={i}>{s}</li>
+                        ))
+                        : <li>No shared deficiencies found</li>
+                    }
                 </ul>
             </div>
 
