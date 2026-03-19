@@ -5,6 +5,7 @@ import { Project } from '../../../types/types';
 import CircularProgress from '@mui/material/CircularProgress';
 import { DeleteRounded } from '@mui/icons-material';
 import DeleteModal from '../../modals/DeleteModal/DeleteModal';
+import moduLogo from '../../modu_logo_transparent.png';
 import './Projects.css';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -44,7 +45,9 @@ export default function Projects({ projectsComplete, setProjectsComplete }: Proj
   };
 
   const handleDeleteProject = async (e: React.MouseEvent<HTMLButtonElement>, spec_id: string) => {
+    e.preventDefault();
     e.stopPropagation();
+
     const response = await fetch(`${BACKEND_URL}/api/spec/delete_project/${spec_id}`, {
       method: "DELETE",
     });
@@ -86,10 +89,10 @@ export default function Projects({ projectsComplete, setProjectsComplete }: Proj
 
   function getStatusIcon(status: string) {
     const statusMap: Record<string, React.ReactNode> = {
-      'complete': '✓',
-      'pending': <CircularProgress size={10} sx={{ color: 'inherit' }} />,
-      'error': '✕',
-      'unknown': '○',
+      complete: '✓',
+      pending: <CircularProgress size={10} sx={{ color: 'inherit' }} />,
+      error: '✕',
+      unknown: '○',
     };
     return statusMap[status] ?? <CircularProgress size={10} sx={{ color: 'inherit' }} />;
   }
@@ -120,84 +123,137 @@ export default function Projects({ projectsComplete, setProjectsComplete }: Proj
       )}
 
       <div className="projects-page">
-        <div className="projects-header">
-          <h1 className="projects-title">Projects</h1>
-          <p className="projects-subtitle">Your recent spec runs and their status.</p>
+        <div className="projects-hero">
+          <div className="projects-hero-glow projects-hero-glow-a" />
+          <div className="projects-hero-glow projects-hero-glow-b" />
+
+          <div className="projects-hero-inner">
+            <div className="projects-brand">
+              <img src={moduLogo} alt="MODU" className="projects-brand-logo" />
+            </div>
+
+            <div className="projects-header">
+              <div className="projects-kicker">Workspace</div>
+              <h1 className="projects-title">Projects</h1>
+              <p className="projects-subtitle">
+                Your recent spec runs, classifications, summaries, and project health at a glance.
+              </p>
+            </div>
+
+            <div className="projects-summary-cards">
+              <div className="summary-card">
+                <span className="summary-card-label">Runs</span>
+                <span className="summary-card-value">{projects.length}</span>
+              </div>
+              <div className="summary-card">
+                <span className="summary-card-label">Complete</span>
+                <span className="summary-card-value">
+                  {
+                    projects.filter(
+                      (p) =>
+                        p.classification_status === 'complete' &&
+                        p.summary_status === 'complete' &&
+                        (p.errors ?? 0) === 0
+                    ).length
+                  }
+                </span>
+              </div>
+              <div className="summary-card">
+                <span className="summary-card-label">Errors</span>
+                <span className="summary-card-value">
+                  {projects.reduce((sum, p) => sum + (p.errors ?? 0), 0)}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="projects-grid">
           {projects?.map((p) => (
             <Link
               key={p.spec_id}
-              to={`/projects/${p.spec_id}?project_name=${p.project_name}`}
+              to={`/projects/${p.spec_id}?project_name=${encodeURIComponent(p.project_name)}`}
               title={p.project_name}
               className="project-card"
             >
-              {/* Row 1: Name + ID */}
               <div className="project-card-header">
                 <div className="project-card-header-left">
-                  <span className="project-name">{p.project_name}</span>
-                  <span className="project-id" title={p.spec_id}>
-                    {shortId(p.spec_id)}
-                  </span>
+                  <div className="project-title-block">
+                    <span className="project-name">{p.project_name}</span>
+                    <span className="project-id" title={p.spec_id}>
+                      {shortId(p.spec_id)}
+                    </span>
+                  </div>
                 </div>
+
                 <button
                   className="delete-project-btn"
                   title="Delete project"
-                  onClick={() => showDeleteModal(p.spec_id)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    showDeleteModal(p.spec_id);
+                  }}
                 >
                   <DeleteRounded />
                 </button>
               </div>
 
-              {/* Row 2: Status pills */}
               <div className="project-card-status">
                 <span className={`pill pill-${p.classification_status}`}>
-                  {getStatusIcon(p.classification_status)} {p.classification_status === "complete" ? "CLASSIFICATIONS" : "CLASSIFYING..."}
+                  {getStatusIcon(p.classification_status)}{" "}
+                  {p.classification_status === "complete" ? "CLASSIFICATIONS" : "CLASSIFYING..."}
                 </span>
+
                 <span className={`pill pill-${p.summary_status}`}>
-                  {getStatusIcon(p.summary_status)} SUMMARIES
+                  {getStatusIcon(p.summary_status)}{" "}
+                  {p.summary_status === "complete" ? "SUMMARIES" : "SUMMARIZING..."}
                 </span>
               </div>
 
-              {/* Row 3: Inline metrics */}
               <div className="project-metrics">
                 <div className="metric">
                   <div className="metric-value">{p.total_divisions ?? "—"}</div>
                   <div className="metric-label">Divisions</div>
                 </div>
+
                 <div className="metric-divider" />
+
                 <div className="metric">
                   <div className="metric-value">{p.total_sections ?? "—"}</div>
                   <div className="metric-label">Sections</div>
                 </div>
+
                 <div className="metric-divider" />
+
                 <div className="metric">
                   <div className="metric-value">{p.sections_with_primary ?? "—"}</div>
                   <div className="metric-label">Primary</div>
                 </div>
+
                 <div className="metric-divider" />
+
                 <div className="metric">
                   <div className="metric-value">{p.sections_with_reference ?? "—"}</div>
                   <div className="metric-label">References</div>
                 </div>
               </div>
 
-              {/* Row 4: Bottom meta */}
               <div className="project-card-bottom">
                 <div className="meta">
                   <span className="meta-label">Created</span>
                   <span className="meta-value">{formatDate(p.created_at)}</span>
                 </div>
+
                 <div className="meta">
                   <span className="meta-label">Duration</span>
                   <span className="meta-value">{formatDuration(p.created_at, p.updated_at)}</span>
                 </div>
+
                 <div className="meta meta-right">
                   <span className="meta-label">Errors</span>
                   <span
-                    className="meta-value"
-                    style={{ color: p.errors ? 'rgba(231,76,60,0.9)' : 'rgba(255,255,255,0.85)' }}
+                    className={`meta-value ${p.errors ? "meta-value-error" : ""}`}
                   >
                     {p.errors ?? 0}
                   </span>

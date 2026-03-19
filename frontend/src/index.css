@@ -25,5 +25,5 @@ body {
   display: flex;
   flex-direction: column;
   overflow-y: auto;  /* Allow content inside to scroll */
-  padding: 20px;  /* Add padding if needed */
+  /* padding: 20px;  Add padding if needed */
 }
