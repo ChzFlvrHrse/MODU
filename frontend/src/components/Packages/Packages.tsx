@@ -78,7 +78,6 @@ interface ComplianceRun {
     compliance_score: number;
     is_compliant: boolean;
     pipeline: string;
-    model: string;
     submittal_ids: number[];
     token_count: number;
     created_at: string;
@@ -171,20 +170,23 @@ function CompliancePane({
         setRuns([]);
         try {
             if (target.type === "package") {
-                const res = await fetch(`${BACKEND_URL}/api/submittal/package_result/${target.packageId}`);
-                if (!res.ok) { setRuns([]); return; }
+                const res = await fetch(`${BACKEND_URL}/api/submittal/compliance_runs_for_package?package_id=${target.packageId}&run_type=package`);
+                if (!res.ok) {
+                    setRuns([]);
+                    return;
+                }
                 const data = await res.json();
-                if (data.result?.compliance_result) {
+                const runs = data.compliance_runs ?? [];
+                if (data.compliance_runs?.length > 0) {
                     setRuns([{
-                        id: data.result.id,
-                        compliance_result: data.result.compliance_result,
-                        compliance_score: data.result.compliance_score,
-                        is_compliant: data.result.compliance_result.is_compliant,
+                        id: runs[0].id,
+                        compliance_result: runs[0].compliance_result,
+                        compliance_score: runs[0].compliance_score,
+                        is_compliant: runs[0].compliance_result.is_compliant,
                         pipeline: "package",
-                        model: "claude-sonnet-4-6",
-                        submittal_ids: data.result.checked_submittal_ids ?? [],
+                        submittal_ids: runs[0].checked_submittal_ids ?? [],
                         token_count: 0,
-                        created_at: data.result.last_checked_at,
+                        created_at: runs[0].last_checked_at,
                     }]);
                 }
             } else {
@@ -416,8 +418,8 @@ function Sidebar({
                                 const score = pkg.compliance_score;
                                 const scoreColor = score === null ? null
                                     : score >= 0.7 ? "#3fb950"
-                                    : score >= 0.4 ? "#d29922"
-                                    : "#e74c3c";
+                                        : score >= 0.4 ? "#d29922"
+                                            : "#e74c3c";
 
                                 return (
                                     <div key={pkg.id} className="pkg-sidebar-group">
@@ -683,7 +685,7 @@ export default function Packages() {
         const idB = rightTarget.packageId;
         setRunningComparison(true);
         try {
-            const res = await fetch(`${BACKEND_URL}/api/submittal/run_compliance_comparison`, {
+            const res = await fetch(`${BACKEND_URL}/api/submittal/compliance_comparison`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
