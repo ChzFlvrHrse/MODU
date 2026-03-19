@@ -4,8 +4,8 @@
     position: fixed;
     inset: 0;
     z-index: 1300;
-    background: rgba(0, 0, 0, 0.65);
-    backdrop-filter: blur(3px);
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(6px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -14,53 +14,69 @@
 }
 
 @keyframes pm-overlay-in {
-    from { opacity: 0; }
-    to   { opacity: 1; }
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
 }
 
 .pm-root {
-    --bg-0:       #0d1117;
-    --bg-1:       #161b22;
-    --bg-2:       #1c2333;
-    --bg-hover:   #21293a;
-    --border:     #2a3547;
-    --border-hi:  #3d4f66;
-    --accent:     #4a9eff;
-    --accent-dim: #1a3a5c;
-    --text-hi:    #e6edf3;
-    --text-md:    #8b98a9;
-    --text-lo:    #4a5568;
-    --green:      #3fb950;
-    --yellow:     #d29922;
-    --red:        #e74c3c;
-    --mono:       'IBM Plex Mono', monospace;
-    --sans:       'IBM Plex Sans', sans-serif;
+    --bg-0: #0f172a;
+    --bg-1: #131c2f;
+    --bg-2: rgba(255, 255, 255, 0.04);
+    --bg-3: rgba(255, 255, 255, 0.03);
+    --bg-hover: rgba(255, 255, 255, 0.06);
+    --border: rgba(255, 255, 255, 0.08);
+    --border-hi: rgba(255, 255, 255, 0.14);
+    --accent: #62a8ff;
+    --accent-soft: rgba(98, 168, 255, 0.12);
+    --text-hi: rgba(255, 255, 255, 0.96);
+    --text-md: rgba(255, 255, 255, 0.68);
+    --text-lo: rgba(255, 255, 255, 0.42);
+    --green: #7df5b4;
+    --yellow: #f2cc60;
+    --red: #ff968c;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
 
     font-family: var(--sans);
-    background: var(--bg-1);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.025)),
+        rgba(20, 20, 20, 0.65);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: 24px;
     overflow: hidden;
     display: flex;
     flex-direction: column;
     width: 100%;
-    max-width: 640px;
-    max-height: 75vh;
-    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(92, 120, 255, 0.08);
+    max-width: 720px;
+    max-height: 80vh;
+    box-shadow:
+        0 30px 80px rgba(0, 0, 0, 0.55),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
     animation: pm-modal-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes pm-modal-in {
-    from { opacity: 0; transform: scale(0.96) translateY(8px); }
-    to   { opacity: 1; transform: scale(1) translateY(0); }
+    from {
+        opacity: 0;
+        transform: scale(0.96) translateY(8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
 }
 
 .pm-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 18px 20px 16px 24px;
-    background: var(--bg-0);
+    padding: 18px 20px 16px 20px;
+    background: rgba(0, 0, 0, 0.10);
     border-bottom: 1px solid var(--border);
     gap: 16px;
     flex-shrink: 0;
@@ -75,24 +91,25 @@
 
 .pm-section-number {
     font-family: var(--mono);
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 600;
-    color: rgba(92, 120, 255, 0.95);
-    background: rgba(92, 120, 255, 0.12);
-    border: 1px solid rgba(92, 120, 255, 0.3);
-    padding: 3px 8px;
-    border-radius: 4px;
-    letter-spacing: 0.05em;
+    color: var(--accent);
+    background: rgba(98, 168, 255, 0.12);
+    border: 1px solid rgba(98, 168, 255, 0.22);
+    padding: 6px 10px;
+    border-radius: 999px;
+    letter-spacing: 0.04em;
     white-space: nowrap;
     flex-shrink: 0;
+    line-height: 1;
 }
 
 .pm-section-title {
-    font-size: 14px;
-    font-weight: 600;
+    font-size: 16px;
+    font-weight: 650;
     color: var(--text-hi);
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
+    letter-spacing: -0.01em;
+    text-transform: none;
     margin: 0;
     white-space: nowrap;
     overflow: hidden;
@@ -102,29 +119,34 @@
 .pm-header-right {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
     flex-shrink: 0;
 }
 
 .pm-new-btn {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    padding: 6px 12px;
-    background: rgba(92, 120, 255, 0.15);
-    border: 1px solid rgba(92, 120, 255, 0.4);
-    border-radius: 7px;
-    color: rgba(92, 120, 255, 0.95);
-    font-size: 12px;
+    gap: 6px;
+    padding: 9px 14px;
+    background: rgba(92, 120, 255, 0.14);
+    border: 1px solid rgba(92, 120, 255, 0.35);
+    border-radius: 14px;
+    color: rgba(160, 176, 255, 0.98);
+    font-size: 13px;
     font-weight: 600;
     cursor: pointer;
-    transition: background 0.15s, border-color 0.15s, transform 0.15s;
+    transition:
+        background 0.16s ease,
+        border-color 0.16s ease,
+        transform 0.16s ease,
+        color 0.16s ease;
     white-space: nowrap;
 }
 
 .pm-new-btn:hover {
-    background: rgba(92, 120, 255, 0.25);
-    border-color: rgba(92, 120, 255, 0.65);
+    background: rgba(92, 120, 255, 0.18);
+    border-color: rgba(92, 120, 255, 0.48);
+    color: rgba(194, 202, 255, 1);
     transform: translateY(-1px);
 }
 
@@ -132,14 +154,14 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
-    border-radius: 6px;
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
     border: 1px solid var(--border);
     background: transparent;
     color: var(--text-md);
     cursor: pointer;
-    transition: background 0.12s, color 0.12s, border-color 0.12s;
+    transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
     padding: 0;
 }
 
@@ -152,14 +174,17 @@
 .pm-content {
     flex: 1;
     overflow-y: auto;
-    padding: 20px 24px;
+    padding: 24px;
     scrollbar-width: thin;
-    scrollbar-color: var(--border) transparent;
+    scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
 }
 
-.pm-content::-webkit-scrollbar { width: 4px; }
+.pm-content::-webkit-scrollbar {
+    width: 4px;
+}
+
 .pm-content::-webkit-scrollbar-thumb {
-    background: var(--border-hi);
+    background: rgba(255, 255, 255, 0.16);
     border-radius: 4px;
 }
 
@@ -167,7 +192,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 48px;
+    padding: 56px;
 }
 
 .pm-empty {
@@ -175,50 +200,55 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 12px;
-    padding: 48px 24px;
+    gap: 10px;
+    padding: 56px 24px;
     text-align: center;
 }
 
 .pm-empty-icon {
-    font-size: 28px;
+    font-size: 30px;
     color: var(--text-lo);
     font-family: var(--mono);
+    line-height: 1;
 }
 
 .pm-empty p {
-    font-size: 13px;
+    font-size: 14px;
     color: var(--text-lo);
     margin: 0;
-    font-family: var(--mono);
 }
 
 .pm-create-cta {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    margin-top: 4px;
-    padding: 8px 16px;
+    margin-top: 2px;
+    padding: 10px 16px;
     background: rgba(92, 120, 255, 0.12);
     border: 1px solid rgba(92, 120, 255, 0.35);
-    border-radius: 8px;
-    color: rgba(92, 120, 255, 0.9);
+    border-radius: 14px;
+    color: rgba(160, 176, 255, 0.96);
     font-size: 13px;
     font-weight: 600;
     cursor: pointer;
-    transition: background 0.15s, border-color 0.15s, transform 0.15s;
+    transition:
+        background 0.16s ease,
+        border-color 0.16s ease,
+        transform 0.16s ease,
+        color 0.16s ease;
 }
 
 .pm-create-cta:hover {
-    background: rgba(92, 120, 255, 0.22);
-    border-color: rgba(92, 120, 255, 0.6);
+    background: rgba(92, 120, 255, 0.18);
+    border-color: rgba(92, 120, 255, 0.48);
+    color: rgba(194, 202, 255, 1);
     transform: translateY(-1px);
 }
 
 .pm-list {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 10px;
 }
 
 .pm-package-row {
@@ -227,30 +257,35 @@
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: 12px 14px;
-    background: var(--bg-2);
+    padding: 14px 16px;
+    background: rgba(255, 255, 255, 0.03);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: 18px;
     cursor: pointer;
     text-align: left;
-    transition: background 0.12s, border-color 0.12s, transform 0.12s;
+    transition:
+        background 0.14s ease,
+        border-color 0.14s ease,
+        transform 0.14s ease,
+        box-shadow 0.14s ease;
 }
 
 .pm-package-row:hover {
-    background: var(--bg-hover);
+    background: rgba(255, 255, 255, 0.05);
     border-color: var(--border-hi);
     transform: translateY(-1px);
+    box-shadow: 0 10px 22px rgba(0, 0, 0, 0.12);
 }
 
 .pm-package-row-left {
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 4px;
     min-width: 0;
 }
 
 .pm-package-name {
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
     color: var(--text-hi);
     white-space: nowrap;
@@ -273,28 +308,29 @@
 
 .pm-package-score {
     font-family: var(--mono);
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
-    padding: 2px 8px;
-    border-radius: 6px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    line-height: 1;
 }
 
 .score-good {
     color: var(--green);
-    background: color-mix(in srgb, var(--green) 12%, transparent);
-    border: 1px solid color-mix(in srgb, var(--green) 28%, transparent);
+    background: rgba(46, 204, 113, 0.08);
+    border: 1px solid rgba(46, 204, 113, 0.20);
 }
 
 .score-warn {
     color: var(--yellow);
-    background: color-mix(in srgb, var(--yellow) 12%, transparent);
-    border: 1px solid color-mix(in srgb, var(--yellow) 28%, transparent);
+    background: rgba(242, 204, 96, 0.08);
+    border: 1px solid rgba(242, 204, 96, 0.20);
 }
 
 .score-bad {
     color: var(--red);
-    background: color-mix(in srgb, var(--red) 12%, transparent);
-    border: 1px solid color-mix(in srgb, var(--red) 28%, transparent);
+    background: rgba(231, 76, 60, 0.10);
+    border: 1px solid rgba(231, 76, 60, 0.24);
 }
 
 .pm-package-status {
@@ -304,40 +340,41 @@
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: var(--text-lo);
-    padding: 2px 7px;
-    border-radius: 4px;
-    background: var(--bg-0);
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.04);
     border: 1px solid var(--border);
+    line-height: 1;
 }
 
-/* ── Create Form ─────────────────────────────────────────── */
+/* form */
 
 .pm-create-form {
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    max-width: 480px;
+    gap: 18px;
+    max-width: 520px;
 }
 
 .pm-create-form-title {
-    font-size: 14px;
-    font-weight: 700;
+    font-size: 20px;
+    font-weight: 650;
     color: var(--text-hi);
     margin: 0;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+    text-transform: none;
+    letter-spacing: -0.01em;
 }
 
 .pm-create-form-fields {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 14px;
 }
 
 .pm-create-form-field {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 8px;
 }
 
 .pm-create-form-label {
@@ -345,13 +382,15 @@
     font-weight: 600;
     color: var(--text-md);
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.08em;
     display: flex;
     align-items: center;
     gap: 6px;
 }
 
-.pm-required { color: rgba(231, 76, 60, 0.85); }
+.pm-required {
+    color: rgba(255, 150, 140, 0.92);
+}
 
 .pm-optional {
     font-weight: 400;
@@ -362,72 +401,93 @@
 }
 
 .pm-create-form-input {
-    background: var(--bg-0);
-    border: 1px solid var(--border);
-    border-radius: 7px;
-    padding: 9px 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 14px;
+    padding: 12px 14px;
     color: var(--text-hi);
-    font-size: 13px;
+    font-size: 14px;
     font-family: var(--sans);
     outline: none;
-    transition: border-color 0.15s;
+    transition:
+        border-color 0.16s ease,
+        background 0.16s ease,
+        box-shadow 0.16s ease;
     width: 100%;
     box-sizing: border-box;
 }
 
-.pm-create-form-input::placeholder { color: var(--text-lo); }
-.pm-create-form-input:focus { border-color: var(--accent); }
+.pm-create-form-input::placeholder {
+    color: var(--text-lo);
+}
+
+.pm-create-form-input:focus {
+    border-color: rgba(98, 168, 255, 0.55);
+    background: rgba(255, 255, 255, 0.04);
+    box-shadow: 0 0 0 3px rgba(98, 168, 255, 0.10);
+}
 
 .pm-create-form-error {
     margin: 0;
     font-size: 12px;
-    color: rgba(231, 76, 60, 0.9);
-    padding: 7px 10px;
+    color: rgba(255, 150, 140, 0.96);
+    padding: 10px 12px;
     background: rgba(231, 76, 60, 0.08);
-    border: 1px solid rgba(231, 76, 60, 0.25);
-    border-radius: 6px;
+    border: 1px solid rgba(231, 76, 60, 0.24);
+    border-radius: 12px;
     font-family: var(--mono);
 }
 
 .pm-create-form-actions {
     display: flex;
-    gap: 8px;
+    gap: 10px;
+    padding-top: 2px;
 }
 
 .pm-cancel-btn {
-    padding: 8px 14px;
-    background: none;
-    border: 1px solid var(--border);
-    border-radius: 7px;
+    padding: 10px 16px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 14px;
     color: var(--text-md);
-    font-size: 12px;
-    font-weight: 500;
+    font-size: 13px;
+    font-weight: 600;
     cursor: pointer;
-    transition: border-color 0.15s, color 0.15s;
+    transition:
+        border-color 0.16s ease,
+        color 0.16s ease,
+        background 0.16s ease;
 }
 
 .pm-cancel-btn:hover:not(:disabled) {
     border-color: var(--border-hi);
     color: var(--text-hi);
+    background: rgba(255, 255, 255, 0.05);
 }
 
-.pm-cancel-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.pm-cancel-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
 
 .pm-submit-btn {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 8px 16px;
+    padding: 10px 16px;
     background: rgba(92, 120, 255, 0.85);
     border: 1px solid rgba(92, 120, 255, 0.5);
-    border-radius: 7px;
+    border-radius: 14px;
     color: #fff;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
     cursor: pointer;
     position: relative;
     overflow: hidden;
-    transition: background 0.15s, transform 0.15s, opacity 0.15s;
+    transition:
+        background 0.16s ease,
+        transform 0.16s ease,
+        opacity 0.16s ease;
 }
 
 .pm-submit-btn::before {
@@ -448,15 +508,27 @@
     transform: translateY(-1px);
 }
 
-.pm-submit-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
-
-@keyframes pm-btn-fill {
-    0%   { transform: translateX(-100%); }
-    60%  { transform: translateX(0%); }
-    100% { transform: translateX(100%); }
+.pm-submit-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
 }
 
-/* ── Upload Prompt ───────────────────────────────────────── */
+@keyframes pm-btn-fill {
+    0% {
+        transform: translateX(-100%);
+    }
+
+    60% {
+        transform: translateX(0%);
+    }
+
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+/* upload prompt */
 
 .pm-upload-prompt {
     display: flex;
@@ -464,23 +536,23 @@
     align-items: center;
     justify-content: center;
     gap: 12px;
-    padding: 48px 24px;
+    padding: 52px 24px;
     text-align: center;
 }
 
 .pm-upload-prompt-check {
-    font-size: 36px;
+    font-size: 34px;
     color: var(--green);
     line-height: 1;
 }
 
 .pm-upload-prompt-title {
-    font-size: 15px;
-    font-weight: 700;
+    font-size: 18px;
+    font-weight: 650;
     color: var(--text-hi);
     margin: 0;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
+    text-transform: none;
+    letter-spacing: -0.01em;
 }
 
 .pm-upload-prompt-name {
@@ -491,10 +563,10 @@
 }
 
 .pm-upload-prompt-sub {
-    font-size: 12px;
+    font-size: 13px;
     color: var(--text-lo);
     margin: 0;
-    max-width: 320px;
+    max-width: 340px;
     line-height: 1.6;
 }
 
@@ -502,4 +574,45 @@
     display: flex;
     gap: 10px;
     margin-top: 8px;
+}
+
+@media (max-width: 640px) {
+    .pm-overlay {
+        padding: 14px;
+    }
+
+    .pm-root {
+        max-height: 88vh;
+        border-radius: 20px;
+    }
+
+    .pm-header {
+        padding: 16px 16px 14px;
+    }
+
+    .pm-header-left {
+        gap: 10px;
+    }
+
+    .pm-section-title {
+        font-size: 14px;
+    }
+
+    .pm-content {
+        padding: 18px;
+    }
+
+    .pm-create-form-actions,
+    .pm-upload-prompt-actions {
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .pm-cancel-btn,
+    .pm-submit-btn,
+    .pm-create-cta,
+    .pm-new-btn {
+        width: 100%;
+        justify-content: center;
+    }
 }

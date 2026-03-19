@@ -100,7 +100,7 @@ function PackagesList({
                             </span>
                         )}
                         <span className="pm-package-status">
-                            COMPLIANCE CHECK {pkg.status?.toUpperCase() ?? 'NONE'}
+                            {pkg.status ? `Compliance ${pkg.status}` : 'No compliance'}
                         </span>
                         <ChevronRight fontSize="small" sx={{ color: 'rgba(255,255,255,0.25)' }} />
                     </div>
