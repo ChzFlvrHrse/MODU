@@ -4,13 +4,14 @@ import { CircularProgress } from "@mui/material";
 import UploadIcon from "@mui/icons-material/Upload";
 import FactCheckIcon from "@mui/icons-material/FactCheck";
 import CloseIcon from "@mui/icons-material/Close";
-import { ArrowBackIosNew, ExpandMore, ExpandLess, CompareArrows } from "@mui/icons-material";
+import { ArrowBackIosNew, ExpandMore, ExpandLess, CompareArrows, Add } from "@mui/icons-material";
 import { toast } from "react-hot-toast";
 import "./Packages.css";
 
 import UploadSubmittal from "../UploadSubmittal/UploadSubmittal";
 import type { ComparisonSummary, ComparisonRecord } from "../ComparisonSection/ComparisonSection";
 import { ExpandedComparison } from "../ComparisonSection/ComparisonSection";
+import PackageModal from "../../modals/PackageModal/PackageModal";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -271,7 +272,7 @@ function CompliancePane({
                     <span className={`pkg-pane-sublabel ${sublabel}`}>{sublabelText}</span>
                 </div>
                 <div className="pkg-pane-topbar-right">
-                    {target.type !== "comparison" && (
+                    {(target.type !== "comparison" && !loadingRuns && runs.length === 0) && (
                         <button
                             className={`pkg-run-btn${running ? " loading" : ""}`}
                             onClick={handleRun}
@@ -373,8 +374,6 @@ function Sidebar({
     onComparisonClick,
 }: SidebarProps) {
     const [activeTab, setActiveTab] = useState<"packages" | "comparisons">("packages");
-
-    console.log("PACKAGES", packages);
 
     return (
         <div className="pkg-sidebar">
@@ -582,7 +581,7 @@ export default function Packages() {
     const [showUpload, setShowUpload] = useState(false);
     const [comparisons, setComparisons] = useState<ComparisonSummary[]>([]);
     const [runningComparison, setRunningComparison] = useState(false);
-
+    const [showCreatePackage, setShowCreatePackage] = useState(false);
     const [leftTarget, setLeftTarget] = useState<PaneTarget>({ type: "package", packageId: activePackageId ?? 0 });
     const [rightTarget, setRightTarget] = useState<PaneTarget | null>(null);
     const [dragState, setDragState] = useState<DragState | null>(null);
@@ -741,6 +740,12 @@ export default function Packages() {
                         )}
                         <button
                             className="pkg-run-btn pkg-upload-btn-secondary"
+                            onClick={() => setShowCreatePackage(true)}
+                        >
+                            <Add fontSize="small" /> Create Package
+                        </button>
+                        <button
+                            className="pkg-run-btn pkg-upload-btn-secondary"
                             onClick={() => setShowUpload(true)}
                         >
                             <UploadIcon fontSize="small" /> Upload Submittal(s)
@@ -847,6 +852,16 @@ export default function Packages() {
                     package_name={activePackage.package_name}
                     onClose={() => setShowUpload(false)}
                     onUploaded={fetchPackages}
+                />
+            )}
+
+            {showCreatePackage && (
+                <PackageModal
+                    spec_id={spec_id!}
+                    section_id={parseInt(section_id)}
+                    section_number={section_number}
+                    section_title={section_title ?? ""}
+                    onClose={() => setShowCreatePackage(false)}
                 />
             )}
         </>
