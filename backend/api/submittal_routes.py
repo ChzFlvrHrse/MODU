@@ -301,12 +301,12 @@ async def compliance_check_route():
                         token_count=result.get("total_tokens"),
                     )
 
-            await db.update_package_after_run(
-                package_id=package_id,
-                compliance_result=result.get("result"),
-                compliance_score=result.get("result").get("compliance_score"),
-                checked_submittal_ids=result.get("submittal_ids"),
-            )
+            # await db.update_package_after_run(
+            #     package_id=package_id,
+            #     compliance_result=result.get("result"),
+            #     compliance_score=result.get("result").get("compliance_score"),
+            #     checked_submittal_ids=result.get("submittal_ids"),
+            # )
 
             return jsonify({
                 "message": "Compliance check completed successfully",
@@ -376,20 +376,20 @@ async def submittals_by_ids():
         logger.error(f"Error getting submittals by ids: {e}")
         return jsonify({"error": str(e)}), 500
 
-
 @submittal_routes_bp.route("/compliance_runs_for_package", methods=["GET"])
 async def compliance_runs_for_package():
     try:
         data = request.args
         package_id: int = data.get("package_id")
         submittal_id: Optional[int] = data.get("submittal_id", None)
+        run_type: Optional[str] = data.get("run_type", None)
 
         is_valid, missing_fields = required_fields(
             data, ["package_id"])
         if not is_valid:
             return jsonify({"error": f"Missing required fields: {', '.join(missing_fields)}"}), 400
 
-        compliance_runs = await db.get_compliance_runs(package_id, submittal_id=submittal_id)
+        compliance_runs = await db.get_compliance_runs(package_id, submittal_id=submittal_id, run_type=run_type)
 
         if not compliance_runs:
             return jsonify({"error": "No compliance runs found"}), 404
