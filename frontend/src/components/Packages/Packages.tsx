@@ -4,7 +4,7 @@ import { CircularProgress } from "@mui/material";
 import UploadIcon from "@mui/icons-material/Upload";
 import FactCheckIcon from "@mui/icons-material/FactCheck";
 import CloseIcon from "@mui/icons-material/Close";
-import { ArrowBackIosNew, ChevronRight, ExpandMore, ExpandLess, CompareArrows } from "@mui/icons-material";
+import { ArrowBackIosNew, ExpandMore, ExpandLess, CompareArrows } from "@mui/icons-material";
 import { toast } from "react-hot-toast";
 import "./Packages.css";
 
