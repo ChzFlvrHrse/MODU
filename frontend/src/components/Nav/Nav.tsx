@@ -34,13 +34,6 @@ export default function Nav() {
                         );
                     })}
                 </div>
-
-                <div className="nav-footer">
-                    <div className="nav-footer-title">Unified MODU v2</div>
-                    <div className="nav-footer-copy">
-                        One layout system, one card language, one set of actions.
-                    </div>
-                </div>
             </div>
         </nav>
     );
