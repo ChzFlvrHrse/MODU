@@ -6,7 +6,7 @@ import "./Sections.css";
 
 import { CircularProgress } from "@mui/material";
 import { ArrowBackIosNew, AdsClickRounded, Error } from '@mui/icons-material';
-import SectionModal from "../../modals/SectionModal/SectionModal";
+import SectionSummaryModal from "../../modals/SectionSummaryModal/SectionSummaryModal";
 import PackageModal from "../../modals/PackageModal/PackageModal";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -72,11 +72,6 @@ export default function Sections() {
         return list.some((s) => (s.summary_status ?? "").toLowerCase() === "error");
     };
 
-    const allDivisionsSummaryComplete = useMemo(() => {
-        if (divisions.length === 0) return false;
-        return divisions.every((d) => isDivisionSummaryComplete(d));
-    }, [divisions, sections]);
-
     const normalizeDivisions = (obj: Record<string, unknown>) =>
         Object.keys(obj).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
@@ -88,6 +83,7 @@ export default function Sections() {
         setActiveDivision((prev) => {
             const keys = normalizeDivisions(specSections);
             if (!prev) return keys[0] ?? "";
+            if (prev === "all") return "all";
             if (specSections[prev]) return prev;
             return keys[0] ?? "";
         });
@@ -104,10 +100,18 @@ export default function Sections() {
                 !q ||
                 s.section_title?.toLowerCase().includes(q) ||
                 s.section_number?.toLowerCase().includes(q);
+
+            const normalizedClassification = (s.classification_status ?? "none").toLowerCase();
+            const normalizedSummary = (s.summary_status ?? "none").toLowerCase();
+
             const matchesStatus =
-                statusFilter === "all" || (s.classification_status ?? "none") === statusFilter;
+                statusFilter === "all" ||
+                normalizedClassification === statusFilter ||
+                normalizedSummary === statusFilter;
+
             return matchesQuery && matchesStatus;
         });
+
         return filtered.sort((a, b) =>
             (a.section_number ?? "").localeCompare(b.section_number ?? "")
         );
@@ -139,32 +143,35 @@ export default function Sections() {
 
     function getStatusIcon(status: string) {
         const statusMap: Record<string, React.ReactNode> = {
-            'complete': '✓',
-            'pending': <CircularProgress size={10} sx={{ color: 'inherit' }} />,
-            'manual': <AdsClickRounded sx={{ fontSize: 15, color: 'inherit' }} />,
-            'error': '✕',
-            'unknown': '○',
+            complete: '✓',
+            pending: <CircularProgress size={10} sx={{ color: 'inherit' }} />,
+            manual: <AdsClickRounded sx={{ fontSize: 15, color: 'inherit' }} />,
+            error: '✕',
+            unknown: '○',
+            failed: '✕',
         };
         return statusMap[status] ?? <CircularProgress size={10} sx={{ color: 'inherit' }} />;
     }
 
     function getSummaryStatusText(status: string) {
         const statusTextMap: Record<string, string> = {
-            'manual': "GENERATE SUMMARY",
-            'complete': "SUMMARIZED",
-            'pending': "SUMMARIZING...",
-            'error': "ERROR SUMMARIZING",
-            'unknown': "SUMMARY UNKNOWN",
+            manual: "MANUAL",
+            complete: "SUMMARIZED",
+            pending: "SUMMARIZING...",
+            error: "ERROR SUMMARIZING",
+            unknown: "SUMMARY UNKNOWN",
+            failed: "SUMMARY FAILED",
         };
         return statusTextMap[status] ?? "SUMMARY UNKNOWN";
     }
 
     function getClassificationStatusText(status: string) {
         const statusTextMap: Record<string, string> = {
-            'complete': "CLASSIFIED",
-            'pending': "CLASSIFYING...",
-            'error': "ERROR CLASSIFYING",
-            'unknown': "CLASSIFICATION UNKNOWN",
+            complete: "CLASSIFIED",
+            pending: "CLASSIFYING...",
+            error: "ERROR CLASSIFYING",
+            unknown: "CLASSIFICATION UNKNOWN",
+            failed: "CLASSIFICATION FAILED",
         };
         return statusTextMap[status] ?? "CLASSIFICATION UNKNOWN";
     }
@@ -215,7 +222,7 @@ export default function Sections() {
     return (
         <>
             {sectionModalsOpen && (
-                <SectionModal
+                <SectionSummaryModal
                     spec_id={spec_id ?? ""}
                     section_id={sectionModalSectionId}
                     section_number={sectionModalSectionNumber}
@@ -235,51 +242,62 @@ export default function Sections() {
             )}
 
             <div className="sections-page">
-                <div className="sections-header">
-                    <div>
-                        <button className="back-projects-button" onClick={() => navigate('/projects')}>
-                            <ArrowBackIosNew fontSize="large" className="back-projects-button-icon" />
-                        </button>
-                        <h1 className="sections-title">Sections</h1>
-                        <p className="sections-project-name">{project_name}</p>
-                        <p className="sections-subtitle">{totalSections} sections</p>
-                    </div>
+                <div className="sections-header-shell">
+                    <div className="sections-header">
+                        <div className="sections-header-left">
+                            <button className="back-projects-button" onClick={() => navigate('/projects')}>
+                                <ArrowBackIosNew fontSize="small" className="back-projects-button-icon" />
+                                <span>Back</span>
+                            </button>
 
-                    <div className="sections-controls">
-                        <input
-                            className="sections-search"
-                            placeholder="Search section name or number…"
-                            value={query}
-                            onChange={(e) => setQuery(e.target.value)}
-                        />
-                        <select
-                            className="sections-select"
-                            value={statusFilter}
-                            onChange={(e) => setStatusFilter(e.target.value)}
-                        >
-                            <option value="all">ALL STATUSES</option>
-                            <option value="complete">COMPLETE</option>
-                            <option value="in progress">IN PROGRESS</option>
-                            <option value="pending">PENDING</option>
-                            <option value="error">ERROR</option>
-                            <option value="none">NONE</option>
-                        </select>
+                            <div className="sections-kicker">Workspace</div>
+                            <h1 className="sections-title">Sections</h1>
+                            <p className="sections-project-name">{project_name}</p>
+                            <p className="sections-subtitle">{totalSections} sections</p>
+                        </div>
+
+                        <div className="sections-controls">
+                            <input
+                                className="sections-search"
+                                placeholder="Search section name or number..."
+                                value={query}
+                                onChange={(e) => setQuery(e.target.value)}
+                            />
+                            <select
+                                className="sections-select"
+                                value={statusFilter}
+                                onChange={(e) => setStatusFilter(e.target.value)}
+                            >
+                                <option value="all">ALL STATUSES</option>
+                                <option value="complete">COMPLETE</option>
+                                <option value="in progress">IN PROGRESS</option>
+                                <option value="pending">PENDING</option>
+                                <option value="error">ERROR</option>
+                                <option value="none">NONE</option>
+                                <option value="manual">MANUAL</option>
+                                <option value="failed">FAILED</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
 
                 <div className="sections-layout">
-                    <aside className="division-panel">
-                        <div className="division-panel-title">Divisions</div>
-                        <div className="division-list">
+                    <aside className="division-rail-card">
+                        <div className="division-rail-header">
+                            <div className="division-rail-title">Divisions</div>
+                        </div>
+
+                        <div className="division-rail-list">
                             <button
-                                className={`division-item ${activeDivision === "all" ? "active" : ""}`}
+                                className={`division-row ${activeDivision === "all" ? "active" : ""}`}
                                 onClick={() => setActiveDivision("all")}
                             >
-                                <span className="division-left">
-                                    <span className="division-code">All</span>
+                                <span className="division-row-left">
+                                    <span className="division-row-code">All</span>
                                 </span>
-                                <span className="division-right">
-                                    <span className="division-count">{totalSections} sections</span>
+                                <span className="division-row-right">
+                                    <span className="division-row-count">{totalSections} sections</span>
+                                    <span className="division-row-indicator neutral">•</span>
                                 </span>
                             </button>
 
@@ -293,17 +311,29 @@ export default function Sections() {
                                 return (
                                     <button
                                         key={d}
-                                        className={`division-item ${d === activeDivision ? "active" : ""}`}
+                                        className={`division-row ${d === activeDivision ? "active" : ""}`}
                                         onClick={() => setActiveDivision(d)}
                                     >
-                                        <span className="division-left">
-                                            <span className="division-code">{d}</span>
+                                        <span className="division-row-left">
+                                            <span className="division-row-code">{d}</span>
                                         </span>
-                                        <span className="division-right">
-                                            <span className="division-count">{sections[d]?.length ?? 0} sections</span>
-                                            {(classification_done && summary_done) && <span className="division-check" title="All sections complete">✓</span>}
-                                            {(classification_pending || summary_pending) && <CircularProgress size={18} />}
-                                            {summary_error && <Error sx={{ fontSize: 18, color: 'rgba(231,76,60,0.9)' }} />}
+
+                                        <span className="division-row-right">
+                                            <span className="division-row-count">{sections[d]?.length ?? 0} sections</span>
+
+                                            {(classification_done && summary_done) && (
+                                                <span className="division-row-indicator success">✓</span>
+                                            )}
+
+                                            {(classification_pending || summary_pending) && (
+                                                <span className="division-row-spinner">
+                                                    <CircularProgress size={14} sx={{ color: "inherit" }} />
+                                                </span>
+                                            )}
+
+                                            {summary_error && (
+                                                <span className="division-row-indicator error">!</span>
+                                            )}
                                         </span>
                                     </button>
                                 );
@@ -311,55 +341,49 @@ export default function Sections() {
                         </div>
                     </aside>
 
-                    <div className="section-panel">
-                        <div className="section-panel-top">
-                            <div className="section-panel-title">Division {activeDivision || "—"}</div>
-                            <div className="section-panel-meta">{activeList.length} sections</div>
+                    <section className="sections-main">
+                        <div className="sections-main-header-card">
+                            <div className="sections-main-header-title">
+                                {activeDivision === "all" ? "All Sections" : `Division ${activeDivision || "—"}`}
+                            </div>
+                            <div className="sections-main-header-meta">{activeList.length} sections</div>
                         </div>
 
                         <div className="section-grid">
                             {activeList.map((s) => {
-                                const classification_status = s.classification_status ?? "NONE";
-                                const summary_status = s.summary_status ?? "NONE";
+                                const classification_status = (s.classification_status ?? "none").toLowerCase();
+                                const summary_status = (s.summary_status ?? "none").toLowerCase();
 
                                 return (
-                                    <div key={s.id} className="section-card">
+                                    <div key={s.id} className="section-card system-card">
                                         <div className="section-card-header">
                                             <span className="section-number">{s.section_number}</span>
-                                            <span className="section-name">{s.section_title}</span>
+                                            <div className="section-title-block">
+                                                <span className="section-name">{s.section_title}</span>
+                                            </div>
                                         </div>
 
                                         <div className="section-card-status">
-                                            <span className={`pill pill-${classification_status}`}>
+                                            <span className={`status-pill status-pill-${classification_status}`}>
                                                 {getStatusIcon(classification_status)} {getClassificationStatusText(classification_status)}
                                             </span>
-                                            {s.summary_status === 'manual' ? (
-                                                <button
-                                                    className="pill pill-manual generate-summary-btn"
-                                                    disabled={generatingSummaries.has(s.section_number)}
-                                                    onClick={(e) => handleGenerateSummary(e, spec_id ?? "", s.section_number)}
-                                                >
-                                                    {generatingSummaries.has(s.section_number)
-                                                        ? <CircularProgress size={10} sx={{ color: 'inherit' }} />
-                                                        : <AdsClickRounded sx={{ fontSize: 12 }} />
-                                                    } {generatingSummaries.has(s.section_number) ? "GENERATING..." : "GENERATE SUMMARY"}
-                                                </button>
-                                            ) : (
-                                                <span className={`pill section-pill-${summary_status.toLowerCase()}`}>
-                                                    {getStatusIcon(s.summary_status)} {getSummaryStatusText(s.summary_status)}
+
+                                            {summary_status !== "manual" && (
+                                                <span className={`status-pill status-pill-${summary_status}`}>
+                                                    {getStatusIcon(summary_status)} {getSummaryStatusText(summary_status)}
                                                 </span>
                                             )}
                                         </div>
 
-                                        <div className="section-metrics">
-                                            <div className="section-metric">
-                                                <div className="section-metric-value">{s.primary_pages?.length ?? "—"}</div>
-                                                <div className="section-metric-label">Primary Pages</div>
+                                        <div className="metrics-row metrics-row-sections">
+                                            <div className="metric">
+                                                <div className="metric-value">{s.primary_pages?.length ?? "—"}</div>
+                                                <div className="metric-label">Primary Pages</div>
                                             </div>
-                                            <div className="section-metric-divider" />
-                                            <div className="section-metric">
-                                                <div className="section-metric-value">{s.reference_pages?.length ?? "—"}</div>
-                                                <div className="section-metric-label">Reference Pages</div>
+                                            <div className="metric-divider" />
+                                            <div className="metric">
+                                                <div className="metric-value">{s.reference_pages?.length ?? "—"}</div>
+                                                <div className="metric-label">Reference Pages</div>
                                             </div>
                                         </div>
 
@@ -370,12 +394,23 @@ export default function Sections() {
                                             >
                                                 Summary
                                             </button>
-                                            <button
-                                                className="section-action-btn section-action-btn--packages"
-                                                onClick={() => openPackagesModal(s.id, s.section_number, s.section_title)}
-                                            >
-                                                Packages
-                                            </button>
+
+                                            {summary_status === "manual" ? (
+                                                <button
+                                                    className="section-action-btn section-action-btn--primary"
+                                                    disabled={generatingSummaries.has(s.section_number)}
+                                                    onClick={(e) => handleGenerateSummary(e, spec_id ?? "", s.section_number)}
+                                                >
+                                                    {generatingSummaries.has(s.section_number) ? "Generating..." : "Generate Summary"}
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    className="section-action-btn section-action-btn--primary"
+                                                    onClick={() => openPackagesModal(s.id, s.section_number, s.section_title)}
+                                                >
+                                                    Packages
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
                                 );
@@ -388,7 +423,7 @@ export default function Sections() {
                                 <div className="sections-empty">No divisions found.</div>
                             )}
                         </div>
-                    </div>
+                    </section>
                 </div>
             </div>
         </>

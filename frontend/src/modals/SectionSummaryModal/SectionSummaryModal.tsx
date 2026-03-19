@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { CircularProgress } from "@mui/material";
-import { Close, Delete, Add, ChevronRight } from '@mui/icons-material';
+import { Close, Delete } from '@mui/icons-material';
 import { toast } from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
-import './SectionModal.css';
+import './SectionSummaryModal.css';
 
 interface SpecSummary {
     id: number;
@@ -24,14 +24,6 @@ interface SpecSummary {
     updated_at: string;
 }
 
-interface SubmittalPackage {
-    id: number;
-    package_name: string;
-    company_name: string | null;
-    status: string;
-    compliance_score: number | null;
-    created_at: string;
-}
 
 interface SectionModalProps {
     spec_id: string;
@@ -52,7 +44,7 @@ const parseJsonField = (field: string): string[] => {
     }
 };
 
-type TabKey = 'overview' | 'key_requirements' | 'materials' | 'related_sections' | 'submittals' | 'testing' | 'packages';
+type TabKey = 'overview' | 'key_requirements' | 'materials' | 'related_sections' | 'submittals' | 'testing';
 
 const TAB_CONFIG: { key: TabKey; label: string }[] = [
     { key: 'overview', label: 'Overview' },
@@ -61,7 +53,6 @@ const TAB_CONFIG: { key: TabKey; label: string }[] = [
     { key: 'related_sections', label: 'Related Sections' },
     { key: 'submittals', label: 'Submittals' },
     { key: 'testing', label: 'Testing' },
-    { key: 'packages', label: 'Packages' },
 ];
 
 function EmptyState({ label }: { label: string }) {
@@ -87,190 +78,10 @@ function ListTab({ items, label }: { items: string[]; label: string }) {
     );
 }
 
-function PackagesTab({
-    section_number,
-    section_id,
-    spec_id,
-    section_title,
-    onCreatePackage,
-}: {
-    section_number: string;
-    section_id: number;
-    spec_id: string;
-    section_title: string;
-    onCreatePackage: () => void;
-}) {
-    const [packages, setPackages] = useState<SubmittalPackage[]>([]);
-    const [loading, setLoading] = useState(true);
-    const navigate = useNavigate();
-
-    const fetchPackages = async () => {
-        try {
-            const res = await fetch(`${BACKEND_URL}/api/submittal/sections_packages/${section_id}`);
-            const data = await res.json();
-            setPackages(data.packages ?? []);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        fetchPackages();
-    }, [section_id]);
-
-    if (loading) {
-        return (
-            <div className="sm-packages-loading">
-                <CircularProgress size={20} sx={{ color: '#4a9eff' }} />
-            </div>
-        );
-    }
-
-    if (!packages.length) {
-        return (
-            <div className="sm-packages-empty">
-                <span className="sm-empty-icon">∅</span>
-                <p>No packages yet for this section.</p>
-                <button className="sm-create-package-cta" onClick={onCreatePackage}>
-                    <Add fontSize="small" /> Create your first package
-                </button>
-            </div>
-        );
-    }
-
-    return (
-        <div className="sm-packages-list">
-            {packages.map((pkg) => (
-                <button
-                    key={pkg.id}
-                    className="sm-package-row"
-                    onClick={() => navigate(`/packages/${spec_id}/${pkg.id}?section_number=${section_number}&section_title=${section_title}&section_id=${section_id}`)}
-                    >
-                    <div className="sm-package-row-left">
-                        <span className="sm-package-name">{pkg.package_name}</span>
-                        {pkg.company_name && (
-                            <span className="sm-package-company">{pkg.company_name}</span>
-                        )}
-                    </div>
-                    <div className="sm-package-row-right">
-                        {pkg.compliance_score !== null && (
-                            <span className={`sm-package-score ${pkg.compliance_score >= 0.7 ? 'score-good' : pkg.compliance_score >= 0.4 ? 'score-warn' : 'score-bad'}`}>
-                                {Math.round(pkg.compliance_score * 100)}%
-                            </span>
-                        )}
-                        <span className={`sm-package-status status-${pkg.status ?? 'none'}`}>
-                            COMPLIANCE CHECK {pkg.status?.toUpperCase() ?? 'NONE'}
-                        </span>
-                        <ChevronRight fontSize="small" sx={{ color: 'rgba(255,255,255,0.25)' }} />
-                    </div>
-                </button>
-            ))}
-        </div>
-    );
-}
-
-function CreatePackageInline({
-    section_id,
-    spec_id,
-    onCancel,
-    onCreated,
-}: {
-    section_id: number;
-    spec_id: string;
-    onCancel: () => void;
-    onCreated: (package_id: number) => void;
-}) {
-    const [packageName, setPackageName] = useState('');
-    const [company, setCompany] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-
-    const handleCreate = async () => {
-        if (!packageName.trim()) {
-            setError('Package name is required.');
-            return;
-        }
-        setLoading(true);
-        setError(null);
-        try {
-            const res = await fetch(`${BACKEND_URL}/api/submittal/create_submittal_package`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    section_id,
-                    spec_id,
-                    package_name: packageName.trim(),
-                    company_name: company.trim() || null,
-                }),
-            });
-            const data = await res.json();
-            if (!res.ok || data.error) {
-                setError(data.error ?? 'Failed to create package.');
-                return;
-            }
-            setTimeout(() => {
-                onCreated(data.package_id);
-            }, 3000);
-        } catch {
-            setError('Network error. Please try again.');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-
-    return (
-        <div className="sm-create-inline">
-            <p className="sm-create-inline-title">New Package</p>
-            <div className="sm-create-inline-fields">
-                <div className="sm-create-inline-field">
-                    <label className="sm-create-inline-label">
-                        Package Name <span className="sm-required">*</span>
-                    </label>
-                    <input
-                        className="sm-create-inline-input"
-                        placeholder="e.g. Unit Masonry Submittal Rev 1"
-                        value={packageName}
-                        autoFocus
-                        onChange={(e) => { setPackageName(e.target.value); if (error) setError(null); }}
-                        onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
-                    />
-                </div>
-                <div className="sm-create-inline-field">
-                    <label className="sm-create-inline-label">
-                        Company <span className="sm-optional">Optional</span>
-                    </label>
-                    <input
-                        className="sm-create-inline-input"
-                        placeholder="e.g. Victory Steel Company"
-                        value={company}
-                        onChange={(e) => setCompany(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
-                    />
-                </div>
-            </div>
-            {error && <p className="sm-create-inline-error">{error}</p>}
-            <div className="sm-create-inline-actions">
-                <button className="sm-create-inline-cancel" onClick={onCancel} disabled={loading}>
-                    Cancel
-                </button>
-                <button
-                    className={`sm-create-inline-submit ${loading ? 'loading' : ''}`}
-                    onClick={handleCreate}
-                    disabled={loading || !packageName.trim()}
-                >
-                    {loading ? "Creating Package..." : 'Create Package +'}
-                </button>
-            </div>
-        </div>
-    );
-}
-
-export default function SectionModal({ spec_id, section_number, section_title, section_id, onClose }: SectionModalProps) {
+export default function SectionSummaryModal({ spec_id, section_number, section_title, section_id, onClose }: SectionModalProps) {
     const [summary, setSummary] = useState<SpecSummary | null | undefined>(null);
     const [activeTab, setActiveTab] = useState<TabKey>('overview');
     const [animKey, setAnimKey] = useState(0);
-    const [showCreatePackage, setShowCreatePackage] = useState(false);
     const navigate = useNavigate();
 
     const fetchSummary = async () => {
@@ -301,10 +112,6 @@ export default function SectionModal({ spec_id, section_number, section_title, s
         navigate(`/packages/${spec_id}/${package_id}?section_number=${section_number}&section_title=${section_title}&section_id=${section_id}`);
     };
 
-    const handleCreatePackageClick = () => {
-        setActiveTab('packages');
-        setShowCreatePackage(true);
-    };
 
     useEffect(() => { fetchSummary(); }, []);
     useEffect(() => {
@@ -319,7 +126,6 @@ export default function SectionModal({ spec_id, section_number, section_title, s
     const handleTabChange = (key: TabKey) => {
         setActiveTab(key);
         setAnimKey(k => k + 1);
-        if (key !== 'packages') setShowCreatePackage(false);
     };
 
     if (!summary) {
@@ -364,28 +170,11 @@ export default function SectionModal({ spec_id, section_number, section_title, s
                 return <ListTab items={parseJsonField(summary.submittals)} label="Submittals" />;
             case 'testing':
                 return <ListTab items={parseJsonField(summary.testing)} label="Testing" />;
-            case 'packages':
-                return showCreatePackage ? (
-                    <CreatePackageInline
-                        section_id={summary.section_id}
-                        spec_id={spec_id}
-                        onCancel={() => setShowCreatePackage(false)}
-                        onCreated={handlePackageCreated}
-                    />
-                ) : (
-                    <PackagesTab
-                        spec_id={spec_id}
-                        section_id={summary.section_id}
-                        section_number={summary.section_number}
-                        section_title={summary.section_title}
-                        onCreatePackage={() => setShowCreatePackage(true)}
-                    />
-                );
         }
     };
 
     const getTabCount = (key: TabKey): number | null => {
-        if (key === 'overview' || key === 'packages') return null;
+        if (key === 'overview') return null;
         const counts: Record<string, number> = {
             key_requirements: parseJsonField(summary.key_requirements).length,
             materials: parseJsonField(summary.materials).length,
@@ -409,9 +198,6 @@ export default function SectionModal({ spec_id, section_number, section_title, s
                         </button>
                     </div>
                     <div className="sm-header-right">
-                        <button className="sm-create-package-btn" onClick={handleCreatePackageClick}>
-                            <Add fontSize="small" /> Create Package
-                        </button>
                         <span className="sm-spec-id">SPEC {summary.spec_id.slice(0, 8).toUpperCase()}</span>
                         <button className="sm-close-btn" onClick={onClose} aria-label="Close">
                             <Close fontSize="small" />
@@ -429,7 +215,7 @@ export default function SectionModal({ spec_id, section_number, section_title, s
                                 key={key}
                                 role="tab"
                                 aria-selected={activeTab === key}
-                                className={`sm-tab ${activeTab === key ? 'sm-tab--active' : ''} ${isEmpty ? 'sm-tab--empty' : ''} ${key === 'packages' ? 'sm-tab--packages' : ''}`}
+                                className={`sm-tab ${activeTab === key ? 'sm-tab--active' : ''} ${isEmpty ? 'sm-tab--empty' : ''}`}
                                 onClick={() => handleTabChange(key)}
                             >
                                 <span className="sm-tab-label">{label}</span>

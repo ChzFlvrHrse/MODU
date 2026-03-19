@@ -1,4 +1,5 @@
-html, body {
+html,
+body {
   margin: 0;
   padding: 0;
   height: 100%;
@@ -16,14 +17,20 @@ body {
 
 .app-layout {
   display: flex;
-  height: 100%;  /* Use 100% instead of 100vh */
-  background-color: #262b36;
+  height: 100%;
+  /* Use 100% instead of 100vh */
+  /* background-color: #262b36;*/
+  background:
+    radial-gradient(circle at top left, rgba(64, 149, 255, 0.08), transparent 22%),
+    radial-gradient(circle at top right, rgba(111, 120, 255, 0.06), transparent 18%),
+    linear-gradient(180deg, #1b2233 0%, #1a2131 100%);
 }
 
 .content {
   flex: 1;
   display: flex;
   flex-direction: column;
-  overflow-y: auto;  /* Allow content inside to scroll */
+  overflow-y: auto;
+  /* Allow content inside to scroll */
   /* padding: 20px;  Add padding if needed */
 }

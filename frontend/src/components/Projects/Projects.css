@@ -4,10 +4,10 @@
   padding: 40px 48px 56px;
   color: #fff;
   min-height: 100%;
-  background:
+  /* background:
     radial-gradient(circle at top left, rgba(64, 149, 255, 0.08), transparent 22%),
     radial-gradient(circle at top right, rgba(111, 120, 255, 0.06), transparent 18%),
-    linear-gradient(180deg, #1b2233 0%, #1a2131 100%);
+    linear-gradient(180deg, #1b2233 0%, #1a2131 100%); */
 }
 
 /* Hero */
