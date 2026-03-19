@@ -6,6 +6,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 import { DeleteRounded } from '@mui/icons-material';
 import DeleteModal from '../../modals/DeleteModal/DeleteModal';
 import moduLogo from '../../modu_logo_transparent.png';
+import ModuBrand from '../ModuBrand/ModuBrand';
 import './Projects.css';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -129,7 +130,7 @@ export default function Projects({ projectsComplete, setProjectsComplete }: Proj
 
           <div className="projects-hero-inner">
             <div className="projects-brand">
-              <img src={moduLogo} alt="MODU" className="projects-brand-logo" />
+              <ModuBrand logoOnly={true} />
             </div>
 
             <div className="projects-header">

@@ -1,16 +1,8 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import moduLogo from '../../modu_logo_transparent.png';
+import ModuBrand from '../ModuBrand/ModuBrand';
 import './Nav.css';
 
-// function ModuLogo({ className = 'h-9 w-9' }: { className?: string }) {
-//     return (
-//       <div className={cn('relative', className)}>
-//         <div className="absolute inset-0 rounded-sm border-2 border-black/90 dark:border-white/95" />
-//         <div className="absolute left-1/4 top-1/4 h-1/2 w-1/2 rounded-[2px] border-2 border-black/90 dark:border-white/95" />
-//       </div>
-//     );
-//   }
 
 export default function Nav() {
     const location = useLocation();
@@ -24,13 +16,7 @@ export default function Nav() {
         <nav className="nav">
             <div className="nav-shell">
                 <Link to="/projects" className="nav-brand">
-                    <div className="nav-brand-mark">
-                        <img src={moduLogo} className="nav-logo" alt="MODU logo" />
-                    </div>
-                    <div className="nav-brand-copy">
-                        <div className="nav-brand-title">MODU</div>
-                        <div className="nav-brand-subtitle">Spec intelligence</div>
-                    </div>
+                    <ModuBrand />
                 </Link>
 
                 <div className="nav-items">
