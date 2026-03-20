@@ -31,6 +31,7 @@ class ModuDB:
                     errors INTEGER DEFAULT 0,
                     classification_status TEXT DEFAULT 'pending',
                     summary_status TEXT DEFAULT 'pending',
+                    project_completion_score REAL DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP
                 )
@@ -44,6 +45,7 @@ class ModuDB:
                     division TEXT NOT NULL,
                     division_title TEXT,
                     total_sections INTEGER DEFAULT 0,
+                    division_completion_score REAL DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP,
                     FOREIGN KEY (spec_id) REFERENCES projects(spec_id) ON DELETE CASCADE,
@@ -65,6 +67,9 @@ class ModuDB:
                     total_pages INTEGER,
                     classification_status TEXT DEFAULT 'pending',
                     summary_status TEXT DEFAULT 'pending',
+                    chosen_packages TEXT DEFAULT '[]',
+                    lifecycle_status TEXT DEFAULT 'pending',
+                    lifecycle_status_override BOOLEAN DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP,
                     FOREIGN KEY (spec_id) REFERENCES projects(spec_id) ON DELETE CASCADE,
@@ -131,6 +136,7 @@ class ModuDB:
                     run_count INTEGER DEFAULT 0,
                     last_checked_at TIMESTAMP DEFAULT NULL,
                     status TEXT DEFAULT 'pending',
+                    is_chosen BOOLEAN DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP,
                     FOREIGN KEY (spec_id) REFERENCES projects(spec_id) ON DELETE CASCADE,
@@ -390,6 +396,16 @@ class ModuDB:
             cursor = await conn.execute("""
                 SELECT * FROM sections WHERE spec_id = ? AND section_number = ?
             """, (spec_id, section_number))
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+    async def get_section_by_id(self, section_id: int) -> Optional[Dict]:
+        """Get section data by id"""
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute("""
+                SELECT * FROM sections WHERE id = ?
+            """, (section_id,))
             row = await cursor.fetchone()
             return dict(row) if row else None
 
@@ -769,14 +785,15 @@ class ModuDB:
         submitted_by: str = None,
         submitted_date: str = None,
         compliance_score: float = None,
-        status: str = "pending"
+        status: str = "pending",
+        is_chosen: bool = False
     ) -> int:
         """Create submittal package"""
         async with aiosqlite.connect(self.db_path) as conn:
             cursor = await conn.execute("""
-                INSERT INTO submittal_packages (spec_id, section_id, package_name, company_name, submitted_by, submitted_date, compliance_score, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (spec_id, section_id, package_name, company_name, submitted_by, submitted_date, compliance_score, status))
+                INSERT INTO submittal_packages (spec_id, section_id, package_name, company_name, submitted_by, submitted_date, compliance_score, status, is_chosen)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (spec_id, section_id, package_name, company_name, submitted_by, submitted_date, compliance_score, status, is_chosen))
             await conn.commit()
             return cursor.lastrowid
 
@@ -881,6 +898,25 @@ class ModuDB:
                 ))
 
             await conn.commit()
+
+    async def update_package_chosen(
+        self,
+        package_id: int,
+        is_chosen: bool,
+    ) -> dict:
+        """Mark or unmark a package as chosen"""
+        try:
+            async with aiosqlite.connect(self.db_path) as conn:
+                await conn.execute("""
+                    UPDATE submittal_packages
+                    SET is_chosen = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """, (int(is_chosen), package_id))
+                await conn.commit()
+            return {"package_id": package_id, "is_chosen": is_chosen}
+        except Exception as e:
+            logger.error(f"Error updating package chosen status: {e}")
+            return {"error": str(e), "package_id": None}
 
     async def get_package_result(self, package_id: int) -> Optional[Dict]:
         async with aiosqlite.connect(self.db_path) as conn:
@@ -1262,5 +1298,161 @@ class ModuDB:
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
 
+    async def update_section_lifecycle(
+        self,
+        section_id: int,
+        lifecycle_status: str = None,
+        chosen_packages: list[int] = None,
+        override: bool = None,
+    ) -> dict:
+        """Update section lifecycle status and/or chosen packages"""
+        try:
+            async with aiosqlite.connect(self.db_path) as conn:
+                conn.row_factory = aiosqlite.Row
+                cursor = await conn.execute("""
+                    SELECT id, chosen_packages, lifecycle_status_override
+                    FROM sections WHERE id = ?
+                """, (section_id,))
+                row = await cursor.fetchone()
+                if not row:
+                    return {"error": "Section not found", "section_id": None}
+
+                fields = {}
+
+                if chosen_packages is not None:
+                    fields["chosen_packages"] = json.dumps(chosen_packages)
+                    # Auto-derive status from chosen_packages if not overridden
+                    if not row["lifecycle_status_override"] and override is None:
+                        fields["lifecycle_status"] = "complete" if chosen_packages else "pending"
+
+                if lifecycle_status is not None:
+                    fields["lifecycle_status"] = lifecycle_status
+
+                if override is not None:
+                    fields["lifecycle_status_override"] = int(override)
+
+                if not fields:
+                    return {"section_id": section_id}
+
+                set_clause = ", ".join(f"{k} = ?" for k in fields)
+                values = list(fields.values()) + [section_id]
+
+                await conn.execute(f"""
+                    UPDATE sections
+                    SET {set_clause}, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """, values)
+                await conn.commit()
+
+            return {
+                "section_id": section_id,
+                "lifecycle_status": fields.get("lifecycle_status"),
+                "chosen_packages": chosen_packages,
+            }
+        except Exception as e:
+            logger.error(f"Error updating section lifecycle: {e}")
+            return {"error": str(e), "section_id": None}
+
+
+    async def compute_division_completion(self, spec_id: str, division: str) -> float:
+        """Compute and persist division completion score from section lifecycle statuses"""
+        async with aiosqlite.connect(self.db_path) as conn:
+            cursor = await conn.execute("""
+                SELECT lifecycle_status FROM sections
+                WHERE spec_id = ? AND division = ?
+            """, (spec_id, division))
+            rows = await cursor.fetchall()
+
+            if not rows:
+                return 0.0
+
+            eligible = [r[0] for r in rows if r[0] != "excluded"]
+            if not eligible:
+                return 0.0
+
+            complete = sum(1 for s in eligible if s == "complete")
+            score = round(complete / len(eligible), 4)
+
+            await conn.execute("""
+                UPDATE divisions
+                SET division_completion_score = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE spec_id = ? AND division = ?
+            """, (score, spec_id, division))
+            await conn.commit()
+
+        return score
+
+    async def compute_project_completion(self, spec_id: str) -> float:
+        """Compute and persist project completion score by rolling up division scores"""
+        async with aiosqlite.connect(self.db_path) as conn:
+            cursor = await conn.execute("""
+                SELECT lifecycle_status FROM sections
+                WHERE spec_id = ?
+            """, (spec_id,))
+            rows = await cursor.fetchall()
+
+            if not rows:
+                return 0.0
+
+            eligible = [r[0] for r in rows if r[0] != "excluded"]
+            if not eligible:
+                return 0.0
+
+            complete = sum(1 for s in eligible if s == "complete")
+            score = round(complete / len(eligible), 4)
+
+            await conn.execute("""
+                UPDATE projects
+                SET project_completion_score = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE spec_id = ?
+            """, (score, spec_id))
+            await conn.commit()
+
+        return score
+
+    async def get_lifecycle_summary(self, spec_id: str) -> dict:
+        """Get lifecycle rollup for a spec — per-division breakdown plus overall score"""
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute("""
+                SELECT division, lifecycle_status
+                FROM sections
+                WHERE spec_id = ?
+                ORDER BY division ASC
+            """, (spec_id,))
+            rows = await cursor.fetchall()
+
+            divisions = {}
+            for row in rows:
+                d = row["division"]
+                status = row["lifecycle_status"]
+                if d not in divisions:
+                    divisions[d] = {"total": 0, "complete": 0, "excluded": 0}
+                if status == "excluded":
+                    divisions[d]["excluded"] += 1
+                else:
+                    divisions[d]["total"] += 1
+                    if status == "complete":
+                        divisions[d]["complete"] += 1
+
+            division_scores = {}
+            for d, counts in divisions.items():
+                eligible = counts["total"]
+                division_scores[d] = {
+                    "complete": counts["complete"],
+                    "total": eligible,
+                    "excluded": counts["excluded"],
+                    "score": round(counts["complete"] / eligible, 4) if eligible else 0.0,
+                }
+
+            all_eligible = sum(v["total"] for v in division_scores.values())
+            all_complete = sum(v["complete"] for v in division_scores.values())
+            overall = round(all_complete / all_eligible, 4) if all_eligible else 0.0
+
+            return {
+                "spec_id": spec_id,
+                "overall_score": overall,
+                "divisions": division_scores,
+            }
 
 db = ModuDB()

@@ -146,3 +146,87 @@ async def delete_project(spec_id: str):
     except Exception as e:
         logger.error(f"Error deleting project: {e}")
         return jsonify({"error": str(e)}), 500
+
+@spec_routes_bp.route("/lifecycle/<int:section_id>", methods=["PATCH"])
+async def update_section_lifecycle_route(section_id: int):
+    try:
+        data: dict = await request.get_json()
+
+        lifecycle_status = data.get("lifecycle_status")
+        chosen_packages = data.get("chosen_packages")
+        override = data.get("override")
+
+        # Validate lifecycle_status if provided
+        valid_statuses = {"pending", "in_progress", "complete", "excluded"}
+        if lifecycle_status and lifecycle_status not in valid_statuses:
+            return jsonify({"error": f"Invalid lifecycle_status. Must be one of: {', '.join(valid_statuses)}"}), 400
+
+        # Need spec_id and division to trigger rollup — fetch from section
+        section = await db.get_section_by_id(section_id)
+        if not section:
+            return jsonify({"error": "Section not found"}), 404
+
+        result = await db.update_section_lifecycle(
+            section_id=section_id,
+            lifecycle_status=lifecycle_status,
+            chosen_packages=chosen_packages,
+            override=override,
+        )
+
+        if result.get("error"):
+            return jsonify(result), 500
+
+        # Trigger rollup
+        division_score = await db.compute_division_completion(
+            spec_id=section["spec_id"],
+            division=section["division"],
+        )
+        project_score = await db.compute_project_completion(
+            spec_id=section["spec_id"],
+        )
+
+        return jsonify({
+            "success": True,
+            "section_id": section_id,
+            "lifecycle_status": result.get("lifecycle_status"),
+            "chosen_packages": result.get("chosen_packages"),
+            "division_score": division_score,
+            "project_score": project_score,
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error in update_section_lifecycle_route: {e}")
+        return jsonify({"error": str(e), "success": False}), 500
+
+
+@spec_routes_bp.route("/lifecycle/summary/<string:spec_id>", methods=["GET"])
+async def get_lifecycle_summary_route(spec_id: str):
+    try:
+        summary = await db.get_lifecycle_summary(spec_id)
+        return jsonify({"success": True, "summary": summary}), 200
+
+    except Exception as e:
+        logger.error(f"Error in get_lifecycle_summary_route: {e}")
+        return jsonify({"error": str(e), "success": False}), 500
+
+
+@spec_routes_bp.route("/lifecycle/division/<string:spec_id>/<string:division>", methods=["GET"])
+async def get_division_completion_route(spec_id: str, division: str):
+    try:
+        score = await db.compute_division_completion(spec_id=spec_id, division=division)
+        return jsonify({"success": True, "spec_id": spec_id, "division": division, "score": score}), 200
+
+    except Exception as e:
+        logger.error(f"Error in get_division_completion_route: {e}")
+        return jsonify({"error": str(e), "success": False}), 500
+
+
+@spec_routes_bp.route("/lifecycle/project/<string:spec_id>", methods=["GET"])
+async def get_project_completion_route(spec_id: str):
+    try:
+        score = await db.compute_project_completion(spec_id=spec_id)
+        return jsonify({"success": True, "spec_id": spec_id, "score": score}), 200
+
+    except Exception as e:
+        logger.error(f"Error in get_project_completion_route: {e}")
+        return jsonify({"error": str(e), "success": False}), 500

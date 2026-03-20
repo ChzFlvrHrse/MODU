@@ -507,3 +507,37 @@ async def get_compliance_comparisons_list ():
     except Exception as e:
         logger.error(f"Error getting compliance comparison ids: {e}")
         return jsonify({"error": str(e)}), 500
+
+@submittal_routes_bp.route("/package/<int:package_id>/chosen", methods=["PATCH"])
+async def update_package_chosen_route(package_id: int):
+    try:
+        data: dict = await request.get_json()
+
+        is_chosen = data.get("is_chosen")
+        if is_chosen is None:
+            return jsonify({"error": "is_chosen is required"}), 400
+
+        if not isinstance(is_chosen, bool):
+            return jsonify({"error": "is_chosen must be a boolean"}), 400
+
+        package = await db.get_submittal_package(package_id)
+        if not package:
+            return jsonify({"error": "Package not found"}), 404
+
+        result = await db.update_package_chosen(
+            package_id=package_id,
+            is_chosen=is_chosen,
+        )
+
+        if result.get("error"):
+            return jsonify(result), 500
+
+        return jsonify({
+            "success": True,
+            "package_id": package_id,
+            "is_chosen": is_chosen,
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error in update_package_chosen_route: {e}")
+        return jsonify({"error": str(e), "success": False}), 500
