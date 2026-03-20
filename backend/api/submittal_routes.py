@@ -301,12 +301,15 @@ async def compliance_check_route():
                         token_count=result.get("total_tokens"),
                     )
 
-            # await db.update_package_after_run(
-            #     package_id=package_id,
-            #     compliance_result=result.get("result"),
-            #     compliance_score=result.get("result").get("compliance_score"),
-            #     checked_submittal_ids=result.get("submittal_ids"),
-            # )
+                updated_package = await db.update_package_after_run(
+                    package_id=package_id,
+                    compliance_result=result.get("result"),
+                    compliance_score=result.get("result").get("compliance_score"),
+                    checked_submittal_ids=result.get("submittal_ids"),
+                )
+
+                if not updated_package:
+                    return jsonify({"error": "Failed to update package after run"}), 500
 
             return jsonify({
                 "message": "Compliance check completed successfully",

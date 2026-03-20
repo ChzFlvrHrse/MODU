@@ -834,7 +834,7 @@ class ModuDB:
         async with aiosqlite.connect(self.db_path) as conn:
             # Get all submittal IDs for this package
             async with conn.execute(
-                "SELECT id FROM submittals WHERE package_id = ?", (package_id)
+                "SELECT id FROM submittals WHERE package_id = ?", (package_id,)
             ) as cursor:
                 rows = await cursor.fetchall()
                 all_submittal_ids = {row[0] for row in rows}
