@@ -681,16 +681,16 @@ export default function Packages() {
 
     const handleRunComparison = async () => {
         if (leftTarget.type !== "package" || rightTarget?.type !== "package") return;
-        const idA = leftTarget.packageId;
-        const idB = rightTarget.packageId;
+        const package_id_1 = leftTarget.packageId;
+        const package_id_2 = rightTarget.packageId;
         setRunningComparison(true);
         try {
-            const res = await fetch(`${BACKEND_URL}/api/submittal/compliance_comparison`, {
+            const res = await fetch(`${BACKEND_URL}/api/submittal/compare_compliance`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    package_id_a: idA,
-                    package_id_b: idB,
+                    package_id_1,
+                    package_id_2,
                     section_id,
                     section_number,
                 }),

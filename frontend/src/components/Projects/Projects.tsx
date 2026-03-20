@@ -5,7 +5,6 @@ import { Project } from '../../../types/types';
 import CircularProgress from '@mui/material/CircularProgress';
 import { DeleteRounded } from '@mui/icons-material';
 import DeleteModal from '../../modals/DeleteModal/DeleteModal';
-import moduLogo from '../../modu_logo_transparent.png';
 import ModuBrand from '../ModuBrand/ModuBrand';
 import './Projects.css';
 
@@ -129,9 +128,6 @@ export default function Projects({ projectsComplete, setProjectsComplete }: Proj
           <div className="projects-hero-glow projects-hero-glow-b" />
 
           <div className="projects-hero-inner">
-            <div className="projects-brand">
-              <ModuBrand logoOnly={true} />
-            </div>
 
             <div className="projects-header">
               <div className="projects-kicker">Workspace</div>

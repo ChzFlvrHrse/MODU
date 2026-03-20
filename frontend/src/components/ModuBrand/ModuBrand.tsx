@@ -25,7 +25,7 @@ export default function ModuBrand({ logoOnly = false, wordmarkOnly = false }: Mo
                         <span className="modu-letter">D</span>
                         <span className="modu-letter modu-letter-u">U</span>
                     </div>
-                    <div className="modu-brand-subtitle">Unified spec platform</div>
+                    <div className="modu-brand-subtitle">Unified Spec Platform</div>
                 </div>
             )}
         </div>

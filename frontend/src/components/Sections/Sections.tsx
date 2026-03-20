@@ -180,8 +180,12 @@ export default function Sections() {
         e.stopPropagation();
         setGeneratingSummaries((prev) => new Set(prev).add(section_number));
         try {
-            const response = await fetch(`${BACKEND_URL}/api/summary/generate_section_summary/${spec_id}/${section_number}`, {
+            const response = await fetch(`${BACKEND_URL}/api/summary/generate_section_summary`, {
                 method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ spec_id, section_number }),
             });
             const data = await response.json();
             if (data.error) {
