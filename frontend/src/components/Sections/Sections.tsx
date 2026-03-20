@@ -1,15 +1,92 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { toast } from "react-hot-toast";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import type { Section } from "../../../types/types";
 import "./Sections.css";
 
 import { CircularProgress } from "@mui/material";
-import { ArrowBackIosNew, AdsClickRounded, Error } from '@mui/icons-material';
+import { ArrowBackIosNew, AdsClickRounded } from '@mui/icons-material';
 import SectionSummaryModal from "../../modals/SectionSummaryModal/SectionSummaryModal";
 import PackageModal from "../../modals/PackageModal/PackageModal";
+import LifecycleDonut from '../LifecycleDonut/LifecycleDonut';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+type LifecycleStatus = "pending" | "in_progress" | "complete" | "excluded";
+
+interface DivisionLifecycle {
+    complete: number;
+    total: number;
+    excluded: number;
+    score: number;
+}
+
+interface LifecycleSummary {
+    spec_id: string;
+    overall_score: number;
+    divisions: Record<string, DivisionLifecycle>;
+}
+
+const LIFECYCLE_CYCLE: LifecycleStatus[] = ["pending", "in_progress", "complete", "excluded"];
+
+function nextLifecycleStatus(current: LifecycleStatus): LifecycleStatus {
+    const idx = LIFECYCLE_CYCLE.indexOf(current);
+    return LIFECYCLE_CYCLE[(idx + 1) % LIFECYCLE_CYCLE.length];
+}
+
+// ── Division progress bar ──────────────────────────────────────────────────────
+
+function DivisionProgressBar({ score }: { score: number }) {
+    const fillClass =
+        score >= 0.8 ? "division-progress-bar__fill--high" :
+            score >= 0.5 ? "division-progress-bar__fill--mid" :
+                score > 0 ? "division-progress-bar__fill--low" :
+                    "division-progress-bar__fill--zero";
+
+    return (
+        <div className="division-progress-bar">
+            <div
+                className={`division-progress-bar__fill ${fillClass}`}
+                style={{ width: `${Math.round(score * 100)}%` }}
+            />
+        </div>
+    );
+}
+
+// ── Lifecycle pill ─────────────────────────────────────────────────────────────
+
+const LIFECYCLE_LABELS: Record<LifecycleStatus, string> = {
+    pending: "Pending",
+    in_progress: "In Progress",
+    complete: "Complete",
+    excluded: "Excluded",
+};
+
+function LifecyclePill({
+    status,
+    updating,
+    onClick,
+}: {
+    status: LifecycleStatus;
+    updating: boolean;
+    onClick: () => void;
+}) {
+    return (
+        <button
+            className={`lifecycle-pill lifecycle-pill--${status}`}
+            onClick={(e) => { e.stopPropagation(); onClick(); }}
+            disabled={updating}
+            title="Click to advance lifecycle status"
+        >
+            {updating && <CircularProgress size={8} sx={{ color: "inherit" }} />}
+            {LIFECYCLE_LABELS[status]}
+        </button>
+    );
+}
+
+// ── Main ───────────────────────────────────────────────────────────────────────
 
 export default function Sections() {
     const [sections, setSections] = useState<Record<string, Section[]>>({});
@@ -28,25 +105,27 @@ export default function Sections() {
     const [packagesModalSectionTitle, setPackagesModalSectionTitle] = useState<string>("");
 
     const [generatingSummaries, setGeneratingSummaries] = useState<Set<string>>(new Set());
+    const [updatingLifecycle, setUpdatingLifecycle] = useState<Set<number>>(new Set());
+    const [lifecycle, setLifecycle] = useState<LifecycleSummary | null>(null);
 
     const { spec_id } = useParams();
     const [searchParams] = useSearchParams();
     const project_name = searchParams.get("project_name");
-
     const navigate = useNavigate();
 
     const divisions = useMemo(() => Object.keys(sections).sort(), [sections]);
 
+    // ── Division status helpers ────────────────────────────────────────────────
+
     const isDivisionClassificationComplete = (division: string) => {
         const list = sections[division] ?? [];
         if (list.length === 0) return false;
-        return list.every((s) => (s.classification_status ?? "").toLowerCase() === "complete" || (s.classification_status ?? "").toLowerCase() === "failed");
+        return list.every((s) => ["complete", "failed"].includes((s.classification_status ?? "").toLowerCase()));
     };
 
     const isDivisionClassificationPending = (division: string) => {
         const list = sections[division] ?? [];
-        if (list.length === 0) return false;
-        return list.some((s) => (s.classification_status ?? "").toLowerCase() === "pending" || (s.classification_status ?? "").toLowerCase() === "error");
+        return list.some((s) => ["pending", "error"].includes((s.classification_status ?? "").toLowerCase()));
     };
 
     const allDivisionsClassificationComplete = useMemo(() => {
@@ -57,23 +136,23 @@ export default function Sections() {
     const isDivisionSummaryComplete = (division: string) => {
         const list = sections[division] ?? [];
         if (list.length === 0) return false;
-        return list.every((s) => (s.summary_status ?? "").toLowerCase() === "complete" || (s.summary_status ?? "").toLowerCase() === "failed" || (s.summary_status ?? "").toLowerCase() === "manual");
+        return list.every((s) => ["complete", "failed", "manual"].includes((s.summary_status ?? "").toLowerCase()));
     };
 
     const isDivisionSummaryPending = (division: string) => {
         const list = sections[division] ?? [];
-        if (list.length === 0) return false;
         return list.some((s) => (s.summary_status ?? "").toLowerCase() === "pending");
     };
 
     const isDivisionSummaryError = (division: string) => {
         const list = sections[division] ?? [];
-        if (list.length === 0) return false;
         return list.some((s) => (s.summary_status ?? "").toLowerCase() === "error");
     };
 
     const normalizeDivisions = (obj: Record<string, unknown>) =>
         Object.keys(obj).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+    // ── Fetch ──────────────────────────────────────────────────────────────────
 
     const fetchSections = async () => {
         const response = await fetch(`${BACKEND_URL}/api/spec/spec_sections/${spec_id}`);
@@ -89,38 +168,85 @@ export default function Sections() {
         });
     };
 
+    const fetchLifecycle = useCallback(async () => {
+        if (!spec_id) return;
+        const res = await fetch(`${BACKEND_URL}/api/spec/lifecycle/summary/${spec_id}`);
+        const data = await res.json();
+        if (data.success) setLifecycle(data.summary);
+    }, [spec_id]);
+
+    // ── Lifecycle update ───────────────────────────────────────────────────────
+
+    const handleLifecycleClick = async (section: Section) => {
+        const current = (section.lifecycle_status ?? "pending") as LifecycleStatus;
+        const next = nextLifecycleStatus(current);
+
+        setUpdatingLifecycle((prev) => new Set(prev).add(section.id));
+
+        setSections((prev) => ({
+            ...prev,
+            [section.division]: prev[section.division].map((s) =>
+                s.id === section.id ? { ...s, lifecycle_status: next } : s
+            ),
+        }));
+
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/spec/lifecycle/${section.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ lifecycle_status: next, override: true }),
+            });
+            if (!res.ok) {
+                toast.error("Failed to update lifecycle status.");
+                setSections((prev) => ({
+                    ...prev,
+                    [section.division]: prev[section.division].map((s) =>
+                        s.id === section.id ? { ...s, lifecycle_status: current } : s
+                    ),
+                }));
+                return;
+            }
+            await fetchLifecycle();
+        } catch {
+            toast.error("Network error updating lifecycle.");
+        } finally {
+            setUpdatingLifecycle((prev) => {
+                const n = new Set(prev);
+                n.delete(section.id);
+                return n;
+            });
+        }
+    };
+
+    // ── Active list ────────────────────────────────────────────────────────────
+
     const activeList = useMemo(() => {
         let list = sections[activeDivision] ?? [];
-        if (activeDivision === "all") {
-            list = Object.values(sections).flat();
-        }
+        if (activeDivision === "all") list = Object.values(sections).flat();
         const q = query.trim().toLowerCase();
-        const filtered = list.filter((s) => {
-            const matchesQuery =
-                !q ||
-                s.section_title?.toLowerCase().includes(q) ||
-                s.section_number?.toLowerCase().includes(q);
-
-            const normalizedClassification = (s.classification_status ?? "none").toLowerCase();
-            const normalizedSummary = (s.summary_status ?? "none").toLowerCase();
-
-            const matchesStatus =
-                statusFilter === "all" ||
-                normalizedClassification === statusFilter ||
-                normalizedSummary === statusFilter;
-
-            return matchesQuery && matchesStatus;
-        });
-
-        return filtered.sort((a, b) =>
-            (a.section_number ?? "").localeCompare(b.section_number ?? "")
-        );
+        return list
+            .filter((s) => {
+                const matchesQuery =
+                    !q ||
+                    s.section_title?.toLowerCase().includes(q) ||
+                    s.section_number?.toLowerCase().includes(q);
+                const normalizedClassification = (s.classification_status ?? "none").toLowerCase();
+                const normalizedSummary = (s.summary_status ?? "none").toLowerCase();
+                const matchesStatus =
+                    statusFilter === "all" ||
+                    normalizedClassification === statusFilter ||
+                    normalizedSummary === statusFilter;
+                return matchesQuery && matchesStatus;
+            })
+            .sort((a, b) => (a.section_number ?? "").localeCompare(b.section_number ?? ""));
     }, [sections, activeDivision, query, statusFilter]);
 
     const totalSections = useMemo(
         () => Object.values(sections).reduce((acc, arr) => acc + (arr?.length ?? 0), 0),
         [sections]
     );
+
+    // ── Handlers ───────────────────────────────────────────────────────────────
 
     const openSectionModal = (section_number: string, section_title?: string) => {
         const section = activeList.find((s) => s.section_number === section_number);
@@ -155,53 +281,43 @@ export default function Sections() {
 
     function getSummaryStatusText(status: string) {
         const statusTextMap: Record<string, string> = {
-            manual: "MANUAL",
-            complete: "SUMMARIZED",
-            pending: "SUMMARIZING...",
-            error: "ERROR SUMMARIZING",
-            unknown: "SUMMARY UNKNOWN",
-            failed: "SUMMARY FAILED",
+            manual: "MANUAL", complete: "SUMMARIZED", pending: "SUMMARIZING...",
+            error: "ERROR SUMMARIZING", unknown: "SUMMARY UNKNOWN", failed: "SUMMARY FAILED",
         };
         return statusTextMap[status] ?? "SUMMARY UNKNOWN";
     }
 
     function getClassificationStatusText(status: string) {
         const statusTextMap: Record<string, string> = {
-            complete: "CLASSIFIED",
-            pending: "CLASSIFYING...",
-            error: "ERROR CLASSIFYING",
-            unknown: "CLASSIFICATION UNKNOWN",
-            failed: "CLASSIFICATION FAILED",
+            complete: "CLASSIFIED", pending: "CLASSIFYING...", error: "ERROR CLASSIFYING",
+            unknown: "CLASSIFICATION UNKNOWN", failed: "CLASSIFICATION FAILED",
         };
         return statusTextMap[status] ?? "CLASSIFICATION UNKNOWN";
     }
 
-    const handleGenerateSummary = async (e: React.MouseEvent<HTMLButtonElement>, spec_id: string, section_number: string) => {
+    const handleGenerateSummary = async (
+        e: React.MouseEvent<HTMLButtonElement>,
+        spec_id: string,
+        section_number: string
+    ) => {
         e.stopPropagation();
         setGeneratingSummaries((prev) => new Set(prev).add(section_number));
         try {
             const response = await fetch(`${BACKEND_URL}/api/summary/generate_section_summary`, {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ spec_id, section_number }),
             });
             const data = await response.json();
-            if (data.error) {
-                toast.error(data.error);
-                return;
-            }
+            if (data.error) { toast.error(data.error); return; }
             toast.success(`Generated summary for ${section_number}`);
             const section = activeList.find((s) => s.section_number === section_number);
             if (section) {
                 setSections((prev) => ({
                     ...prev,
                     [section.division]: prev[section.division].map((s) =>
-                        s.section_number === section_number
-                            ? { ...s, summary_status: "complete" }
-                            : s
-                    )
+                        s.section_number === section_number ? { ...s, summary_status: "complete" } : s
+                    ),
                 }));
             }
         } finally {
@@ -213,15 +329,18 @@ export default function Sections() {
         }
     };
 
+    // ── Effects ────────────────────────────────────────────────────────────────
+
     useEffect(() => {
         if (allDivisionsClassificationComplete) return;
         const interval = setInterval(fetchSections, 5000);
         return () => clearInterval(interval);
     }, [allDivisionsClassificationComplete]);
 
-    useEffect(() => {
-        fetchSections();
-    }, []);
+    useEffect(() => { fetchSections(); }, []);
+    useEffect(() => { fetchLifecycle(); }, [fetchLifecycle]);
+
+    // ── Render ─────────────────────────────────────────────────────────────────
 
     return (
         <>
@@ -234,7 +353,6 @@ export default function Sections() {
                     onClose={() => setSectionModalsOpen(false)}
                 />
             )}
-
             {packagesModalOpen && (
                 <PackageModal
                     spec_id={spec_id ?? ""}
@@ -253,11 +371,20 @@ export default function Sections() {
                                 <ArrowBackIosNew fontSize="small" className="back-projects-button-icon" />
                                 <span>Back</span>
                             </button>
-
                             <div className="sections-kicker">Workspace</div>
                             <h1 className="sections-title">Sections</h1>
                             <p className="sections-project-name">{project_name}</p>
-                            <p className="sections-subtitle">{totalSections} sections</p>
+                            <div className="sections-subtitle-row">
+                                <span className="sections-subtitle">{totalSections} sections</span>
+                                {lifecycle && (
+                                    <>
+                                        <LifecycleDonut score={lifecycle.overall_score} size={36} showLabel={false} />
+                                        <span className="sections-subtitle-progress">
+                                            {Math.round(lifecycle.overall_score * 100)}% complete
+                                        </span>
+                                    </>
+                                )}
+                            </div>
                         </div>
 
                         <div className="sections-controls">
@@ -293,7 +420,7 @@ export default function Sections() {
 
                         <div className="division-rail-list">
                             <button
-                                className={`division-row ${activeDivision === "all" ? "active" : ""}`}
+                                className={`division-row${activeDivision === "all" ? " active" : ""}`}
                                 onClick={() => setActiveDivision("all")}
                             >
                                 <span className="division-row-left">
@@ -311,33 +438,31 @@ export default function Sections() {
                                 const summary_done = isDivisionSummaryComplete(d);
                                 const summary_pending = isDivisionSummaryPending(d);
                                 const summary_error = isDivisionSummaryError(d);
+                                const divScore = lifecycle?.divisions[d]?.score ?? 0;
 
                                 return (
                                     <button
                                         key={d}
-                                        className={`division-row ${d === activeDivision ? "active" : ""}`}
+                                        className={`division-row${d === activeDivision ? " active" : ""}`}
                                         onClick={() => setActiveDivision(d)}
                                     >
                                         <span className="division-row-left">
                                             <span className="division-row-code">{d}</span>
                                         </span>
-
                                         <span className="division-row-right">
                                             <span className="division-row-count">{sections[d]?.length ?? 0} sections</span>
-
                                             {(classification_done && summary_done) && (
                                                 <span className="division-row-indicator success">✓</span>
                                             )}
-
                                             {(classification_pending || summary_pending) && (
                                                 <span className="division-row-spinner">
                                                     <CircularProgress size={14} sx={{ color: "inherit" }} />
                                                 </span>
                                             )}
-
                                             {summary_error && (
                                                 <span className="division-row-indicator error">!</span>
                                             )}
+                                            <LifecycleDonut score={divScore} size={28} showLabel={false} />
                                         </span>
                                     </button>
                                 );
@@ -346,17 +471,37 @@ export default function Sections() {
                     </aside>
 
                     <section className="sections-main">
-                        <div className="sections-main-header-card">
-                            <div className="sections-main-header-title">
-                                {activeDivision === "all" ? "All Sections" : `Division ${activeDivision || "—"}`}
+                        {activeDivision !== "all" && lifecycle?.divisions[activeDivision] && (
+                            <div className="sections-main-header-card sections-main-header-card--column">
+                                <div className="sections-main-header-row">
+                                    <div className="sections-main-header-title">
+                                        Division {activeDivision}
+                                    </div>
+                                    <div className="sections-main-header-meta-group">
+                                        <span className="sections-main-header-meta">
+                                            {lifecycle.divisions[activeDivision].complete} / {lifecycle.divisions[activeDivision].total} complete
+                                        </span>
+                                        <span className="sections-main-header-meta">
+                                            {activeList.length} sections
+                                        </span>
+                                    </div>
+                                </div>
+                                <DivisionProgressBar score={lifecycle.divisions[activeDivision].score} />
                             </div>
-                            <div className="sections-main-header-meta">{activeList.length} sections</div>
-                        </div>
+                        )}
+
+                        {activeDivision === "all" && (
+                            <div className="sections-main-header-card">
+                                <div className="sections-main-header-title">All Sections</div>
+                                <div className="sections-main-header-meta">{activeList.length} sections</div>
+                            </div>
+                        )}
 
                         <div className="section-grid">
                             {activeList.map((s) => {
                                 const classification_status = (s.classification_status ?? "none").toLowerCase();
                                 const summary_status = (s.summary_status ?? "none").toLowerCase();
+                                const lifecycle_status = (s.lifecycle_status ?? "pending") as LifecycleStatus;
 
                                 return (
                                     <div key={s.id} className="section-card system-card">
@@ -371,12 +516,16 @@ export default function Sections() {
                                             <span className={`status-pill status-pill-${classification_status}`}>
                                                 {getStatusIcon(classification_status)} {getClassificationStatusText(classification_status)}
                                             </span>
-
                                             {summary_status !== "manual" && (
                                                 <span className={`status-pill status-pill-${summary_status}`}>
                                                     {getStatusIcon(summary_status)} {getSummaryStatusText(summary_status)}
                                                 </span>
                                             )}
+                                            <LifecyclePill
+                                                status={lifecycle_status}
+                                                updating={updatingLifecycle.has(s.id)}
+                                                onClick={() => handleLifecycleClick(s)}
+                                            />
                                         </div>
 
                                         <div className="metrics-row metrics-row-sections">
@@ -398,7 +547,6 @@ export default function Sections() {
                                             >
                                                 Summary
                                             </button>
-
                                             {summary_status === "manual" ? (
                                                 <button
                                                     className="section-action-btn section-action-btn--primary"

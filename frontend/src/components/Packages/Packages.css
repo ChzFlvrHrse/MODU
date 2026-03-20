@@ -1534,3 +1534,41 @@
         align-items: flex-start;
     }
 }
+
+/* ── Chosen toggle ──────────────────────────────────────── */
+
+.pkg-card-chosen-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 999px;
+    border: 1.5px solid rgba(255,255,255,0.18);
+    background: transparent;
+    color: transparent;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition:
+        border-color 0.15s ease,
+        background 0.15s ease,
+        color 0.15s ease;
+    padding: 0;
+}
+
+.pkg-card-chosen-btn:hover {
+    border-color: rgba(63,185,80,0.5);
+    background: rgba(63,185,80,0.06);
+}
+
+.pkg-card-chosen-btn.chosen {
+    border-color: #3fb950;
+    background: rgba(63,185,80,0.14);
+    color: #3fb950;
+}
+
+.pkg-card-chosen-icon {
+    font-size: 11px;
+    line-height: 1;
+    font-weight: 800;
+}

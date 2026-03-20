@@ -30,6 +30,7 @@ interface Package {
     package_name: string;
     company_name: string | null;
     compliance_score: number | null;
+    is_chosen: boolean;
     status: string | null;
     run_count: number;
     last_checked_at: string | null;
@@ -355,6 +356,7 @@ interface SidebarProps {
     onSubmittalDragStart: (e: React.DragEvent, pkg: Package, sub: Submittal) => void;
     onSubmittalDragEnd: () => void;
     onComparisonClick: (c: ComparisonSummary) => void;
+    onChosenToggle: (pkg: Package, e: React.MouseEvent) => void;
 }
 
 function Sidebar({
@@ -374,6 +376,7 @@ function Sidebar({
     onSubmittalDragStart,
     onSubmittalDragEnd,
     onComparisonClick,
+    onChosenToggle,
 }: SidebarProps) {
     const [activeTab, setActiveTab] = useState<"packages" | "comparisons">("packages");
 
@@ -423,12 +426,24 @@ function Sidebar({
 
                                 return (
                                     <div key={pkg.id} className="pkg-sidebar-group">
-                                        {/* Package card */}
-                                        <button
+                                        <div
                                             className={`pkg-card${pkg.id === activePackageId ? " active" : ""}`}
                                             onClick={() => onPackageClick(pkg)}
+                                            role="button"
+                                            tabIndex={0}
+                                            onKeyDown={(e) => e.key === "Enter" && onPackageClick(pkg)}
                                         >
                                             <div className="pkg-card-top">
+                                                <button
+                                                    className={`pkg-card-chosen-btn${pkg.is_chosen ? " chosen" : ""}`}
+                                                    title={pkg.is_chosen ? "Unmark as chosen" : "Mark as chosen"}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onChosenToggle(pkg, e);
+                                                    }}
+                                                >
+                                                    <span className="pkg-card-chosen-icon">✓</span>
+                                                </button>
                                                 <div className="pkg-card-info">
                                                     <span className="pkg-card-name">{pkg.package_name}</span>
                                                     {pkg.company_name && (
@@ -447,7 +462,6 @@ function Sidebar({
                                                     }
                                                 </div>
                                             </div>
-                                            {/* Score bar */}
                                             {score !== null && (
                                                 <div className="pkg-card-bar-track">
                                                     <div
@@ -459,12 +473,11 @@ function Sidebar({
                                                     />
                                                 </div>
                                             )}
-                                        </button>
+                                        </div>
 
-                                        {/* Expanded submittals */}
+                                        {/* Fix 2: restore full tree */}
                                         {isExpanded && pkg.submittals.length > 0 && (
                                             <div className="pkg-tree">
-                                                {/* Cumulative */}
                                                 <div className="pkg-tree-line">
                                                     <div className="pkg-tree-connector" />
                                                     <div
@@ -493,7 +506,6 @@ function Sidebar({
                                                     </div>
                                                 </div>
 
-                                                {/* Individual submittals */}
                                                 {pkg.submittals.map((sub, idx) => (
                                                     <div key={sub.id} className="pkg-tree-line">
                                                         <div className={`pkg-tree-connector${idx === pkg.submittals.length - 1 ? " last" : ""}`} />
@@ -603,6 +615,7 @@ export default function Packages() {
         rightTarget?.type === "package" &&
         leftTarget.packageId !== rightTarget?.packageId;
 
+    // In fetchPackages, after setting packages:
     const fetchPackages = useCallback(async () => {
         if (!section_id) return;
         try {
@@ -614,9 +627,11 @@ export default function Packages() {
             if (urlId && pkgs.find((p) => p.id === urlId)) {
                 setActivePackageId(urlId);
                 setExpandedPackageIds(new Set([urlId]));
+                setLeftTarget({ type: "package", packageId: urlId });
             } else if (pkgs.length > 0) {
                 setActivePackageId(pkgs[0].id);
                 setExpandedPackageIds(new Set([pkgs[0].id]));
+                setLeftTarget({ type: "package", packageId: pkgs[0].id });
             }
         } finally {
             setLoading(false);
@@ -633,19 +648,48 @@ export default function Packages() {
     useEffect(() => { fetchPackages(); }, [fetchPackages]);
     useEffect(() => { fetchComparisons(); }, [fetchComparisons]);
 
-    useEffect(() => {
-        if (dragState) return;
-        setLeftTarget({ type: "package", packageId: activePackageId ?? 0 });
-        setRightTarget(null);
-    }, [activePackageId]);
+    // useEffect(() => {
+    //     if (dragState) return;
+    //     setLeftTarget({ type: "package", packageId: activePackageId ?? 0 });
+    //     setRightTarget(null);
+    // }, [activePackageId]);
 
     const handlePackageClick = (pkg: Package) => {
-        setActivePackageId(pkg.id);
         setExpandedPackageIds((prev) => {
             const next = new Set(prev);
             next.has(pkg.id) ? next.delete(pkg.id) : next.add(pkg.id);
             return next;
         });
+    };
+
+    const handleChosenToggle = async (pkg: Package, e: React.MouseEvent) => {
+        e.stopPropagation();
+        const next = !pkg.is_chosen;
+
+        // Optimistic update
+        setPackages((prev) =>
+            prev.map((p) => p.id === pkg.id ? { ...p, is_chosen: next } : p)
+        );
+
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/submittal/package/${pkg.id}/chosen`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ is_chosen: next }),
+            });
+            if (!res.ok) {
+                toast.error("Failed to update package.");
+                // Revert
+                setPackages((prev) =>
+                    prev.map((p) => p.id === pkg.id ? { ...p, is_chosen: !next } : p)
+                );
+            }
+        } catch {
+            toast.error("Network error.");
+            setPackages((prev) =>
+                prev.map((p) => p.id === pkg.id ? { ...p, is_chosen: !next } : p)
+            );
+        }
     };
 
     const handleDragStart = (pkg: Package, sub: Submittal) => {
@@ -773,6 +817,7 @@ export default function Packages() {
                         onSubmittalDragStart={(e, pkg, sub) => handleDragStart(pkg, sub)}
                         onSubmittalDragEnd={handleDragEnd}
                         onComparisonClick={(c) => setLeftTarget({ type: "comparison", comparisonId: c.id })}
+                        onChosenToggle={(pkg, e) => handleChosenToggle(pkg, e)}
                     />
 
                     {!activePackage && leftTarget.type !== "comparison" ? (

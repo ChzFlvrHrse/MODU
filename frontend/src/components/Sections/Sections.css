@@ -75,12 +75,27 @@
     max-width: 720px;
 }
 
+.sections-subtitle-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 4px;
+}
+
 .sections-subtitle {
     margin: 0;
     color: rgba(255, 255, 255, 0.42);
     font-size: 13px;
     letter-spacing: 0.04em;
     text-transform: uppercase;
+}
+
+.sections-subtitle-progress {
+    font-size: 11px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.38);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
 }
 
 .sections-controls {
@@ -120,7 +135,7 @@
     background-color: #20232c;
 }
 
-/* layout */
+/* ── Layout ─────────────────────────────────────────────── */
 
 .sections-layout {
     display: grid;
@@ -129,7 +144,7 @@
     align-items: start;
 }
 
-/* rail */
+/* ── Division rail ───────────────────────────────────────── */
 
 .division-rail-card {
     border-radius: 28px;
@@ -249,7 +264,28 @@
     color: rgba(255,255,255,0.62);
 }
 
-/* main content */
+/* ── Division progress bar ───────────────────────────────── */
+
+.division-progress-bar {
+    height: 3px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 999px;
+    overflow: hidden;
+    margin-top: 10px;
+}
+
+.division-progress-bar__fill {
+    height: 100%;
+    border-radius: 999px;
+    transition: width 0.4s ease, background 0.4s ease;
+}
+
+.division-progress-bar__fill--high   { background: #3fb950; }
+.division-progress-bar__fill--mid    { background: #d29922; }
+.division-progress-bar__fill--low    { background: #62a8ff; }
+.division-progress-bar__fill--zero   { background: rgba(255,255,255,0.10); }
+
+/* ── Main content ────────────────────────────────────────── */
 
 .sections-main {
     min-width: 0;
@@ -266,6 +302,24 @@
     background: rgba(255,255,255,0.03);
 }
 
+.sections-main-header-card--column {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+}
+
+.sections-main-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.sections-main-header-meta-group {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
 .sections-main-header-title {
     font-size: 16px;
     font-weight: 700;
@@ -278,7 +332,7 @@
     color: rgba(255,255,255,0.50);
 }
 
-/* grid */
+/* ── Section grid ────────────────────────────────────────── */
 
 .section-grid {
     display: grid;
@@ -286,7 +340,7 @@
     gap: 18px;
 }
 
-/* cards */
+/* ── Section cards ───────────────────────────────────────── */
 
 .system-card {
     border-radius: 26px;
@@ -298,7 +352,6 @@
 .section-card {
     display: flex;
     flex-direction: column;
-    /* min-height: 320px; */
     padding: 24px;
     transition:
         transform 0.16s ease,
@@ -347,7 +400,7 @@
     color: rgba(255,255,255,0.97);
 }
 
-/* status */
+/* ── Section status ──────────────────────────────────────── */
 
 .section-card-status {
     display: flex;
@@ -361,20 +414,16 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-
     padding: 6px 11px;
     border-radius: 999px;
-
     font-size: 10px;
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
     line-height: 1;
-
     border: 1px solid transparent;
     background: rgba(255,255,255,0.04);
     color: rgba(255,255,255,0.78);
-
     white-space: nowrap;
 }
 
@@ -410,7 +459,60 @@
     border-color: rgba(255,255,255,0.10);
 }
 
-/* metrics */
+/* ── Lifecycle pill ──────────────────────────────────────── */
+
+.lifecycle-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    line-height: 1;
+    cursor: pointer;
+    font-family: inherit;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+    white-space: nowrap;
+}
+
+.lifecycle-pill:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.lifecycle-pill:not(:disabled):hover {
+    transform: translateY(-1px);
+    opacity: 0.88;
+}
+
+.lifecycle-pill--pending {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.10);
+    color: rgba(255,255,255,0.42);
+}
+
+.lifecycle-pill--in_progress {
+    background: rgba(98,168,255,0.10);
+    border: 1px solid rgba(98,168,255,0.22);
+    color: rgba(98,168,255,0.96);
+}
+
+.lifecycle-pill--complete {
+    background: rgba(63,185,80,0.10);
+    border: 1px solid rgba(63,185,80,0.24);
+    color: #3fb950;
+}
+
+.lifecycle-pill--excluded {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.28);
+}
+
+/* ── Metrics ─────────────────────────────────────────────── */
 
 .metrics-row-sections {
     display: flex;
@@ -442,7 +544,7 @@
     height: 36px;
 }
 
-/* actions */
+/* ── Actions ─────────────────────────────────────────────── */
 
 .section-actions {
     display: flex;
@@ -493,7 +595,7 @@
     transform: none;
 }
 
-/* empty */
+/* ── Empty ───────────────────────────────────────────────── */
 
 .sections-empty {
     padding: 18px;
@@ -503,7 +605,7 @@
     background: rgba(255,255,255,0.02);
 }
 
-/* responsive */
+/* ── Responsive ──────────────────────────────────────────── */
 
 @media (max-width: 1100px) {
     .sections-layout {
