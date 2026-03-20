@@ -434,28 +434,49 @@ function Sidebar({
                                             onKeyDown={(e) => e.key === "Enter" && onPackageClick(pkg)}
                                         >
                                             <div className="pkg-card-top">
-                                                <button
-                                                    className={`pkg-card-chosen-btn${pkg.is_chosen ? " chosen" : ""}`}
-                                                    title={pkg.is_chosen ? "Unmark as chosen" : "Mark as chosen"}
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        onChosenToggle(pkg, e);
-                                                    }}
-                                                >
-                                                    <span className="pkg-card-chosen-icon">✓</span>
-                                                </button>
                                                 <div className="pkg-card-info">
-                                                    <span className="pkg-card-name">{pkg.package_name}</span>
+                                                    <div className="pkg-card-name-row">
+                                                        <span className="pkg-card-name">{pkg.package_name}</span>
+
+                                                        {pkg.is_chosen && (
+                                                            <button
+                                                                className="pkg-card-selected-badge"
+                                                                title="Unmark as chosen"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    onChosenToggle(pkg, e);
+                                                                }}
+                                                            >
+                                                                Selected
+                                                            </button>
+                                                        )}
+                                                    </div>
+
                                                     {pkg.company_name && (
                                                         <span className="pkg-card-company">{pkg.company_name}</span>
                                                     )}
                                                 </div>
+
                                                 <div className="pkg-card-right">
+                                                    {!pkg.is_chosen && (
+                                                        <button
+                                                            className="pkg-card-select-link"
+                                                            title="Mark as chosen"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                onChosenToggle(pkg, e);
+                                                            }}
+                                                        >
+                                                            Select
+                                                        </button>
+                                                    )}
+
                                                     {score !== null && (
                                                         <span className="pkg-card-score" style={{ color: scoreColor ?? undefined }}>
                                                             {Math.round(score * 100)}%
                                                         </span>
                                                     )}
+
                                                     {isExpanded
                                                         ? <ExpandLess fontSize="small" sx={{ color: "rgba(255,255,255,0.3)", flexShrink: 0 }} />
                                                         : <ExpandMore fontSize="small" sx={{ color: "rgba(255,255,255,0.3)", flexShrink: 0 }} />

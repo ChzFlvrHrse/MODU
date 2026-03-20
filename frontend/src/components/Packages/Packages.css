@@ -1537,38 +1537,64 @@
 
 /* ── Chosen toggle ──────────────────────────────────────── */
 
-.pkg-card-chosen-btn {
+.pkg-card-name-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.pkg-card-selected-badge {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 20px;
-    height: 20px;
+    padding: 4px 8px;
     border-radius: 999px;
-    border: 1.5px solid rgba(255,255,255,0.18);
+    border: 1px solid rgba(63, 185, 80, 0.24);
+    background: rgba(63, 185, 80, 0.10);
+    color: #7df5b4;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+    flex-shrink: 0;
+    cursor: pointer;
+    transition:
+        background 0.15s ease,
+        border-color 0.15s ease,
+        transform 0.15s ease;
+}
+
+.pkg-card-selected-badge:hover {
+    background: rgba(63, 185, 80, 0.16);
+    border-color: rgba(63, 185, 80, 0.34);
+    transform: translateY(-1px);
+}
+
+.pkg-card-select-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: none;
     background: transparent;
-    color: transparent;
+    color: #93c5fd;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
     cursor: pointer;
     flex-shrink: 0;
-    transition:
-        border-color 0.15s ease,
-        background 0.15s ease,
-        color 0.15s ease;
-    padding: 0;
+    transition: color 0.15s ease, opacity 0.15s ease;
 }
 
-.pkg-card-chosen-btn:hover {
-    border-color: rgba(63,185,80,0.5);
-    background: rgba(63,185,80,0.06);
+.pkg-card-select-link:hover {
+    color: #bfdbfe;
 }
 
-.pkg-card-chosen-btn.chosen {
-    border-color: #3fb950;
-    background: rgba(63,185,80,0.14);
-    color: #3fb950;
-}
-
-.pkg-card-chosen-icon {
-    font-size: 11px;
-    line-height: 1;
-    font-weight: 800;
+.pkg-card-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
 }
