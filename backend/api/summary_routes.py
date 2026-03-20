@@ -3,7 +3,7 @@ import json
 from urllib.parse import unquote
 from classes import db, S3Bucket
 from prompts import SUMMARY_PROMPT
-from quart import Blueprint, jsonify
+from quart import Blueprint, jsonify, request
 from classes import Anthropic, make_summary_schema
 from csi_masterformat import divisions_and_sections
 
@@ -28,8 +28,12 @@ async def section_summary(section_id: int):
 # NOTE: Consider using 2 prompts for all_contiguous vs not all_contiguous scenarios
 
 
-@summary_routes_bp.route("/generate_section_summary/<spec_id>/<section_number>", methods=["POST"])
-async def generate_section_summary(spec_id: str, section_number: str):
+@summary_routes_bp.route("/generate_section_summary", methods=["POST"])
+async def generate_section_summary():
+    data: dict = await request.get_json()
+    spec_id: str = data.get("spec_id")
+    section_number: str = data.get("section_number")
+
     try:
         s3 = S3Bucket()
         section = await db.get_section(spec_id, section_number)
@@ -44,7 +48,8 @@ async def generate_section_summary(spec_id: str, section_number: str):
         if not summary_pages:
             return jsonify({"error": "No pages available to summarize"}), 404
 
-        existing_summary = await db.get_section_summary(spec_id, section_number)
+        section_id = section.get("id")
+        existing_summary = await db.get_section_summary(section_id)
         if existing_summary:
             logger.info(f"Existing summary found for {section_number}")
             return jsonify({"existing_summary": existing_summary}), 200
@@ -59,17 +64,16 @@ async def generate_section_summary(spec_id: str, section_number: str):
 
         async with s3.s3_client() as s3_client:
             for group in summary_page_groups:
-                async for page in s3.get_converted_pages_generator_with_client(
-                    spec_id, s3_client, group[0], group[-1] + 1
-                ):
-                    content_blocks.extend(
-                        anthropic.page_blocks(page["page_index"], page["text"], page["bytes"], page["media_type"]))
+                for page_index in range(group[0], group[-1] + 1):
+                    key = f"{spec_id}/original_pages/page_{page_index:04d}.pdf"
+                    url = await s3.generate_presigned_url(key, s3_client)
+                    content_blocks.append(anthropic.pdf_document_block_url(url))
 
         spec_summary = await anthropic.claude(
             content_blocks,
             system_prompt=resolved_prompt,
             schema=schema,
-            max_tokens=8192
+            max_tokens=10000
         )
 
         if spec_summary.get("status") == "success":
