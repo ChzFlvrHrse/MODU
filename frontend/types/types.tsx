@@ -8,6 +8,7 @@ export interface Project {
     sections_with_reference: number;
     classification_status: string;
     summary_status: string;
+    project_completion_score: number | null;
     errors: number;
     created_at: string;
     updated_at: string;

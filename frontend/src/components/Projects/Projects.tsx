@@ -15,6 +15,71 @@ interface ProjectsProps {
   setProjectsComplete: (projectsComplete: boolean) => void;
 }
 
+// ── Donut ──────────────────────────────────────────────────────────────────────
+
+function LifecycleDonut({ score }: { score: number }) {
+  const size = 48;
+  const strokeWidth = 4;
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const filled = circumference * score;
+  const empty = circumference - filled;
+
+  const color =
+    score >= 0.8 ? "#3fb950" :
+      score >= 0.5 ? "#d29922" :
+        score > 0 ? "#62a8ff" :
+          "rgba(255,255,255,0.12)";
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, flexShrink: 0 }}>
+      <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
+        {/* Track */}
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke="rgba(255,255,255,0.07)"
+          strokeWidth={strokeWidth}
+        />
+        {/* Fill */}
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke={color}
+          strokeWidth={strokeWidth}
+          strokeDasharray={`${filled} ${empty}`}
+          strokeLinecap="round"
+          style={{ transition: "stroke-dasharray 0.4s ease" }}
+        />
+        {/* Center label — counter-rotate so text is upright */}
+        <text
+          x="50%"
+          y="50%"
+          textAnchor="middle"
+          dominantBaseline="central"
+          style={{
+            transform: "rotate(90deg)",
+            transformOrigin: "center",
+            fontSize: "10px",
+            fontWeight: 700,
+            fill: color,
+            fontFamily: "ui-monospace, monospace",
+          }}
+        >
+          {Math.round(score * 100)}%
+        </text>
+      </svg>
+      <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.10em", color: "rgba(255,255,255,0.32)" }}>
+        Progress
+      </span>
+    </div>
+  );
+}
+
 export default function Projects({ projectsComplete, setProjectsComplete }: ProjectsProps) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -183,17 +248,20 @@ export default function Projects({ projectsComplete, setProjectsComplete }: Proj
                   </div>
                 </div>
 
-                <button
-                  className="delete-project-btn"
-                  title="Delete project"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    showDeleteModal(p.spec_id);
-                  }}
-                >
-                  <DeleteRounded />
-                </button>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                  <LifecycleDonut score={p.project_completion_score ?? 0} />
+                  <button
+                    className="delete-project-btn"
+                    title="Delete project"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      showDeleteModal(p.spec_id);
+                    }}
+                  >
+                    <DeleteRounded />
+                  </button>
+                </div>
               </div>
 
               <div className="project-card-status">
