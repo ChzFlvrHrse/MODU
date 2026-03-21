@@ -172,13 +172,10 @@ function CompliancePane({
         try {
             if (target.type === "package") {
                 const res = await fetch(`${BACKEND_URL}/api/submittal/compliance_runs_for_package?package_id=${target.packageId}&run_type=package`);
-                if (!res.ok) {
-                    setRuns([]);
-                    return;
-                }
+                if (!res.ok) { setRuns([]); return; }
                 const data = await res.json();
                 const runs = data.compliance_runs ?? [];
-                if (data.compliance_runs?.length > 0) {
+                if (runs.length > 0) {
                     setRuns([{
                         id: runs[0].id,
                         compliance_result: runs[0].compliance_result,
@@ -202,9 +199,7 @@ function CompliancePane({
         }
     }, [target]);
 
-    useEffect(() => {
-        fetchRuns();
-    }, [fetchRuns]);
+    useEffect(() => { fetchRuns(); }, [fetchRuns]);
 
     const handleRun = async () => {
         if (target.type === "comparison") return;
@@ -216,9 +211,7 @@ function CompliancePane({
                 section_id,
                 section_number,
             };
-            if (target.type === "submittal") {
-                body.submittal_ids = [target.submittalId];
-            }
+            if (target.type === "submittal") body.submittal_ids = [target.submittalId];
             const res = await fetch(`${BACKEND_URL}/api/submittal/compliance_check`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -245,12 +238,10 @@ function CompliancePane({
             ? (packages.find(p => p.id === target.packageId)?.package_name ?? "Package")
             : target.submittalTitle;
 
-    const sublabel = target.type === "comparison"
-        ? "comparison"
+    const sublabel = target.type === "comparison" ? "comparison"
         : target.type === "package" ? "package" : "submittal";
 
-    const sublabelText = target.type === "comparison"
-        ? "Submittal Comparison"
+    const sublabelText = target.type === "comparison" ? "Submittal Comparison"
         : target.type === "package" ? "Full Package" : "Individual Submittal";
 
     return (
@@ -281,11 +272,10 @@ function CompliancePane({
                             onClick={handleRun}
                             disabled={running}
                         >
-                            {running ? (
-                                <><CircularProgress size={12} sx={{ color: "inherit" }} /> Running…</>
-                            ) : (
-                                <><FactCheckIcon fontSize="small" /> Run Check</>
-                            )}
+                            {running
+                                ? <><CircularProgress size={12} sx={{ color: "inherit" }} /> Running…</>
+                                : <><FactCheckIcon fontSize="small" /> Run Check</>
+                            }
                         </button>
                     )}
                     {onClose && (
@@ -356,7 +346,11 @@ interface SidebarProps {
     onSubmittalDragStart: (e: React.DragEvent, pkg: Package, sub: Submittal) => void;
     onSubmittalDragEnd: () => void;
     onComparisonClick: (c: ComparisonSummary) => void;
-    onChosenToggle: (pkg: Package, e: React.MouseEvent) => void;
+    selectedPackageIds: Set<number>;
+    packagesChanged: boolean;
+    committing: boolean;
+    onPackageSelect: (pkg: Package, e: React.MouseEvent) => void;
+    onCommit: () => void;
 }
 
 function Sidebar({
@@ -376,13 +370,16 @@ function Sidebar({
     onSubmittalDragStart,
     onSubmittalDragEnd,
     onComparisonClick,
-    onChosenToggle,
+    selectedPackageIds,
+    packagesChanged,
+    committing,
+    onPackageSelect,
+    onCommit,
 }: SidebarProps) {
     const [activeTab, setActiveTab] = useState<"packages" | "comparisons">("packages");
 
     return (
         <div className="pkg-sidebar">
-            {/* Tabs */}
             <div className="pkg-sidebar-tabs">
                 <button
                     className={`pkg-sidebar-tab${activeTab === "packages" ? " active" : ""}`}
@@ -402,7 +399,6 @@ function Sidebar({
                 </button>
             </div>
 
-            {/* Tab content */}
             <div className="pkg-sidebar-body">
                 {activeTab === "packages" && (
                     <>
@@ -418,6 +414,7 @@ function Sidebar({
                         ) : (
                             packages.map((pkg) => {
                                 const isExpanded = expandedPackageIds.has(pkg.id);
+                                const isSelected = selectedPackageIds.has(pkg.id);
                                 const score = pkg.compliance_score;
                                 const scoreColor = score === null ? null
                                     : score >= 0.7 ? "#3fb950"
@@ -427,7 +424,7 @@ function Sidebar({
                                 return (
                                     <div key={pkg.id} className="pkg-sidebar-group">
                                         <div
-                                            className={`pkg-card${pkg.id === activePackageId ? " active" : ""}`}
+                                            className={`pkg-card${pkg.id === activePackageId ? " active" : ""}${(isSelected) ? " selected" : ""}`}
                                             onClick={() => onPackageClick(pkg)}
                                             role="button"
                                             tabIndex={0}
@@ -435,48 +432,30 @@ function Sidebar({
                                         >
                                             <div className="pkg-card-top">
                                                 <div className="pkg-card-info">
-                                                    <div className="pkg-card-name-row">
-                                                        <span className="pkg-card-name">{pkg.package_name}</span>
-
-                                                        {pkg.is_chosen && (
-                                                            <button
-                                                                className="pkg-card-selected-badge"
-                                                                title="Unmark as chosen"
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    onChosenToggle(pkg, e);
-                                                                }}
-                                                            >
-                                                                Selected
-                                                            </button>
-                                                        )}
-                                                    </div>
-
+                                                    <span className="pkg-card-name">{pkg.package_name}</span>
                                                     {pkg.company_name && (
                                                         <span className="pkg-card-company">{pkg.company_name}</span>
                                                     )}
-                                                </div>
-
-                                                <div className="pkg-card-right">
-                                                    {!pkg.is_chosen && (
-                                                        <button
-                                                            className="pkg-card-select-link"
-                                                            title="Mark as chosen"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                onChosenToggle(pkg, e);
-                                                            }}
-                                                        >
-                                                            Select
-                                                        </button>
+                                                    {(pkg.is_chosen === true) && (
+                                                        <span className="pkg-card-committed">committed</span>
                                                     )}
-
+                                                </div>
+                                                <div className="pkg-card-right">
                                                     {score !== null && (
                                                         <span className="pkg-card-score" style={{ color: scoreColor ?? undefined }}>
                                                             {Math.round(score * 100)}%
                                                         </span>
                                                     )}
-
+                                                    <button
+                                                        className={`pkg-card-select-btn${isSelected ? " selected" : ""}`}
+                                                        title={isSelected ? "Deselect" : "Select"}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            onPackageSelect(pkg, e);
+                                                        }}
+                                                    >
+                                                        <span className="pkg-card-select-icon">✓</span>
+                                                    </button>
                                                     {isExpanded
                                                         ? <ExpandLess fontSize="small" sx={{ color: "rgba(255,255,255,0.3)", flexShrink: 0 }} />
                                                         : <ExpandMore fontSize="small" sx={{ color: "rgba(255,255,255,0.3)", flexShrink: 0 }} />
@@ -496,7 +475,6 @@ function Sidebar({
                                             )}
                                         </div>
 
-                                        {/* Fix 2: restore full tree */}
                                         {isExpanded && pkg.submittals.length > 0 && (
                                             <div className="pkg-tree">
                                                 <div className="pkg-tree-line">
@@ -566,13 +544,30 @@ function Sidebar({
                                 );
                             })
                         )}
+
+                        {(selectedPackageIds.size > 0 && packagesChanged) && (
+                            <div className="pkg-commit-footer">
+                                <button
+                                    className={`pkg-commit-btn${committing ? " loading" : ""}`}
+                                    onClick={onCommit}
+                                    disabled={committing}
+                                >
+                                    {committing
+                                        ? <><CircularProgress size={12} sx={{ color: "inherit" }} /> Committing…</>
+                                        : <>✓ Commit {selectedPackageIds.size} Package{selectedPackageIds.size > 1 ? "s" : ""}</>
+                                    }
+                                </button>
+                            </div>
+                        )}
                     </>
                 )}
 
                 {activeTab === "comparisons" && (
                     <>
                         {comparisons.length === 0 ? (
-                            <div className="pkg-sidebar-empty">No comparisons yet.<br />Load two packages and run a comparison.</div>
+                            <div className="pkg-sidebar-empty">
+                                No comparisons yet.<br />Load two packages and run a comparison.
+                            </div>
                         ) : (
                             comparisons.map((c) => (
                                 <button
@@ -617,10 +612,13 @@ export default function Packages() {
     const [comparisons, setComparisons] = useState<ComparisonSummary[]>([]);
     const [runningComparison, setRunningComparison] = useState(false);
     const [showCreatePackage, setShowCreatePackage] = useState(false);
-    const [leftTarget, setLeftTarget] = useState<PaneTarget>({ type: "package", packageId: activePackageId ?? 0 });
+    const [leftTarget, setLeftTarget] = useState<PaneTarget>({ type: "package", packageId: 0 });
     const [rightTarget, setRightTarget] = useState<PaneTarget | null>(null);
     const [dragState, setDragState] = useState<DragState | null>(null);
     const [dragOverPane, setDragOverPane] = useState<"left" | "right" | null>(null);
+    const [selectedPackageIds, setSelectedPackageIds] = useState<Set<number>>(new Set());
+    const [originalPackageIds, setOriginalPackageIds] = useState<Set<number>>(new Set());
+    const [committingPackages, setCommittingPackages] = useState(false);
 
     const didDrag = useRef(false);
 
@@ -636,7 +634,6 @@ export default function Packages() {
         rightTarget?.type === "package" &&
         leftTarget.packageId !== rightTarget?.packageId;
 
-    // In fetchPackages, after setting packages:
     const fetchPackages = useCallback(async () => {
         if (!section_id) return;
         try {
@@ -644,6 +641,12 @@ export default function Packages() {
             const data = await res.json();
             const pkgs: Package[] = data.packages ?? [];
             setPackages(pkgs);
+
+            const alreadyChosen = pkgs.filter((p) => p.is_chosen).map((p) => p.id);
+
+            setOriginalPackageIds(new Set(alreadyChosen));
+            setSelectedPackageIds(new Set(alreadyChosen));
+
             const urlId = package_id ? parseInt(package_id) : null;
             if (urlId && pkgs.find((p) => p.id === urlId)) {
                 setActivePackageId(urlId);
@@ -659,6 +662,8 @@ export default function Packages() {
         }
     }, [section_id, package_id]);
 
+    console.log(selectedPackageIds);
+
     const fetchComparisons = useCallback(async () => {
         if (!section_id) return;
         const res = await fetch(`${BACKEND_URL}/api/submittal/get_compliance_comparisons_list?section_id=${section_id}`);
@@ -669,12 +674,6 @@ export default function Packages() {
     useEffect(() => { fetchPackages(); }, [fetchPackages]);
     useEffect(() => { fetchComparisons(); }, [fetchComparisons]);
 
-    // useEffect(() => {
-    //     if (dragState) return;
-    //     setLeftTarget({ type: "package", packageId: activePackageId ?? 0 });
-    //     setRightTarget(null);
-    // }, [activePackageId]);
-
     const handlePackageClick = (pkg: Package) => {
         setExpandedPackageIds((prev) => {
             const next = new Set(prev);
@@ -683,33 +682,36 @@ export default function Packages() {
         });
     };
 
-    const handleChosenToggle = async (pkg: Package, e: React.MouseEvent) => {
+    const handlePackageSelect = (pkg: Package, e: React.MouseEvent) => {
         e.stopPropagation();
-        const next = !pkg.is_chosen;
+        setSelectedPackageIds((prev) => {
+            const next = new Set(prev);
+            next.has(pkg.id) ? next.delete(pkg.id) : next.add(pkg.id);
+            return next;
+        });
+    };
 
-        // Optimistic update
-        setPackages((prev) =>
-            prev.map((p) => p.id === pkg.id ? { ...p, is_chosen: next } : p)
-        );
-
+    const handleCommit = async () => {
+        setCommittingPackages(true);
         try {
-            const res = await fetch(`${BACKEND_URL}/api/submittal/package/${pkg.id}/chosen`, {
-                method: "PATCH",
+            const res = await fetch(`${BACKEND_URL}/api/submittal/commit_section_packages`, {
+                method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ is_chosen: next }),
+                body: JSON.stringify({
+                    section_id: parseInt(section_id),
+                    chosen_package_ids: Array.from(selectedPackageIds),
+                }),
             });
             if (!res.ok) {
-                toast.error("Failed to update package.");
-                // Revert
-                setPackages((prev) =>
-                    prev.map((p) => p.id === pkg.id ? { ...p, is_chosen: !next } : p)
-                );
+                toast.error("Failed to commit packages.");
+                return;
             }
+            toast.success("Packages committed.");
+            await fetchPackages();
         } catch {
-            toast.error("Network error.");
-            setPackages((prev) =>
-                prev.map((p) => p.id === pkg.id ? { ...p, is_chosen: !next } : p)
-            );
+            toast.error("Network error committing packages.");
+        } finally {
+            setCommittingPackages(false);
         }
     };
 
@@ -746,16 +748,14 @@ export default function Packages() {
 
     const handleRunComparison = async () => {
         if (leftTarget.type !== "package" || rightTarget?.type !== "package") return;
-        const package_id_1 = leftTarget.packageId;
-        const package_id_2 = rightTarget.packageId;
         setRunningComparison(true);
         try {
             const res = await fetch(`${BACKEND_URL}/api/submittal/compare_compliance`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    package_id_1,
-                    package_id_2,
+                    package_id_1: leftTarget.packageId,
+                    package_id_2: rightTarget.packageId,
                     section_id,
                     section_number,
                 }),
@@ -774,6 +774,11 @@ export default function Packages() {
             setRunningComparison(false);
         }
     };
+
+    const packagesChanged = useMemo(() => {
+        if (originalPackageIds.size !== selectedPackageIds.size) return true;
+        return Array.from(selectedPackageIds).some((id) => !originalPackageIds.has(id));
+    }, [originalPackageIds, selectedPackageIds]);
 
     return (
         <>
@@ -798,11 +803,10 @@ export default function Packages() {
                                 onClick={handleRunComparison}
                                 disabled={runningComparison}
                             >
-                                {runningComparison ? (
-                                    <><CircularProgress size={12} sx={{ color: "inherit" }} /> Comparing…</>
-                                ) : (
-                                    <><CompareArrows fontSize="small" /> Run Comparison</>
-                                )}
+                                {runningComparison
+                                    ? <><CircularProgress size={12} sx={{ color: "inherit" }} /> Comparing…</>
+                                    : <><CompareArrows fontSize="small" /> Run Comparison</>
+                                }
                             </button>
                         )}
                         <button
@@ -838,7 +842,11 @@ export default function Packages() {
                         onSubmittalDragStart={(e, pkg, sub) => handleDragStart(pkg, sub)}
                         onSubmittalDragEnd={handleDragEnd}
                         onComparisonClick={(c) => setLeftTarget({ type: "comparison", comparisonId: c.id })}
-                        onChosenToggle={(pkg, e) => handleChosenToggle(pkg, e)}
+                        selectedPackageIds={selectedPackageIds}
+                        packagesChanged={packagesChanged}
+                        committing={committingPackages}
+                        onPackageSelect={handlePackageSelect}
+                        onCommit={handleCommit}
                     />
 
                     {!activePackage && leftTarget.type !== "comparison" ? (
@@ -959,7 +967,7 @@ function ComplianceReport({ result, run }: { result: ComplianceResult; run: Comp
                                 {result.is_compliant ? "✓ Compliant" : "✕ Non-Compliant"}
                             </div>
                             <span className="pkg-report-meta">
-                                {run.pipeline} · {new Date(run.created_at).toLocaleString()}
+                                {run.pipeline} · {new Date(run.created_at).toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}
                             </span>
                         </div>
                         <p className="pkg-report-summary-text">{result.summary}</p>
@@ -1044,7 +1052,9 @@ function ComplianceReport({ result, run }: { result: ComplianceResult; run: Comp
 
             {result.reviewer_notes && (
                 <ReportSection title="Reviewer Notes">
-                    <div className="pkg-reviewer-notes">{result.reviewer_notes}</div>
+                    <div className="pkg-reviewer-notes">
+                        {result.reviewer_notes}
+                    </div>
                 </ReportSection>
             )}
         </div>
