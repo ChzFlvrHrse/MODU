@@ -14,6 +14,7 @@ interface SubmittalPackage {
     company_name: string | null;
     status: string;
     compliance_score: number | null;
+    is_chosen: boolean;
     created_at: string;
 }
 
@@ -57,6 +58,8 @@ function PackagesList({
         fetchPackages();
     }, [section_id]);
 
+    console.log(packages);
+
     if (loading) {
         return (
             <div className="pm-loading">
@@ -99,8 +102,9 @@ function PackagesList({
                                 {Math.round(pkg.compliance_score * 100)}%
                             </span>
                         )}
-                        <span className="pm-package-status">
-                            {pkg.status ? `Compliance ${pkg.status}` : 'No compliance'}
+                        <span className={`pm-package-status ${pkg.is_chosen ? 'status-chosen' : ''}`}>
+                            {/* {pkg.status ? `Compliance ${pkg.status}` : 'No compliance'} */}
+                            {pkg.is_chosen ? 'COMMITED' : <></>}
                         </span>
                         <ChevronRight fontSize="small" sx={{ color: 'rgba(255,255,255,0.25)' }} />
                     </div>

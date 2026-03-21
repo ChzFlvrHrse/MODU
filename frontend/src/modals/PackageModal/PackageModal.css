@@ -333,16 +333,15 @@
     border: 1px solid rgba(231, 76, 60, 0.24);
 }
 
-.pm-package-status {
+.pm-package-status.status-chosen {
     font-family: var(--mono);
     font-size: 10px;
     font-weight: 600;
-    text-transform: uppercase;
     letter-spacing: 0.06em;
     color: var(--text-lo);
     padding: 4px 8px;
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.04);
+    background: rgba(63, 185, 79, 0.50);
     border: 1px solid var(--border);
     line-height: 1;
 }
