@@ -232,10 +232,12 @@ export default function Sections() {
                     s.section_number?.toLowerCase().includes(q);
                 const normalizedClassification = (s.classification_status ?? "none").toLowerCase();
                 const normalizedSummary = (s.summary_status ?? "none").toLowerCase();
+                const normalizedLifecycle = (s.lifecycle_status ?? "pending").toLowerCase();
                 const matchesStatus =
                     statusFilter === "all" ||
                     normalizedClassification === statusFilter ||
-                    normalizedSummary === statusFilter;
+                    normalizedSummary === statusFilter ||
+                    normalizedLifecycle === statusFilter;
                 return matchesQuery && matchesStatus;
             })
             .sort((a, b) => (a.section_number ?? "").localeCompare(b.section_number ?? ""));
@@ -402,9 +404,9 @@ export default function Sections() {
                                 <option value="all">ALL STATUSES</option>
                                 <option value="complete">COMPLETE</option>
                                 <option value="in progress">IN PROGRESS</option>
+                                <option value="excluded">EXCLUDED</option>
                                 <option value="pending">PENDING</option>
                                 <option value="error">ERROR</option>
-                                <option value="none">NONE</option>
                                 <option value="manual">MANUAL</option>
                                 <option value="failed">FAILED</option>
                             </select>

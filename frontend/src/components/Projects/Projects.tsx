@@ -5,7 +5,6 @@ import { Project } from '../../../types/types';
 import CircularProgress from '@mui/material/CircularProgress';
 import { DeleteRounded } from '@mui/icons-material';
 import DeleteModal from '../../modals/DeleteModal/DeleteModal';
-import ModuBrand from '../ModuBrand/ModuBrand';
 import LifecycleDonut from '../LifecycleDonut/LifecycleDonut';
 import './Projects.css';
 
@@ -44,6 +43,8 @@ export default function Projects({ projectsComplete, setProjectsComplete }: Proj
     setProjects(projects_data);
     checkAllProjectsStatus(projects_data);
   };
+
+  console.log(projects);
 
   const handleDeleteProject = async (e: React.MouseEvent<HTMLButtonElement>, spec_id: string) => {
     e.preventDefault();
@@ -117,9 +118,13 @@ export default function Projects({ projectsComplete, setProjectsComplete }: Proj
     <>
       {deleteModalOpen && (
         <DeleteModal
+          prefix='spec'
           item_type="project"
           spec_id={specId}
-          onClose={() => setDeleteModalOpen(false)}
+          onClose={() => {
+            setDeleteModalOpen(false);
+            fetchProjects();
+          }}
         />
       )}
 
