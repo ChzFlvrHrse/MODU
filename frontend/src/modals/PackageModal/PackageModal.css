@@ -334,16 +334,18 @@
 }
 
 .pm-package-status.status-chosen {
-    font-family: var(--mono);
+    display: inline-flex;
+    align-items: center;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: rgba(134, 239, 172, 0.82);
     font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.06em;
-    color: var(--text-lo);
-    padding: 4px 8px;
-    border-radius: 999px;
-    background: rgba(63, 185, 79, 0.50);
-    border: 1px solid var(--border);
+    font-weight: 700;
     line-height: 1;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
 }
 
 /* form */

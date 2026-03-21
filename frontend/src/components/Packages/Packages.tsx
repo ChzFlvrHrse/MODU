@@ -437,7 +437,7 @@ function Sidebar({
                                                         <span className="pkg-card-company">{pkg.company_name}</span>
                                                     )}
                                                     {(pkg.is_chosen === true) && (
-                                                        <span className="pkg-card-committed">committed</span>
+                                                        <span className="pkg-card-committed">Finalized</span>
                                                     )}
                                                 </div>
                                                 <div className="pkg-card-right">
@@ -545,7 +545,7 @@ function Sidebar({
                             })
                         )}
 
-                        {(selectedPackageIds.size > 0 && packagesChanged) && (
+                        {(packagesChanged) && (
                             <div className="pkg-commit-footer">
                                 <button
                                     className={`pkg-commit-btn${committing ? " loading" : ""}`}
@@ -554,7 +554,7 @@ function Sidebar({
                                 >
                                     {committing
                                         ? <><CircularProgress size={12} sx={{ color: "inherit" }} /> Committing…</>
-                                        : <>✓ Commit {selectedPackageIds.size} Package{selectedPackageIds.size > 1 ? "s" : ""}</>
+                                        : <>✓ Finalize Selection</>
                                     }
                                 </button>
                             </div>
@@ -661,8 +661,6 @@ export default function Packages() {
             setLoading(false);
         }
     }, [section_id, package_id]);
-
-    console.log(selectedPackageIds);
 
     const fetchComparisons = useCallback(async () => {
         if (!section_id) return;

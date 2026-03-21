@@ -58,8 +58,6 @@ function PackagesList({
         fetchPackages();
     }, [section_id]);
 
-    console.log(packages);
-
     if (loading) {
         return (
             <div className="pm-loading">
@@ -103,8 +101,7 @@ function PackagesList({
                             </span>
                         )}
                         <span className={`pm-package-status ${pkg.is_chosen ? 'status-chosen' : ''}`}>
-                            {/* {pkg.status ? `Compliance ${pkg.status}` : 'No compliance'} */}
-                            {pkg.is_chosen ? 'COMMITED' : <></>}
+                            {pkg.is_chosen ? '✓ Final' : <></>}
                         </span>
                         <ChevronRight fontSize="small" sx={{ color: 'rgba(255,255,255,0.25)' }} />
                     </div>

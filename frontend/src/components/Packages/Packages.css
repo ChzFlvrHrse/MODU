@@ -232,8 +232,8 @@
 }
 
 .pkg-card.selected {
-    border-color: rgba(63,185,80,0.28);
-    background: rgba(63,185,80,0.06);
+    border-color: rgba(92,120,255,0.28);
+    background: rgba(92,120,255,0.08);
 }
 
 .pkg-card-top {
@@ -272,10 +272,8 @@
 .pkg-card-committed {
     font-size: 9px;
     font-weight: 700;
-    text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: rgba(63,185,80,0.7);
-    font-family: ui-monospace, monospace;
+    color: rgba(255,255,255,0.4);
 }
 
 .pkg-card-right {
@@ -334,9 +332,10 @@
 }
 
 .pkg-card-select-btn.selected {
-    border-color: #3fb950;
-    background: rgba(63,185,80,0.14);
-    color: #3fb950;
+    border-color: #4ade80;
+    background: rgba(74,222,128,0.18);
+    color: #4ade80;
+    box-shadow: 0 0 0 2px rgba(74,222,128,0.12);
 }
 
 .pkg-card-select-icon {
@@ -541,12 +540,12 @@
     justify-content: center;
     gap: 6px;
     padding: 11px 16px;
-    background: rgba(63,185,80,0.14);
-    border: 1px solid rgba(63,185,80,0.28);
+    background: linear-gradient(180deg, rgba(74,222,128,0.22), rgba(74,222,128,0.12));
+    border: 1px solid rgba(74,222,128,0.4);
     border-radius: 14px;
-    color: #3fb950;
+    color: #4ade80;
     font-size: 13px;
-    font-weight: 700;
+    font-weight: 800;
     cursor: pointer;
     transition:
         background 0.16s ease,
