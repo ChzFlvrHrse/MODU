@@ -605,6 +605,9 @@ class ModuDB:
                     "section_title": row['section_title'],
                     "primary_pages": json.loads(row['primary_pages'] or '[]'),
                     "reference_pages": json.loads(row['reference_pages'] or '[]'),
+                    "chosen_packages": json.loads(row['chosen_packages'] or '[]'),
+                    "lifecycle_status": row['lifecycle_status'],
+                    "lifecycle_status_override": row['lifecycle_status_override'],
                     "classification_status": row['classification_status'],
                     "summary_status": row['summary_status'],
                     "created_at": row['created_at'],
@@ -1490,9 +1493,9 @@ class ModuDB:
                     """, (section_id, *chosen_package_ids))
 
                 # Set lifecycle to complete with override
-                await conn.execute("""
+                await conn.execute(f"""
                     UPDATE sections
-                    SET lifecycle_status = 'complete',
+                    SET lifecycle_status = '{'complete' if len(chosen_package_ids) > 0 else 'pending'}',
                         lifecycle_status_override = 1,
                         chosen_packages = ?,
                         updated_at = CURRENT_TIMESTAMP
