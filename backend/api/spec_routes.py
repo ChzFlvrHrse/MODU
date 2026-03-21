@@ -142,7 +142,7 @@ async def delete_project(spec_id: str):
     try:
         await db.delete_project(spec_id)
         logger.info(f"Project deleted successfully: {spec_id}")
-        return jsonify({"message": "Project deleted successfully"}), 200
+        return jsonify({"success": True, "spec_id": spec_id}), 200
     except Exception as e:
         logger.error(f"Error deleting project: {e}")
         return jsonify({"error": str(e)}), 500

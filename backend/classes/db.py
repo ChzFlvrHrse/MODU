@@ -320,6 +320,10 @@ class ModuDB:
                 DELETE FROM projects WHERE spec_id = ?
             """, (spec_id,))
             await conn.commit()
+            return {
+                "deleted": True,
+                "spec_id": spec_id
+            }
 
     async def create_division(self, spec_id: str, division: str, division_title: str):
         """Create division or return existing id"""
