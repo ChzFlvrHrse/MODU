@@ -541,3 +541,34 @@ async def update_package_chosen_route(package_id: int):
     except Exception as e:
         logger.error(f"Error in update_package_chosen_route: {e}")
         return jsonify({"error": str(e), "success": False}), 500
+
+
+@submittal_routes_bp.route("/commit_section_packages", methods=["POST"])
+async def commit_section_packages_route():
+    try:
+        data: dict = await request.get_json()
+
+        section_id = data.get("section_id")
+        chosen_package_ids = data.get("chosen_package_ids")
+
+        if not section_id:
+            return jsonify({"error": "section_id is required"}), 400
+        if chosen_package_ids is None or not isinstance(chosen_package_ids, list):
+            return jsonify({"error": "chosen_package_ids must be a list"}), 400
+
+        result = await db.commit_section_packages(
+            section_id=int(section_id),
+            chosen_package_ids=chosen_package_ids,
+        )
+
+        if result.get("error"):
+            return jsonify(result), 500
+
+        return jsonify({
+            "success": True,
+            **result,
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error in commit_section_packages_route: {e}")
+        return jsonify({"error": str(e), "success": False}), 500

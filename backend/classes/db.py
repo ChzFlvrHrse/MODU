@@ -1455,4 +1455,70 @@ class ModuDB:
                 "divisions": division_scores,
             }
 
+    async def commit_section_packages(
+        self,
+        section_id: int,
+        chosen_package_ids: list[int],
+    ) -> dict:
+        """Mark specified packages as chosen, unmark all others for this section, set lifecycle to complete"""
+        try:
+            async with aiosqlite.connect(self.db_path) as conn:
+                conn.row_factory = aiosqlite.Row
+
+                # Get section for rollup
+                cursor = await conn.execute(
+                    "SELECT spec_id, division FROM sections WHERE id = ?", (section_id,)
+                )
+                section = await cursor.fetchone()
+                if not section:
+                    return {"error": "Section not found"}
+
+                # Unmark all packages for this section
+                await conn.execute("""
+                    UPDATE submittal_packages
+                    SET is_chosen = 0, updated_at = CURRENT_TIMESTAMP
+                    WHERE section_id = ?
+                """, (section_id,))
+
+                # Mark chosen packages
+                if chosen_package_ids:
+                    placeholders = ", ".join("?" * len(chosen_package_ids))
+                    await conn.execute(f"""
+                        UPDATE submittal_packages
+                        SET is_chosen = 1, updated_at = CURRENT_TIMESTAMP
+                        WHERE section_id = ? AND id IN ({placeholders})
+                    """, (section_id, *chosen_package_ids))
+
+                # Set lifecycle to complete with override
+                await conn.execute("""
+                    UPDATE sections
+                    SET lifecycle_status = 'complete',
+                        lifecycle_status_override = 1,
+                        chosen_packages = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """, (json.dumps(chosen_package_ids), section_id))
+
+                await conn.commit()
+
+            # Rollup scores
+            division_score = await self.compute_division_completion(
+                spec_id=section["spec_id"],
+                division=section["division"],
+            )
+            project_score = await self.compute_project_completion(
+                spec_id=section["spec_id"],
+            )
+
+            return {
+                "section_id": section_id,
+                "chosen_package_ids": chosen_package_ids,
+                "division_score": division_score,
+                "project_score": project_score,
+            }
+
+        except Exception as e:
+            logger.error(f"Error committing section packages: {e}")
+            return {"error": str(e)}
+
 db = ModuDB()
