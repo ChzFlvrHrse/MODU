@@ -57,7 +57,8 @@ export default function LifecycleDonut({ score, size = 48, showLabel = true }: L
                         transformOrigin: "center",
                     }}
                 >
-                    {Math.round(score * 100)}%
+                    {score < 0.01 ? score.toFixed(4) : Math.round(score * 100)}%
+                    {/* {Math.round(score * 100)}% */}
                 </text>
             </svg>
             {showLabel && size > 32 && (

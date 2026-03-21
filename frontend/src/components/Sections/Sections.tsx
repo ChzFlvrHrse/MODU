@@ -380,9 +380,9 @@ export default function Sections() {
                                 <span className="sections-subtitle">{totalSections} sections</span>
                                 {lifecycle && (
                                     <>
-                                        <LifecycleDonut score={lifecycle.overall_score} size={36} showLabel={false} />
+                                        <LifecycleDonut score={lifecycle.overall_score} size={43} showLabel={false} />
                                         <span className="sections-subtitle-progress">
-                                            {Math.round(lifecycle.overall_score * 100)}% complete
+                                            {lifecycle.overall_score < 0.01 ? lifecycle.overall_score.toFixed(4) : Math.round(lifecycle.overall_score * 100)}% complete
                                         </span>
                                     </>
                                 )}
