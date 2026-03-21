@@ -512,6 +512,14 @@ export default function Sections() {
                                             <div className="section-title-block">
                                                 <span className="section-name">{s.section_title}</span>
                                             </div>
+                                            <div className="lifecycle-pill-container">
+                                                <span className="lifecycle-pill-label">LIFECYCLE</span>
+                                                <LifecyclePill
+                                                    status={lifecycle_status}
+                                                    updating={updatingLifecycle.has(s.id)}
+                                                    onClick={() => handleLifecycleClick(s)}
+                                                />
+                                            </div>
                                         </div>
 
                                         <div className="section-card-status">
@@ -523,11 +531,11 @@ export default function Sections() {
                                                     {getStatusIcon(summary_status)} {getSummaryStatusText(summary_status)}
                                                 </span>
                                             )}
-                                            <LifecyclePill
+                                            {/* <LifecyclePill
                                                 status={lifecycle_status}
                                                 updating={updatingLifecycle.has(s.id)}
                                                 onClick={() => handleLifecycleClick(s)}
-                                            />
+                                            /> */}
                                         </div>
 
                                         <div className="metrics-row metrics-row-sections">

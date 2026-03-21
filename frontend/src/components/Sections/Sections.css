@@ -672,3 +672,17 @@
         flex-direction: column;
     }
 }
+
+.lifecycle-pill-container {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-direction: column;
+}
+
+.lifecycle-pill-label {
+    font-size: 10px;
+    color: rgba(255,255,255,0.72);
+    font-weight: 300;
+    margin-bottom: 4px;
+}
