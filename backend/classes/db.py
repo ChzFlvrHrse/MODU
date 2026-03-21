@@ -309,17 +309,7 @@ class ModuDB:
             projects = []
             for row in rows:
                 projects.append({
-                    "spec_id": row['spec_id'],
-                    "project_name": row['project_name'],
-                    "total_divisions": row['total_divisions'],
-                    "total_sections": row['total_sections'],
-                    "sections_with_primary": row['sections_with_primary'],
-                    "sections_with_reference": row['sections_with_reference'],
-                    "errors": row['errors'],
-                    "created_at": row['created_at'],
-                    "updated_at": row['updated_at'],
-                    "classification_status": row['classification_status'],
-                    "summary_status": row['summary_status']
+                    **row
                 })
             return projects
 
