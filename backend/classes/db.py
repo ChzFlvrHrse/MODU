@@ -1518,4 +1518,28 @@ class ModuDB:
             logger.error(f"Error committing section packages: {e}")
             return {"error": str(e)}
 
+    async def get_section_pdf_pages(self, spec_id: str, section_number: str) -> list[int]:
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute("""
+                SELECT primary_pages, reference_pages FROM sections WHERE spec_id = ? AND section_number = ?
+            """, (spec_id, section_number))
+
+            row = await cursor.fetchone()
+
+            primary_pages = json.loads(row["primary_pages"] or "[]")
+            reference_pages = json.loads(row["reference_pages"] or "[]")
+
+            if not primary_pages and not reference_pages:
+                return {
+                    "success": False,
+                    "error": "No pages available"
+                }
+
+            return {
+                "primary_pages": primary_pages,
+                "reference_pages": reference_pages,
+                "success": True
+            }
+
 db = ModuDB()

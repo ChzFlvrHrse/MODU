@@ -80,6 +80,40 @@ class S3Bucket(PDFPageConverter):
             ExpiresIn=24 * 60 * 60  # 24 hours
         )
 
+    async def pdf_page_to_png(self, key: str, s3_client: any) -> str:
+        doc = None
+        body = None
+        try:
+            response = await s3_client.get_object(Bucket=self.bucket_name, Key=key)
+            body = response["Body"]
+            pdf_bytes = await body.read()
+
+            doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+            page = doc.load_page(0)
+
+            matrix = fitz.Matrix(2, 2)  # sharper text
+            pix = page.get_pixmap(matrix=matrix, alpha=False)
+
+            return {
+                "bytes": base64.b64encode(pix.tobytes("png")).decode("utf-8"),
+                "media_type": "image/png",
+                "success": True
+            }
+
+        except Exception as e:
+            logger.error(f"Error converting PDF page to PNG: {e}")
+            return {
+                "bytes": None,
+                "media_type": None,
+                "success": False
+            }
+
+        finally:
+            if doc is not None:
+                doc.close()
+            if body is not None:
+                body.close()
+
     # ---------- Image compression ----------
 
     MAX_IMAGE_BYTES = 4 * 1024 * 1024  # 4MB to stay safely under 5MB limit

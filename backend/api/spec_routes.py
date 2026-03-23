@@ -1,4 +1,7 @@
-import logging, datetime, uuid
+import logging
+import datetime
+import uuid
+import base64
 from functions import page_classification
 from quart import Blueprint, request, jsonify, current_app
 from classes import S3Bucket, db, Anthropic, PDFPageConverter
@@ -30,11 +33,6 @@ async def upload():
 
     # User can provide a project name or it will default to the pdf filename
     project_name = form.get("project_name", pdf[0].filename)
-    # rasterize_all = form.get("rasterize_all", False)
-    # grayscale = form.get("grayscale", False)
-    # start_index = form.get("start_index", 0)
-    # end_index = form.get("end_index", None)
-    # dpi_override = form.get("dpi_override", 200)
 
     spec_id = str(uuid.uuid4())
 
@@ -43,27 +41,14 @@ async def upload():
         if original_pdf_upload_result["status_code"] != 200:
             return jsonify({"error": original_pdf_upload_result["data"]}), original_pdf_upload_result["status_code"]
 
-        logger.info(f"Original PDF uploaded successfully to S3 bucket: {spec_id}")
+        logger.info(
+            f"Original PDF uploaded successfully to S3 bucket: {spec_id}")
 
         pdf_result = await s3.get_original_pdf_with_client(spec_id=spec_id, s3_client=s3_client)
         if pdf_result["status_code"] != 200:
             return jsonify({"error": pdf_result["data"]}), pdf_result["status_code"]
 
         await s3.upload_original_pdf_pages(pdf=pdf_result["data"], spec_id=spec_id, s3_client=s3_client)
-
-        # text_and_rasterize = await s3.bulk_upload_to_s3_with_client(
-        #     pdf=pdf_result["data"],
-        #     spec_id=spec_id,
-        #     s3_client=s3_client,
-        #     dpi_override=dpi_override,
-        #     grayscale=grayscale,
-        #     rasterize_all=rasterize_all,
-        #     start_index=start_index,
-        #     end_index=end_index
-        # )
-
-        # if text_and_rasterize["status_code"] != 200:
-        #     return jsonify({"error": text_and_rasterize["message"]}), text_and_rasterize["status_code"]
 
         section_page_dict = await detect_section_pages(spec_id, s3, s3_client)
 
@@ -77,7 +62,8 @@ async def upload():
             division_id = await db.create_division(spec_id, division, division_title)
             for section_number, pages in sections.items():
                 total_sections += 1
-                section_title = pages.get("title", "Undocumented Section Number (MSF2020)")
+                section_title = pages.get(
+                    "title", "Undocumented Section Number (MSF2020)")
 
                 total_pages = sum(len(page) for page in pages.get("multi", []))
                 total_pages += len(pages.get("single", []))
@@ -137,6 +123,7 @@ async def sections_with_primary_pages(spec_id: str):
         logger.error(f"Error getting sections with primary pages: {e}")
         return jsonify({"error": str(e)}), 500
 
+
 @spec_routes_bp.route("/delete/project/<spec_id>", methods=["DELETE"])
 async def delete_project(spec_id: str):
     try:
@@ -146,6 +133,7 @@ async def delete_project(spec_id: str):
     except Exception as e:
         logger.error(f"Error deleting project: {e}")
         return jsonify({"error": str(e)}), 500
+
 
 @spec_routes_bp.route("/lifecycle/<int:section_id>", methods=["PATCH"])
 async def update_section_lifecycle_route(section_id: int):
@@ -229,4 +217,54 @@ async def get_project_completion_route(spec_id: str):
 
     except Exception as e:
         logger.error(f"Error in get_project_completion_route: {e}")
+        return jsonify({"error": str(e), "success": False}), 500
+
+
+@spec_routes_bp.route("/section_pdf_pages", methods=["GET"])
+async def get_section_pdf_pages_route():
+    try:
+        spec_id = request.args.get("spec_id")
+        section_number = request.args.get("section_number")
+
+        s3 = S3Bucket()
+        if not spec_id or not section_number:
+            return jsonify({"error": "spec_id and section_number are required"}), 400
+
+        pages = await db.get_section_pdf_pages(spec_id, section_number)
+        if not pages.get("success"):
+            return jsonify({"error": pages.get("error"), "success": False}), 500
+
+        primary_pages = pages.get("primary_pages")
+        reference_pages = pages.get("reference_pages")
+
+        primary_pdf_pages = []
+        reference_pdf_pages = []
+        async with s3.s3_client() as s3_client:
+            for page in primary_pages:
+                key = f"{spec_id}/original_pages/page_{page:04d}.pdf"
+                result = await s3.pdf_page_to_png(key, s3_client)
+                if result.get("success"):
+                    primary_pdf_pages.append({
+                        "bytes": result.get("bytes"),
+                        "media_type": result.get("media_type")
+                    })
+            for page in reference_pages:
+                key = f"{spec_id}/original_pages/page_{page:04d}.pdf"
+                result = await s3.pdf_page_to_png(key, s3_client)
+                if result.get("success"):
+                    reference_pdf_pages.append({
+                        "bytes": result.get("bytes"),
+                        "media_type": result.get("media_type")
+                    })
+
+        return jsonify({
+            "success": True,
+            "spec_id": spec_id,
+            "section_number": section_number,
+            "primary_pdf_pages": primary_pdf_pages,
+            "reference_pdf_pages": reference_pdf_pages
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error in get_section_pages: {e}")
         return jsonify({"error": str(e), "success": False}), 500
