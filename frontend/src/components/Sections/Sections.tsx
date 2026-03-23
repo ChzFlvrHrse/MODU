@@ -9,6 +9,7 @@ import { ArrowBackIosNew, AdsClickRounded } from '@mui/icons-material';
 import SectionSummaryModal from "../../modals/SectionSummaryModal/SectionSummaryModal";
 import PackageModal from "../../modals/PackageModal/PackageModal";
 import LifecycleDonut from '../LifecycleDonut/LifecycleDonut';
+import PDFViewer from "../../modals/PDFViewer/PDFViewer";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -108,6 +109,10 @@ export default function Sections() {
     const [updatingLifecycle, setUpdatingLifecycle] = useState<Set<number>>(new Set());
     const [lifecycle, setLifecycle] = useState<LifecycleSummary | null>(null);
 
+    const [pdfViewerOpen, setPdfViewerOpen] = useState<boolean>(false);
+    const [pdfViewerPages, setPdfViewerPages] = useState<{ bytes: string, media_type: string }[]>([]);
+    const [pdfViewerLoading, setPdfViewerLoading] = useState<boolean>(false);
+
     const { spec_id } = useParams();
     const [searchParams] = useSearchParams();
     const project_name = searchParams.get("project_name");
@@ -174,6 +179,30 @@ export default function Sections() {
         const data = await res.json();
         if (data.success) setLifecycle(data.summary);
     }, [spec_id]);
+
+    const fetchPdfViewerUrls = async (e: React.MouseEvent<HTMLDivElement>, section_number: string, page_type: "primary" | "reference") => {
+        e.stopPropagation();
+        e.preventDefault();
+        setPdfViewerOpen(true);
+        setPdfViewerLoading(true);
+        const response = await fetch(`${BACKEND_URL}/api/spec/section_pdf_pages?spec_id=${spec_id}&section_number=${section_number}`);
+        const data = await response.json();
+        try {
+            if (data.success) {
+                if (page_type === "primary") {
+                    setPdfViewerPages(data.primary_pdf_pages);
+                } else {
+                    setPdfViewerPages(data.reference_pdf_pages);
+                }
+            } else {
+                toast.error("Failed to fetch PDF viewer URLs.");
+            }
+        } catch (error) {
+            console.error(error);
+            toast.error("Failed to fetch PDF viewer URLs.");
+        }
+        setPdfViewerLoading(false);
+    };
 
     // ── Lifecycle update ───────────────────────────────────────────────────────
 
@@ -346,6 +375,7 @@ export default function Sections() {
 
     return (
         <>
+            {/* Section summary modal */}
             {sectionModalsOpen && (
                 <SectionSummaryModal
                     spec_id={spec_id ?? ""}
@@ -355,6 +385,7 @@ export default function Sections() {
                     onClose={() => setSectionModalsOpen(false)}
                 />
             )}
+            {/* Packages modal */}
             {packagesModalOpen && (
                 <PackageModal
                     spec_id={spec_id ?? ""}
@@ -362,6 +393,17 @@ export default function Sections() {
                     section_number={packagesModalSectionNumber}
                     section_title={packagesModalSectionTitle}
                     onClose={() => setPackagesModalOpen(false)}
+                />
+            )}
+            {/* PDF viewer modal */}
+            {pdfViewerOpen && (
+                <PDFViewer
+                    pdfPages={pdfViewerPages}
+                    loading={pdfViewerLoading}
+                    onClose={() => {
+                        setPdfViewerOpen(false);
+                        setPdfViewerPages([]);
+                    }}
                 />
             )}
 
@@ -531,20 +573,21 @@ export default function Sections() {
                                                     {getStatusIcon(summary_status)} {getSummaryStatusText(summary_status)}
                                                 </span>
                                             )}
-                                            {/* <LifecyclePill
-                                                status={lifecycle_status}
-                                                updating={updatingLifecycle.has(s.id)}
-                                                onClick={() => handleLifecycleClick(s)}
-                                            /> */}
                                         </div>
 
                                         <div className="metrics-row metrics-row-sections">
-                                            <div className="metric">
+                                            <div
+                                                className="metric page-metric"
+                                                onClick={(e) => fetchPdfViewerUrls(e, s.section_number, "primary")}
+                                            >
                                                 <div className="metric-value">{s.primary_pages?.length ?? "—"}</div>
                                                 <div className="metric-label">Primary Pages</div>
                                             </div>
                                             <div className="metric-divider" />
-                                            <div className="metric">
+                                            <div
+                                                className="metric page-metric"
+                                                onClick={(e) => fetchPdfViewerUrls(e, s.section_number, "reference")}
+                                            >
                                                 <div className="metric-value">{s.reference_pages?.length ?? "—"}</div>
                                                 <div className="metric-label">Reference Pages</div>
                                             </div>
