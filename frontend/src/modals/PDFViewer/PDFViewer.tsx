@@ -28,7 +28,7 @@ export default function PDFViewer({ pdfPages, loading, onClose }: PDFViewerProps
 
     if (pdfPages.length === 0) {
         return (
-            <div className="pdf-viewer-overlay">
+            <div onClick={onClose} className="pdf-viewer-overlay">
                 <div className="pdf-viewer-state-card">
                     <span>No PDF pages found.</span>
                 </div>
