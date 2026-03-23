@@ -76,12 +76,19 @@ function LifecyclePill({
 }) {
     const [open, setOpen] = useState(false);
 
+    useEffect(() => {
+        const handler = () => setOpen(false);
+        window.addEventListener("click", handler);
+        return () => window.removeEventListener("click", handler);
+    }, []);
+
     return (
         <div className="lifecycle-pill-wrapper">
             <button
                 className={`lifecycle-pill lifecycle-pill--${status}`}
                 onClick={(e) => {
                     e.stopPropagation();
+                    e.preventDefault();
                     setOpen((o) => !o);
                 }}
                 disabled={updating}
@@ -408,10 +415,7 @@ export default function Sections() {
             {/* Section summary modal */}
             {sectionModalsOpen && (
                 <SectionSummaryModal
-                    spec_id={spec_id ?? ""}
                     section_id={sectionModalSectionId}
-                    section_number={sectionModalSectionNumber}
-                    section_title={sectionModalSectionTitle}
                     onClose={() => setSectionModalsOpen(false)}
                 />
             )}

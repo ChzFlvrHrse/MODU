@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import ReactDOM from 'react-dom';
+import { jsPDF } from "jspdf";
+import { Download as DownloadIcon } from '@mui/icons-material';
 import { CircularProgress } from "@mui/material";
 import { Close, Delete } from '@mui/icons-material';
 import { toast } from 'react-hot-toast';
-import { useNavigate } from 'react-router-dom';
 import './SectionSummaryModal.css';
 
 interface SpecSummary {
@@ -26,9 +26,6 @@ interface SpecSummary {
 
 
 interface SectionModalProps {
-    spec_id: string;
-    section_number: string;
-    section_title: string;
     section_id: number;
     onClose: () => void;
 }
@@ -78,11 +75,10 @@ function ListTab({ items, label }: { items: string[]; label: string }) {
     );
 }
 
-export default function SectionSummaryModal({ spec_id, section_number, section_title, section_id, onClose }: SectionModalProps) {
+export default function SectionSummaryModal({ section_id, onClose }: SectionModalProps) {
     const [summary, setSummary] = useState<SpecSummary | null | undefined>(null);
     const [activeTab, setActiveTab] = useState<TabKey>('overview');
     const [animKey, setAnimKey] = useState(0);
-    const navigate = useNavigate();
 
     const fetchSummary = async () => {
         const response = await fetch(`${BACKEND_URL}/api/summary/section_summary/${section_id}`);
@@ -107,13 +103,126 @@ export default function SectionSummaryModal({ spec_id, section_number, section_t
         }
     };
 
-    const handlePackageCreated = (package_id: number) => {
-        onClose();
-        navigate(`/packages/${spec_id}/${package_id}?section_number=${section_number}&section_title=${section_title}&section_id=${section_id}`);
+    const handleDownload = () => {
+        if (!summary) return;
+
+        const doc = new jsPDF({
+            unit: "pt",
+            format: "letter",
+        });
+
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+        const marginX = 50;
+        const maxWidth = pageWidth - marginX * 2;
+        let y = 50;
+
+        const ensureSpace = (needed = 24) => {
+            if (y + needed > pageHeight - 50) {
+                doc.addPage();
+                y = 50;
+            }
+        };
+
+        const addTitle = (text: string) => {
+            ensureSpace(30);
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(18);
+            doc.text(text, marginX, y);
+            y += 28;
+        };
+
+        const addMeta = (text: string) => {
+            ensureSpace(20);
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(10);
+            doc.setTextColor(90);
+            doc.text(text, marginX, y);
+            doc.setTextColor(0);
+            y += 20;
+        };
+
+        const addSectionHeader = (text: string) => {
+            ensureSpace(26);
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(13);
+            doc.text(text, marginX, y);
+            y += 8;
+            doc.setDrawColor(200);
+            doc.line(marginX, y, pageWidth - marginX, y);
+            y += 16;
+        };
+
+        const addParagraph = (text: string) => {
+            doc.setFont("times", "normal");
+            doc.setFontSize(11);
+            const lines = doc.splitTextToSize(text, maxWidth);
+            lines.forEach((line: string) => {
+                ensureSpace(16);
+                doc.text(line, marginX, y);
+                y += 15;
+            });
+            y += 8;
+        };
+
+        const addBullets = (items: string[]) => {
+            if (!items.length) {
+                addParagraph("None specified.");
+                return;
+            }
+
+            doc.setFont("times", "normal");
+            doc.setFontSize(11);
+
+            items.forEach((item) => {
+                const bullet = "•";
+                const wrapped = doc.splitTextToSize(item, maxWidth - 18);
+
+                ensureSpace(16);
+                doc.text(bullet, marginX, y);
+                doc.text(wrapped[0], marginX + 14, y);
+                y += 15;
+
+                for (let i = 1; i < wrapped.length; i++) {
+                    ensureSpace(16);
+                    doc.text(wrapped[i], marginX + 14, y);
+                    y += 15;
+                }
+
+                y += 4;
+            });
+
+            y += 6;
+        };
+
+        addTitle(`${summary.section_number} - ${summary.section_title}`);
+        addMeta(`Project Spec ID: ${summary.spec_id}`);
+
+        addSectionHeader("Overview");
+        addParagraph(summary.overview);
+
+        addSectionHeader("Key Requirements");
+        addBullets(parseJsonField(summary.key_requirements));
+
+        addSectionHeader("Materials");
+        addBullets(parseJsonField(summary.materials));
+
+        addSectionHeader("Related Sections");
+        addBullets(parseJsonField(summary.related_sections));
+
+        addSectionHeader("Submittals");
+        addBullets(parseJsonField(summary.submittals));
+
+        addSectionHeader("Testing");
+        addBullets(parseJsonField(summary.testing));
+
+        doc.save(`section-${summary.section_number}.pdf`);
     };
 
+    useEffect(() => {
+        fetchSummary();
+    }, []);
 
-    useEffect(() => { fetchSummary(); }, []);
     useEffect(() => {
         document.addEventListener('keydown', handleKeyDown);
         document.body.style.overflow = 'hidden';
@@ -129,14 +238,13 @@ export default function SectionSummaryModal({ spec_id, section_number, section_t
     };
 
     if (!summary) {
-        return ReactDOM.createPortal(
+        return (
             <div className="sm-overlay" onClick={onClose}>
                 <div className="sm-loading" onClick={e => e.stopPropagation()}>
                     <CircularProgress size={28} sx={{ color: '#4a9eff' }} />
                     <span>Loading section summary…</span>
                 </div>
-            </div>,
-            document.body
+            </div>
         );
     }
 
@@ -185,7 +293,7 @@ export default function SectionSummaryModal({ spec_id, section_number, section_t
         return counts[key] ?? null;
     };
 
-    return ReactDOM.createPortal(
+    return (
         <div className="sm-overlay" onClick={onClose}>
             <div className="sm-root" onClick={e => e.stopPropagation()}>
                 {/* Header */}
@@ -198,6 +306,14 @@ export default function SectionSummaryModal({ spec_id, section_number, section_t
                         </button>
                     </div>
                     <div className="sm-header-right">
+                        <button
+                            className="sm-download-btn"
+                            onClick={handleDownload}
+                            aria-label="Download"
+                            title="Download Summary as PDF"
+                        >
+                            <DownloadIcon fontSize="small" />
+                        </button>
                         <span className="sm-spec-id">SPEC {summary.spec_id.slice(0, 8).toUpperCase()}</span>
                         <button className="sm-close-btn" onClick={onClose} aria-label="Close">
                             <Close fontSize="small" />
@@ -230,11 +346,10 @@ export default function SectionSummaryModal({ spec_id, section_number, section_t
                 </div>
 
                 {/* Content */}
-                <div className="sm-content" key={animKey} role="tabpanel">
+                <div className="sm-content" id="sm-content" key={animKey} role="tabpanel">
                     {renderTabContent()}
                 </div>
             </div>
-        </div>,
-        document.body
+        </div>
     );
 }

@@ -746,3 +746,53 @@
         transform: translateX(100%);
     }
 }
+
+/* ── Download ─────────────────────────────────────────────── */
+.sm-download-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    background: rgba(255, 255, 255, 0.03);
+    color: rgba(255, 255, 255, 0.68);
+    cursor: pointer;
+    transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.16s ease;
+}
+
+.sm-download-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.14);
+    color: rgba(255, 255, 255, 0.95);
+    transform: translateY(-1px);
+}
+
+/* ── PDF Export ─────────────────────────────────────────────── */
+
+.sm-pdf-export {
+    display: none;
+    /* width: 816px;
+    padding: 40px;
+    background: white;
+    color: black;
+    font-family: "Times New Roman", serif; */
+}
+
+.sm-pdf-export h1 {
+    font-size: 20px;
+    margin-bottom: 12px;
+}
+
+.sm-pdf-export h2 {
+    font-size: 16px;
+    margin-top: 20px;
+    margin-bottom: 8px;
+}
+
+.sm-pdf-export li {
+    margin-bottom: 6px;
+    line-height: 1.4;
+    page-break-inside: avoid;
+}
