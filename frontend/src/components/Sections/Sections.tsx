@@ -72,18 +72,48 @@ function LifecyclePill({
 }: {
     status: LifecycleStatus;
     updating: boolean;
-    onClick: () => void;
+    onClick: (status: LifecycleStatus) => void;
 }) {
+    const [open, setOpen] = useState(false);
+
     return (
-        <button
-            className={`lifecycle-pill lifecycle-pill--${status}`}
-            onClick={(e) => { e.stopPropagation(); onClick(); }}
-            disabled={updating}
-            title="Click to advance lifecycle status"
-        >
-            {updating && <CircularProgress size={8} sx={{ color: "inherit" }} />}
-            {LIFECYCLE_LABELS[status]}
-        </button>
+        <div className="lifecycle-pill-wrapper">
+            <button
+                className={`lifecycle-pill lifecycle-pill--${status}`}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    setOpen((o) => !o);
+                }}
+                disabled={updating}
+            >
+                {updating ? (
+                    <CircularProgress size={10} sx={{ color: "inherit" }} />
+                ) : (
+                    LIFECYCLE_LABELS[status].toUpperCase()
+                )}
+                <span className="chevron">▾</span>
+            </button>
+
+            {open && (
+                <div className="lifecycle-dropdown">
+                    {LIFECYCLE_CYCLE.map((s) => (
+                        <div
+                            key={s}
+                            className={`lifecycle-option ${
+                                s === status ? "active" : ""
+                            }`}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setOpen(false);
+                                if (s !== status) onClick(s);
+                            }}
+                        >
+                            {LIFECYCLE_LABELS[s].toUpperCase()}
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
     );
 }
 
@@ -206,16 +236,16 @@ export default function Sections() {
 
     // ── Lifecycle update ───────────────────────────────────────────────────────
 
-    const handleLifecycleClick = async (section: Section) => {
+    const handleLifecycleClick = async (section: Section, status: LifecycleStatus) => {
         const current = (section.lifecycle_status ?? "pending") as LifecycleStatus;
-        const next = nextLifecycleStatus(current);
+        // const next = nextLifecycleStatus(current);
 
         setUpdatingLifecycle((prev) => new Set(prev).add(section.id));
 
         setSections((prev) => ({
             ...prev,
             [section.division]: prev[section.division].map((s) =>
-                s.id === section.id ? { ...s, lifecycle_status: next } : s
+                s.id === section.id ? { ...s, lifecycle_status: status } : s
             ),
         }));
 
@@ -223,7 +253,7 @@ export default function Sections() {
             const res = await fetch(`${BACKEND_URL}/api/spec/lifecycle/${section.id}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ lifecycle_status: next, override: true }),
+                body: JSON.stringify({ lifecycle_status: status, override: true }),
             });
             if (!res.ok) {
                 toast.error("Failed to update lifecycle status.");
@@ -559,7 +589,7 @@ export default function Sections() {
                                                 <LifecyclePill
                                                     status={lifecycle_status}
                                                     updating={updatingLifecycle.has(s.id)}
-                                                    onClick={() => handleLifecycleClick(s)}
+                                                    onClick={(status: LifecycleStatus) => handleLifecycleClick(s, status)}
                                                 />
                                             </div>
                                         </div>

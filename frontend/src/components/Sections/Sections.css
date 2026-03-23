@@ -469,7 +469,6 @@
     border-radius: 999px;
     font-size: 10px;
     font-weight: 700;
-    text-transform: uppercase;
     letter-spacing: 0.08em;
     line-height: 1;
     cursor: pointer;
@@ -510,6 +509,52 @@
     background: rgba(255,255,255,0.04);
     border: 1px solid rgba(255,255,255,0.08);
     color: rgba(255,255,255,0.28);
+}
+
+.lifecycle-pill-wrapper {
+    position: relative;
+    display: inline-block;
+}
+
+/* Dropdown */
+.lifecycle-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    min-width: 140px;
+    background: #0f172a;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.4);
+    overflow: hidden;
+    z-index: 1000;
+}
+
+/* Options */
+.lifecycle-option {
+    padding: 10px 12px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: rgba(255,255,255,0.8);
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.lifecycle-option:hover {
+    background: rgba(255,255,255,0.08);
+}
+
+.lifecycle-option.active {
+    background: rgba(98,168,255,0.2);
+    color: #62a8ff;
+}
+
+/* Chevron */
+.chevron {
+    margin-left: 6px;
+    font-size: 10px;
+    opacity: 0.6;
 }
 
 /* ── Metrics ─────────────────────────────────────────────── */
