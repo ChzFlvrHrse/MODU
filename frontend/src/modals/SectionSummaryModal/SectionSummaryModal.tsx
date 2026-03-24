@@ -261,7 +261,7 @@ export default function SectionSummaryModal({ section_id, onClose }: SectionModa
                                 <span className="sm-pages-label">Pages Referenced</span>
                                 <div className="sm-pages-chips">
                                     {pages.map(p => (
-                                        <span key={p} className="sm-page-chip">{p}</span>
+                                        <span key={p} className="sm-page-chip">{p + 1}</span>
                                     ))}
                                 </div>
                             </div>
