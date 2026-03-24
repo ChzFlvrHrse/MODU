@@ -492,8 +492,7 @@ function Sidebar({
 
                                             {isExpanded && pkg.submittals.length > 0 && (
                                                 <div className="pkg-tree">
-                                                    <div className="pkg-tree-line">
-                                                        <div className="pkg-tree-connector" />
+                                                    <div className="pkg-cumulative-group">
                                                         <div
                                                             className="pkg-cumulative-btn"
                                                             draggable
@@ -518,37 +517,41 @@ function Sidebar({
                                                                 <span className="pkg-submittal-type">Full Package</span>
                                                             </div>
                                                         </div>
-                                                    </div>
 
-                                                    {pkg.submittals.map((sub, idx) => (
-                                                        <div key={sub.id} className="pkg-tree-line">
-                                                            <div className={`pkg-tree-connector${idx === pkg.submittals.length - 1 ? " last" : ""}`} />
-                                                            <div
-                                                                className={`pkg-submittal-item${dragState?.submittalId === sub.id ? " dragging" : ""}`}
-                                                                draggable
-                                                                onClick={() => {
-                                                                    if (didDrag.current) { didDrag.current = false; return; }
-                                                                    onSubmittalClick(pkg, sub);
-                                                                }}
-                                                                onDragStart={(e) => {
-                                                                    e.dataTransfer.setData("text/plain", String(sub.id));
-                                                                    e.stopPropagation();
-                                                                    didDrag.current = true;
-                                                                    onSubmittalDragStart(e, pkg, sub);
-                                                                }}
-                                                                onDragEnd={() => {
-                                                                    onSubmittalDragEnd();
-                                                                    setTimeout(() => { didDrag.current = false; }, 0);
-                                                                }}
-                                                            >
-                                                                <div className="pkg-submittal-info">
-                                                                    <span className="pkg-submittal-title">{sub.submittal_title}</span>
-                                                                    <span className="pkg-submittal-type">{sub.submittal_type_name}</span>
+                                                        <div className="pkg-cumulative-children">
+                                                            {pkg.submittals.map((sub, idx) => (
+                                                                <div
+                                                                    key={sub.id}
+                                                                    className={`pkg-submittal-row${idx === pkg.submittals.length - 1 ? " last" : ""}`}
+                                                                >
+                                                                    <div
+                                                                        className={`pkg-submittal-item${dragState?.submittalId === sub.id ? " dragging" : ""}`}
+                                                                        draggable
+                                                                        onClick={() => {
+                                                                            if (didDrag.current) { didDrag.current = false; return; }
+                                                                            onSubmittalClick(pkg, sub);
+                                                                        }}
+                                                                        onDragStart={(e) => {
+                                                                            e.dataTransfer.setData("text/plain", String(sub.id));
+                                                                            e.stopPropagation();
+                                                                            didDrag.current = true;
+                                                                            onSubmittalDragStart(e, pkg, sub);
+                                                                        }}
+                                                                        onDragEnd={() => {
+                                                                            onSubmittalDragEnd();
+                                                                            setTimeout(() => { didDrag.current = false; }, 0);
+                                                                        }}
+                                                                    >
+                                                                        <div className="pkg-submittal-info">
+                                                                            <span className="pkg-submittal-title">{sub.submittal_title}</span>
+                                                                            <span className="pkg-submittal-type">{sub.submittal_type_name}</span>
+                                                                        </div>
+                                                                        <span className="pkg-submittal-drag-handle" title="Drag to compare">⠿</span>
+                                                                    </div>
                                                                 </div>
-                                                                <span className="pkg-submittal-drag-handle" title="Drag to compare">⠿</span>
-                                                            </div>
+                                                            ))}
                                                         </div>
-                                                    ))}
+                                                    </div>
                                                 </div>
                                             )}
 
