@@ -60,15 +60,32 @@ class RequirementFinding(BaseModel):
         description="The specific requirement from the specification being evaluated."
     )
     status: str = Field(
-        description="Compliance status: 'compliant', 'non_compliant', 'missing', 'unclear'."
+        description=(
+            "Compliance status: 'compliant', 'non_compliant', 'clarification_needed', "
+            "'missing', 'not_applicable'."
+        )
     )
     evidence: Optional[str] = Field(
         default=None,
-        description="Direct evidence from the submittal or drawing that supports or contradicts this requirement."
+        description=(
+            "Direct evidence from the submittal or drawing that supports or "
+            "contradicts this requirement."
+        )
+    )
+    spec_reference: Optional[str] = Field(
+        default=None,
+        description=(
+            "The specific section and paragraph reference in the spec where "
+            "this requirement is stated (e.g. 'Section 2.3.B.1')."
+        )
     )
     drawing_reference: Optional[str] = Field(
         default=None,
-        description="Specific detail, section, or callout on the drawing where evidence was found (e.g. 'Detail 1/S300', 'Section A'). Only populated for shop drawing reviews."
+        description=(
+            "Specific detail, section, or callout on the drawing where evidence "
+            "was found (e.g. 'Detail 1/S300', 'Section A'). Only populated for "
+            "shop drawing reviews."
+        )
     )
     notes: Optional[str] = Field(
         default=None,
@@ -89,7 +106,7 @@ class NonConformance(BaseModel):
         description="Clear description of the non-conformance."
     )
     severity: str = Field(
-        description="Severity level: 'critical', 'major', 'minor'."
+        description="Severity level: 'critical', 'major', 'minor', 'informational'."
     )
     spec_reference: Optional[str] = Field(
         default=None,
@@ -111,40 +128,77 @@ class MissingItem(BaseModel):
     )
     required: bool = Field(
         default=True,
-        description="Whether this item is explicitly required by the spec or recommended."
+        description=(
+            "Whether this item is explicitly required by the spec (True) "
+            "or recommended but not mandatory (False)."
+        )
     )
 
 
 def make_spec_check_schema(section_number: str) -> type[BaseModel]:
     class SpecCheck(BaseModel):
         is_compliant: bool = Field(
-            description=f"Overall compliance verdict for section {section_number}. True only if no critical non-conformances exist."
+            description=(
+                f"Overall compliance verdict for section {section_number}. "
+                "True only if compliance_score >= 0.85 AND no critical or "
+                "major non-conformances exist."
+            )
         )
         compliance_score: float = Field(
-            description=f"Compliance score for section {section_number} from 0.0 to 1.0 where 1.0 is fully compliant."
+            description=(
+                f"Compliance score for section {section_number} from 0.0 to 1.0. "
+                "Calculated by starting at 1.0 and applying deductions: "
+                "missing required item -0.05, clarification_needed -0.02, "
+                "non_compliant minor -0.03, non_compliant major -0.10, "
+                "non_compliant critical -0.20. Floor at 0.0."
+            )
         )
         summary: str = Field(
-            description=f"High level summary of the compliance review for section {section_number}."
+            description=(
+                f"3-5 sentence executive summary of the compliance review for "
+                f"section {section_number}. Should state the overall disposition, "
+                "the most critical issues, and whether the submittal is approvable "
+                "as-is, approvable with comments, or requires resubmittal."
+            )
         )
         requirement_findings: List[RequirementFinding] = Field(
             default_factory=list,
-            description=f"Detailed findings for each requirement found in section {section_number}."
+            description=(
+                f"Detailed findings for each requirement found in section "
+                f"{section_number}. Every explicit spec requirement should have "
+                "a corresponding entry."
+            )
         )
         non_conformances: List[NonConformance] = Field(
             default_factory=list,
-            description=f"List of identified non-conformances against section {section_number} requirements."
+            description=(
+                f"List of identified non-conformances against section "
+                f"{section_number} requirements, ordered by severity descending."
+            )
         )
         missing_items: List[MissingItem] = Field(
             default_factory=list,
-            description=f"Items required by section {section_number} that are absent from the submittal."
+            description=(
+                f"Items explicitly required by section {section_number} that "
+                "are absent from the submittal."
+            )
         )
         recommendations: List[str] = Field(
             default_factory=list,
-            description=f"Actionable recommendations for the contractor to achieve compliance with section {section_number}."
+            description=(
+                f"Actionable recommendations for the contractor to achieve "
+                f"compliance with section {section_number}, ordered by priority "
+                "descending (most critical first)."
+            )
         )
         reviewer_notes: str = Field(
             default="",
-            description=f"Any additional observations or uncertainties noted during review of section {section_number}."
+            description=(
+                f"Additional observations noted during review of section "
+                f"{section_number}. Use for scope observations, voluntary "
+                "additional documentation notes, or flags for structural/MEP "
+                "engineer review that fall outside the spec reviewer's scope."
+            )
         )
     return SpecCheck
 

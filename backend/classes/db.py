@@ -896,6 +896,8 @@ class ModuDB:
 
             await conn.commit()
 
+            return True
+
     async def update_package_chosen(
         self,
         package_id: int,
