@@ -573,16 +573,10 @@ async def commit_section_packages_route():
         logger.error(f"Error in commit_section_packages_route: {e}")
         return jsonify({"error": str(e), "success": False}), 500
 
-@submittal_routes_bp.route("/delete_submittal_package", methods=["DELETE"])
-async def delete_submittal_package_route():
+@submittal_routes_bp.route("/delete/package/<spec_id>/<item_id>", methods=["DELETE"])
+async def delete_submittal_package_route(spec_id: str, item_id: int):
     try:
-        data = request.args
-        package_id: int = data.get("package_id")
-
-        if not package_id:
-            return jsonify({"error": "package_id is required"}), 400
-
-        result = await db.delete_submittal_package(package_id)
+        result = await db.delete_submittal_package(item_id)
         if result.get("error"):
             return jsonify({"error": result.get("error"), "success": False}), 500
 

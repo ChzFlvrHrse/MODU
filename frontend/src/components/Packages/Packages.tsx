@@ -4,7 +4,7 @@ import { CircularProgress } from "@mui/material";
 import UploadIcon from "@mui/icons-material/Upload";
 import FactCheckIcon from "@mui/icons-material/FactCheck";
 import CloseIcon from "@mui/icons-material/Close";
-import { ArrowBackIosNew, ExpandMore, ExpandLess, CompareArrows, Add } from "@mui/icons-material";
+import { ArrowBackIosNew, ExpandMore, ExpandLess, CompareArrows, Add, Delete } from "@mui/icons-material";
 import { toast } from "react-hot-toast";
 import "./Packages.css";
 
@@ -12,6 +12,7 @@ import UploadSubmittal from "../UploadSubmittal/UploadSubmittal";
 import type { ComparisonSummary, ComparisonRecord } from "../ComparisonSection/ComparisonSection";
 import { ExpandedComparison } from "../ComparisonSection/ComparisonSection";
 import PackageModal from "../../modals/PackageModal/PackageModal";
+import DeleteModal from "../../modals/DeleteModal/DeleteModal";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -351,6 +352,8 @@ interface SidebarProps {
     committing: boolean;
     onPackageSelect: (pkg: Package, e: React.MouseEvent) => void;
     onCommit: () => void;
+    setDeleteModalOpen: (open: boolean) => void;
+    setDeletePackageId: (id: number | null) => void;
 }
 
 function Sidebar({
@@ -375,221 +378,234 @@ function Sidebar({
     committing,
     onPackageSelect,
     onCommit,
+    setDeleteModalOpen,
+    setDeletePackageId,
 }: SidebarProps) {
     const [activeTab, setActiveTab] = useState<"packages" | "comparisons">("packages");
 
     return (
-        <div className="pkg-sidebar">
-            <div className="pkg-sidebar-tabs">
-                <button
-                    className={`pkg-sidebar-tab${activeTab === "packages" ? " active" : ""}`}
-                    onClick={() => setActiveTab("packages")}
-                >
-                    Packages
-                    <span className="pkg-sidebar-tab-count">{packages.length}</span>
-                </button>
-                <button
-                    className={`pkg-sidebar-tab${activeTab === "comparisons" ? " active" : ""}`}
-                    onClick={() => setActiveTab("comparisons")}
-                >
-                    Comparisons
-                    {comparisons.length > 0 && (
-                        <span className="pkg-sidebar-tab-count">{comparisons.length}</span>
-                    )}
-                </button>
-            </div>
-
-            <div className="pkg-sidebar-body">
-                {activeTab === "packages" && (
-                    <>
-                        {dragState && (
-                            <div className="pkg-drag-hint">Drag to a pane to compare</div>
+        <>
+            <div className="pkg-sidebar">
+                <div className="pkg-sidebar-tabs">
+                    <button
+                        className={`pkg-sidebar-tab${activeTab === "packages" ? " active" : ""}`}
+                        onClick={() => setActiveTab("packages")}
+                    >
+                        Packages
+                        <span className="pkg-sidebar-tab-count">{packages.length}</span>
+                    </button>
+                    <button
+                        className={`pkg-sidebar-tab${activeTab === "comparisons" ? " active" : ""}`}
+                        onClick={() => setActiveTab("comparisons")}
+                    >
+                        Comparisons
+                        {comparisons.length > 0 && (
+                            <span className="pkg-sidebar-tab-count">{comparisons.length}</span>
                         )}
-                        {loading ? (
-                            <div className="pkg-sidebar-loading">
-                                <CircularProgress size={18} sx={{ color: "rgba(255,255,255,0.4)" }} />
-                            </div>
-                        ) : packages.length === 0 ? (
-                            <div className="pkg-sidebar-empty">No packages found.</div>
-                        ) : (
-                            packages.map((pkg) => {
-                                const isExpanded = expandedPackageIds.has(pkg.id);
-                                const isSelected = selectedPackageIds.has(pkg.id);
-                                const score = pkg.compliance_score;
-                                const scoreColor = score === null ? null
-                                    : score >= 0.7 ? "#3fb950"
-                                        : score >= 0.4 ? "#d29922"
-                                            : "#e74c3c";
+                    </button>
+                </div>
 
-                                return (
-                                    <div key={pkg.id} className="pkg-sidebar-group">
-                                        <div
-                                            className={`pkg-card${pkg.id === activePackageId ? " active" : ""}${(isSelected) ? " selected" : ""}`}
-                                            onClick={() => onPackageClick(pkg)}
-                                            role="button"
-                                            tabIndex={0}
-                                            onKeyDown={(e) => e.key === "Enter" && onPackageClick(pkg)}
-                                        >
-                                            <div className="pkg-card-top">
-                                                <div className="pkg-card-info">
-                                                    <span className="pkg-card-name">{pkg.package_name}</span>
-                                                    {pkg.company_name && (
-                                                        <span className="pkg-card-company">{pkg.company_name}</span>
-                                                    )}
-                                                    {(pkg.is_chosen === true) && (
-                                                        <span className="pkg-card-committed">Finalized</span>
-                                                    )}
-                                                </div>
-                                                <div className="pkg-card-right">
-                                                    {score !== null && (
-                                                        <span className="pkg-card-score" style={{ color: scoreColor ?? undefined }}>
-                                                            {Math.round(score * 100)}%
-                                                        </span>
-                                                    )}
+                <div className="pkg-sidebar-body">
+                    {activeTab === "packages" && (
+                        <>
+                            {dragState && (
+                                <div className="pkg-drag-hint">Drag to a pane to compare</div>
+                            )}
+                            {loading ? (
+                                <div className="pkg-sidebar-loading">
+                                    <CircularProgress size={18} sx={{ color: "rgba(255,255,255,0.4)" }} />
+                                </div>
+                            ) : packages.length === 0 ? (
+                                <div className="pkg-sidebar-empty">No packages found.</div>
+                            ) : (
+                                packages.map((pkg) => {
+                                    const isExpanded = expandedPackageIds.has(pkg.id);
+                                    const isSelected = selectedPackageIds.has(pkg.id);
+                                    const score = pkg.compliance_score;
+                                    const scoreColor = score === null ? null
+                                        : score >= 0.7 ? "#3fb950"
+                                            : score >= 0.4 ? "#d29922"
+                                                : "#e74c3c";
+
+                                    return (
+                                        <div key={pkg.id} className="pkg-sidebar-group">
+                                            <div
+                                                className={`pkg-card${pkg.id === activePackageId ? " active" : ""}${(isSelected) ? " selected" : ""}`}
+                                                onClick={() => onPackageClick(pkg)}
+                                                role="button"
+                                                tabIndex={0}
+                                                onKeyDown={(e) => e.key === "Enter" && onPackageClick(pkg)}
+                                            >
+                                                <div className="pkg-card-top">
                                                     <button
-                                                        className={`pkg-card-select-btn${isSelected ? " selected" : ""}`}
-                                                        title={isSelected ? "Deselect" : "Select"}
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            onPackageSelect(pkg, e);
-                                                        }}
-                                                    >
-                                                        <span className="pkg-card-select-icon">✓</span>
-                                                    </button>
-                                                    {isExpanded
-                                                        ? <ExpandLess fontSize="small" sx={{ color: "rgba(255,255,255,0.3)", flexShrink: 0 }} />
-                                                        : <ExpandMore fontSize="small" sx={{ color: "rgba(255,255,255,0.3)", flexShrink: 0 }} />
-                                                    }
-                                                </div>
-                                            </div>
-                                            {score !== null && (
-                                                <div className="pkg-card-bar-track">
-                                                    <div
-                                                        className="pkg-card-bar-fill"
-                                                        style={{
-                                                            width: `${Math.round(score * 100)}%`,
-                                                            background: scoreColor ?? "#6b7280",
-                                                        }}
-                                                    />
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {isExpanded && pkg.submittals.length > 0 && (
-                                            <div className="pkg-tree">
-                                                <div className="pkg-tree-line">
-                                                    <div className="pkg-tree-connector" />
-                                                    <div
-                                                        className="pkg-cumulative-btn"
-                                                        draggable
+                                                        className="delete-package-btn"
                                                         onClick={() => {
-                                                            if (didDrag.current) { didDrag.current = false; return; }
-                                                            onCumulativeClick(pkg);
-                                                        }}
-                                                        onDragStart={(e) => {
-                                                            e.dataTransfer.setData("text/plain", String(pkg.id));
-                                                            e.stopPropagation();
-                                                            didDrag.current = true;
-                                                            onCumulativeDragStart(e, pkg);
-                                                        }}
-                                                        onDragEnd={() => {
-                                                            onCumulativeDragEnd();
-                                                            setTimeout(() => { didDrag.current = false; }, 0);
+                                                            setDeletePackageId(pkg.id);
+                                                            setDeleteModalOpen(true);
                                                         }}
                                                     >
-                                                        <span className="pkg-cumulative-icon">◎</span>
-                                                        <div className="pkg-submittal-info">
-                                                            <span className="pkg-submittal-title">Cumulative Summary</span>
-                                                            <span className="pkg-submittal-type">Full Package</span>
-                                                        </div>
+                                                        <Delete fontSize="small" />
+                                                    </button>
+                                                    <div className="pkg-card-info">
+                                                        <span className="pkg-card-name">{pkg.package_name}</span>
+                                                        {pkg.company_name && (
+                                                            <span className="pkg-card-company">{pkg.company_name}</span>
+                                                        )}
+                                                        {(pkg.is_chosen === true) && (
+                                                            <span className="pkg-card-committed">Finalized</span>
+                                                        )}
+                                                    </div>
+                                                    <div className="pkg-card-right">
+                                                        {score !== null && (
+                                                            <span className="pkg-card-score" style={{ color: scoreColor ?? undefined }}>
+                                                                {Math.round(score * 100)}%
+                                                            </span>
+                                                        )}
+                                                        <button
+                                                            className={`pkg-card-select-btn${isSelected ? " selected" : ""}`}
+                                                            title={isSelected ? "Deselect" : "Select"}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                onPackageSelect(pkg, e);
+                                                            }}
+                                                        >
+                                                            <span className="pkg-card-select-icon">✓</span>
+                                                        </button>
+                                                        {isExpanded
+                                                            ? <ExpandLess fontSize="small" sx={{ color: "rgba(255,255,255,0.3)", flexShrink: 0 }} />
+                                                            : <ExpandMore fontSize="small" sx={{ color: "rgba(255,255,255,0.3)", flexShrink: 0 }} />
+                                                        }
                                                     </div>
                                                 </div>
-
-                                                {pkg.submittals.map((sub, idx) => (
-                                                    <div key={sub.id} className="pkg-tree-line">
-                                                        <div className={`pkg-tree-connector${idx === pkg.submittals.length - 1 ? " last" : ""}`} />
+                                                {score !== null && (
+                                                    <div className="pkg-card-bar-track">
                                                         <div
-                                                            className={`pkg-submittal-item${dragState?.submittalId === sub.id ? " dragging" : ""}`}
+                                                            className="pkg-card-bar-fill"
+                                                            style={{
+                                                                width: `${Math.round(score * 100)}%`,
+                                                                background: scoreColor ?? "#6b7280",
+                                                            }}
+                                                        />
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {isExpanded && pkg.submittals.length > 0 && (
+                                                <div className="pkg-tree">
+                                                    <div className="pkg-tree-line">
+                                                        <div className="pkg-tree-connector" />
+                                                        <div
+                                                            className="pkg-cumulative-btn"
                                                             draggable
                                                             onClick={() => {
                                                                 if (didDrag.current) { didDrag.current = false; return; }
-                                                                onSubmittalClick(pkg, sub);
+                                                                onCumulativeClick(pkg);
                                                             }}
                                                             onDragStart={(e) => {
-                                                                e.dataTransfer.setData("text/plain", String(sub.id));
+                                                                e.dataTransfer.setData("text/plain", String(pkg.id));
                                                                 e.stopPropagation();
                                                                 didDrag.current = true;
-                                                                onSubmittalDragStart(e, pkg, sub);
+                                                                onCumulativeDragStart(e, pkg);
                                                             }}
                                                             onDragEnd={() => {
-                                                                onSubmittalDragEnd();
+                                                                onCumulativeDragEnd();
                                                                 setTimeout(() => { didDrag.current = false; }, 0);
                                                             }}
                                                         >
+                                                            <span className="pkg-cumulative-icon">◎</span>
                                                             <div className="pkg-submittal-info">
-                                                                <span className="pkg-submittal-title">{sub.submittal_title}</span>
-                                                                <span className="pkg-submittal-type">{sub.submittal_type_name}</span>
+                                                                <span className="pkg-submittal-title">Cumulative Summary</span>
+                                                                <span className="pkg-submittal-type">Full Package</span>
                                                             </div>
-                                                            <span className="pkg-submittal-drag-handle" title="Drag to compare">⠿</span>
                                                         </div>
                                                     </div>
-                                                ))}
-                                            </div>
-                                        )}
 
-                                        {isExpanded && pkg.submittals.length === 0 && (
-                                            <div className="pkg-submittal-empty">No submittals uploaded yet.</div>
-                                        )}
-                                    </div>
-                                );
-                            })
-                        )}
+                                                    {pkg.submittals.map((sub, idx) => (
+                                                        <div key={sub.id} className="pkg-tree-line">
+                                                            <div className={`pkg-tree-connector${idx === pkg.submittals.length - 1 ? " last" : ""}`} />
+                                                            <div
+                                                                className={`pkg-submittal-item${dragState?.submittalId === sub.id ? " dragging" : ""}`}
+                                                                draggable
+                                                                onClick={() => {
+                                                                    if (didDrag.current) { didDrag.current = false; return; }
+                                                                    onSubmittalClick(pkg, sub);
+                                                                }}
+                                                                onDragStart={(e) => {
+                                                                    e.dataTransfer.setData("text/plain", String(sub.id));
+                                                                    e.stopPropagation();
+                                                                    didDrag.current = true;
+                                                                    onSubmittalDragStart(e, pkg, sub);
+                                                                }}
+                                                                onDragEnd={() => {
+                                                                    onSubmittalDragEnd();
+                                                                    setTimeout(() => { didDrag.current = false; }, 0);
+                                                                }}
+                                                            >
+                                                                <div className="pkg-submittal-info">
+                                                                    <span className="pkg-submittal-title">{sub.submittal_title}</span>
+                                                                    <span className="pkg-submittal-type">{sub.submittal_type_name}</span>
+                                                                </div>
+                                                                <span className="pkg-submittal-drag-handle" title="Drag to compare">⠿</span>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
 
-                        {(packagesChanged) && (
-                            <div className="pkg-commit-footer">
-                                <button
-                                    className={`pkg-commit-btn${committing ? " loading" : ""}`}
-                                    onClick={onCommit}
-                                    disabled={committing}
-                                >
-                                    {committing
-                                        ? <><CircularProgress size={12} sx={{ color: "inherit" }} /> Committing…</>
-                                        : <>✓ Finalize Selection</>
-                                    }
-                                </button>
-                            </div>
-                        )}
-                    </>
-                )}
+                                            {isExpanded && pkg.submittals.length === 0 && (
+                                                <div className="pkg-submittal-empty">No submittals uploaded yet.</div>
+                                            )}
+                                        </div>
+                                    );
+                                })
+                            )}
 
-                {activeTab === "comparisons" && (
-                    <>
-                        {comparisons.length === 0 ? (
-                            <div className="pkg-sidebar-empty">
-                                No comparisons yet.<br />Load two packages and run a comparison.
-                            </div>
-                        ) : (
-                            comparisons.map((c) => (
-                                <button
-                                    key={c.id}
-                                    className={`pkg-comparison-item${leftTarget.type === "comparison" && leftTarget.comparisonId === c.id ? " active" : ""}`}
-                                    onClick={() => onComparisonClick(c)}
-                                >
-                                    <div className="pkg-comparison-item-names">
-                                        <span className="pkg-comparison-name-a">{c.package_name_a}</span>
-                                        <span className="pkg-comparison-vs">vs</span>
-                                        <span className="pkg-comparison-name-b">{c.package_name_b}</span>
-                                    </div>
-                                    <span className={`pkg-comparison-winner winner-${c.overall_winner}`}>
-                                        {c.overall_winner === "tie" ? "TIE" : `PKG ${c.overall_winner}`}
-                                    </span>
-                                </button>
-                            ))
-                        )}
-                    </>
-                )}
+                            {(packagesChanged) && (
+                                <div className="pkg-commit-footer">
+                                    <button
+                                        className={`pkg-commit-btn${committing ? " loading" : ""}`}
+                                        onClick={onCommit}
+                                        disabled={committing}
+                                    >
+                                        {committing
+                                            ? <><CircularProgress size={12} sx={{ color: "inherit" }} /> Committing…</>
+                                            : <>✓ Finalize Selection</>
+                                        }
+                                    </button>
+                                </div>
+                            )}
+                        </>
+                    )}
+
+                    {activeTab === "comparisons" && (
+                        <>
+                            {comparisons.length === 0 ? (
+                                <div className="pkg-sidebar-empty">
+                                    No comparisons yet.<br />Load two packages and run a comparison.
+                                </div>
+                            ) : (
+                                comparisons.map((c) => (
+                                    <button
+                                        key={c.id}
+                                        className={`pkg-comparison-item${leftTarget.type === "comparison" && leftTarget.comparisonId === c.id ? " active" : ""}`}
+                                        onClick={() => onComparisonClick(c)}
+                                    >
+                                        <div className="pkg-comparison-item-names">
+                                            <span className="pkg-comparison-name-a">{c.package_name_a}</span>
+                                            <span className="pkg-comparison-vs">vs</span>
+                                            <span className="pkg-comparison-name-b">{c.package_name_b}</span>
+                                        </div>
+                                        <span className={`pkg-comparison-winner winner-${c.overall_winner}`}>
+                                            {c.overall_winner === "tie" ? "TIE" : `PKG ${c.overall_winner}`}
+                                        </span>
+                                    </button>
+                                ))
+                            )}
+                        </>
+                    )}
+                </div>
             </div>
-        </div>
+        </>
     );
 }
 
@@ -619,6 +635,9 @@ export default function Packages() {
     const [selectedPackageIds, setSelectedPackageIds] = useState<Set<number>>(new Set());
     const [originalPackageIds, setOriginalPackageIds] = useState<Set<number>>(new Set());
     const [committingPackages, setCommittingPackages] = useState(false);
+
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+    const [deletePackageId, setDeletePackageId] = useState<number | null>(null);
 
     const didDrag = useRef(false);
 
@@ -845,6 +864,8 @@ export default function Packages() {
                         committing={committingPackages}
                         onPackageSelect={handlePackageSelect}
                         onCommit={handleCommit}
+                        setDeleteModalOpen={setDeleteModalOpen}
+                        setDeletePackageId={setDeletePackageId}
                     />
 
                     {!activePackage && leftTarget.type !== "comparison" ? (
@@ -936,6 +957,19 @@ export default function Packages() {
                     section_number={section_number}
                     section_title={section_title ?? ""}
                     onClose={() => setShowCreatePackage(false)}
+                />
+            )}
+
+            {deleteModalOpen && (
+                <DeleteModal
+                    prefix="submittal"
+                    item_type="package"
+                    spec_id={spec_id!}
+                    item_id={deletePackageId?.toString()}
+                    onClose={() => {
+                        setDeleteModalOpen(false);
+                        fetchPackages();
+                    }}
                 />
             )}
         </>
