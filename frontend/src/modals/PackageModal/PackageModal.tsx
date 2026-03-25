@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import ReactDOM from 'react-dom';
 import { CircularProgress } from "@mui/material";
 import { Close, Add, ChevronRight } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
@@ -249,7 +248,7 @@ export default function PackagesModal({
 
     return (
         <>
-            {ReactDOM.createPortal(
+            <div className="pm-overlay" onClick={onClose}>
                 <div className="pm-overlay" onClick={onClose}>
                     <div className="pm-root" onClick={(e) => e.stopPropagation()}>
                         <div className="pm-header">
@@ -301,9 +300,8 @@ export default function PackagesModal({
                             )}
                         </div>
                     </div>
-                </div>,
-                document.body
-            )}
+                </div>
+            </div>
 
             {showUpload && uploadPackageId && (
                 <UploadSubmittal

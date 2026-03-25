@@ -3,6 +3,7 @@ import json
 import asyncio
 from typing import Optional, List
 from classes import db, S3Bucket, Anthropic, make_spec_check_schema, make_compare_compliance_runs_schema
+from classes.base_models import RequirementFinding
 from prompts import SPEC_CHECK_PROMPT, SPEC_CHECK_DRAWINGS_PROMPT, COMPARE_COMPLIANCE_RUNS_PROMPT
 
 logging.basicConfig(level=logging.INFO)
@@ -27,18 +28,20 @@ async def compliance_check(
                     for submittal in submittals]
         is_drawing_only = set(type_ids) == {1042}
 
+        max_tokens = 25000
+        effort = "high"
         if is_drawing_only:
             logger.info("Submittals are only shop drawings")
             system_prompt = anthropic.build_prompt(
                 SPEC_CHECK_DRAWINGS_PROMPT, {"section_number": section_number})
-            max_tokens = 25000
-            effort = "high"
+            # max_tokens = 16000
+            # effort = "medium"
         else:
             logger.info("Submittals are not only shop drawings")
             system_prompt = anthropic.build_prompt(
                 SPEC_CHECK_PROMPT, {"section_number": section_number})
-            max_tokens = 16000
-            effort = "medium"
+            # max_tokens = 25000
+            # effort = "high"
 
         section = await db.get_section(spec_id, section_number)
         if not section:
@@ -107,6 +110,79 @@ async def compliance_check(
         if claude_request.get("status") == "success":
             logger.info(
                 f"Claude request succeeded for package_id={package_id}, section_number={section_number}")
+
+            # def compute_compliance_score(
+            #     findings: list[dict],
+            #     non_conformances: list[dict],
+            #     missing_items: list[dict],
+            #     total_requirements: int = None,
+            # ) -> float:
+
+            # # NOTE: Weights are subject to change.
+            #     WEIGHTS = {
+            #         "critical": 0.75,
+            #         "major": 0.4,
+            #         "minor": 0.1,
+            #         "clarification_needed": 0.1,
+            #         "missing_required": 0.15,
+            #         "missing_optional": 0.05,
+            #     }
+
+            #     if total_requirements is None:
+            #         total_requirements = len([
+            #             f for f in findings if f["status"] != "not_applicable"
+            #         ])
+            #     if total_requirements == 0:
+            #         return 0.0
+
+            #     penalty = 0.0
+
+            #     for nc in non_conformances:
+            #         severity = nc.get("severity", "minor")
+            #         penalty += WEIGHTS.get(severity, 0.1)
+
+            #     for item in missing_items:
+            #         if item.get("required", True):
+            #             penalty += WEIGHTS["missing_required"]
+            #         else:
+            #             penalty += WEIGHTS["missing_optional"]
+
+            #     for f in findings:
+            #         if f["status"] == "clarification_needed":
+            #             penalty += WEIGHTS["clarification_needed"]
+
+            #     raw = 1.0 - (penalty / total_requirements)
+            #     return round(max(0.0, raw), 2)
+
+            # def compute_is_compliant(findings: list[dict], non_conformances: list[dict], missing_items: list[dict], threshold: float = 0.85) -> bool:
+            #     score = compute_compliance_score(findings, non_conformances, missing_items)
+            #     has_critical_or_major = any(
+            #         nc["severity"] in ("critical", "major")
+            #         for nc in non_conformances
+            #     )
+            #     return score > threshold and not has_critical_or_major
+
+            # response = claude_request.get("response")
+            # findings = response.get("requirement_findings", [])
+            # non_conformances = response.get("non_conformances", [])
+            # missing_items = response.get("missing_items", [])
+
+            # section_summary = await db.get_section_summary(section_id)
+            # key_requirements = json.loads(section_summary.get("key_requirements", []))
+            # total_requirements = len(key_requirements)
+
+            # response["compliance_score"] = compute_compliance_score(
+            #     findings,
+            #     non_conformances,
+            #     missing_items,
+            #     total_requirements=total_requirements
+            # )
+            # response["is_compliant"] = compute_is_compliant(
+            #     findings,
+            #     non_conformances,
+            #     missing_items
+            # )
+
             return {
                 "status": "success",
                 "result": claude_request.get("response"),
@@ -285,7 +361,8 @@ async def compare_compliance_runs(
                 "total_tokens": claude_request.get("total_tokens"),
             }
         else:
-            logger.error(f"Claude request failed: {claude_request.get('error')}")
+            logger.error(
+                f"Claude request failed: {claude_request.get('error')}")
             return {"status": "error", "error": claude_request.get("error")}
 
     except Exception as e:

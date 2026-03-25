@@ -51,14 +51,37 @@ You will be provided with:
 1. The specification section {section_number} pages (provided first)
 2. The submittal documents to review (provided after)
 
-Review the submittal documents against every requirement in section {section_number}. Pay close attention to:
+## Review Instructions
+Go through EVERY numbered and lettered requirement in section {section_number} one by one. For each requirement determine the compliance status:
+- compliant: submittal explicitly and clearly satisfies the requirement
+- non_compliant: submittal contradicts or fails to meet the requirement
+- clarification_needed: submittal partially addresses it but lacks sufficient detail
+- missing: requirement is not addressed at all in the submittal
+- not_applicable: requirement does not apply to this submittal type
+
+## Scoring
+Start at 1.0 and apply the following deductions:
+- Each missing required item: -0.05
+- Each clarification_needed: -0.02
+- Each minor non-conformance: -0.03
+- Each major non-conformance: -0.10
+- Each critical non-conformance: -0.20
+Floor at 0.0.
+
+## Compliance Verdict
+is_compliant is True only if compliance_score >= 0.85 AND no critical or major non-conformances exist.
+
+## Focus Areas
 - Materials, products, and manufacturers specified
 - Physical properties, dimensions, and tolerances
+- ASTM and other standards referenced — check that submitted certifications reference the correct standard and type
 - Testing and certification requirements
-- Installation requirements referenced in shop drawings
-- Any specific submittal requirements called out in the spec
+- Specific submittal requirements called out in the spec (Product Data, Manufacturer's Certificate, etc.)
 
-Be thorough and precise. Flag any missing information, non-conformances, or items that require clarification.
+## Strictness
+- Vague or implied compliance is clarification_needed, not compliant
+- A certification referencing a related but different standard (e.g. ASTM C91 instead of ASTM C150) is non_compliant, not clarification_needed
+- Missing certifications for explicitly required materials are missing, not clarification_needed
 """
 
 SPEC_CHECK_DRAWINGS_PROMPT = """
@@ -68,17 +91,42 @@ You will be provided with:
 1. The specification section {section_number} pages (provided first)
 2. The shop drawings to review (provided after)
 
-Review the shop drawings against every requirement in section {section_number}. Pay close attention to:
-- Dimensions, tolerances, and clearances specified
-- Material callouts and grades matching spec requirements
+## Review Instructions
+Go through EVERY numbered and lettered requirement in section {section_number} one by one. For each requirement determine the compliance status:
+- compliant: drawing explicitly and clearly satisfies the requirement
+- non_compliant: drawing contradicts or fails to meet the requirement
+- clarification_needed: drawing partially addresses it but lacks sufficient detail or clarity
+- missing: requirement is not addressed anywhere on the drawings
+- not_applicable: requirement does not apply to this drawing type
+
+## Scoring
+Start at 1.0 and apply the following deductions:
+- Each missing required item: -0.05
+- Each clarification_needed: -0.02
+- Each minor non-conformance: -0.03
+- Each major non-conformance: -0.10
+- Each critical non-conformance: -0.20
+Floor at 0.0.
+
+## Compliance Verdict
+is_compliant is True only if compliance_score >= 0.85 AND no critical or major non-conformances exist.
+
+## Focus Areas
+- Dimensions, tolerances, and clearances — flag any that conflict with spec requirements
+- Material callouts and grades — verify they match what the spec requires
 - Connection details, fastener types, and spacing
 - Reinforcement placement, size, and spacing
-- Manufacturer and product designations
-- Notes and general conditions on the drawings
-- Any details or sections referenced but not shown
-- Coordination with other trades or spec sections referenced
+- Manufacturer and product designations matching spec-approved products
+- Drawing notes and general conditions
+- Details or sections referenced on the drawings but not shown
+- Coordination requirements with other trades or spec sections
 
-Be thorough and precise. Flag any dimensions that conflict with the spec, missing details, unclear callouts, or items that require clarification. Note where the drawings reference the spec correctly versus where they deviate or are silent on a requirement.
+## Strictness
+- A dimension shown on the drawing that conflicts with the spec is non_compliant, not clarification_needed
+- A material callout that uses a different grade or standard than specified is non_compliant
+- Missing details for explicitly required conditions are missing, not clarification_needed
+- Unclear or illegible callouts are clarification_needed
+- Always populate drawing_reference when citing evidence from the drawings (e.g. 'Detail 1/S300', 'General Note 4')
 """
 
 COMPARE_COMPLIANCE_RUNS_PROMPT = """

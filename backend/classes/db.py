@@ -957,6 +957,10 @@ class ModuDB:
             if not package:
                 return {"error": "Submittal package not found"}, 404
 
+            # Get division from section
+            section = await self.get_section_by_id(package.get("section_id"))
+            division = section.get("division")
+
             is_chosen = package.get("is_chosen") in (1, True)
             spec_id = package.get("spec_id")
 
@@ -980,16 +984,23 @@ class ModuDB:
                     WHERE package_id_a = ? OR package_id_b = ?
                 """, (submittal_package_id, submittal_package_id))
 
-                if is_chosen:
-                    await self.compute_division_completion(
-                        spec_id=spec_id,
-                        division=package["division"],
-                    )
-                    await self.compute_project_completion(
-                        spec_id=spec_id,
-                    )
-
                 await conn.commit()
+
+            if is_chosen:
+                await self.compute_division_completion(
+                    spec_id=spec_id,
+                    division=division,
+                )
+                await self.compute_project_completion(
+                    spec_id=spec_id,
+                )
+                # NOTE: Need to update this method to handle the cases where there are multiple packages chosen for a section
+                await self.update_section_lifecycle(
+                    section_id=package.get("section_id"),
+                    lifecycle_status="pending",
+                    chosen_packages=[submittal_package_id],
+                    override=True,
+                )
 
             return {
                 "message": "Submittal package deleted successfully",

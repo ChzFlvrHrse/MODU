@@ -267,7 +267,7 @@ function CompliancePane({
                     <span className={`pkg-pane-sublabel ${sublabel}`}>{sublabelText}</span>
                 </div>
                 <div className="pkg-pane-topbar-right">
-                    {(target.type !== "comparison" && !loadingRuns && runs.length === 0) && (
+                    {/* {(target.type !== "comparison" && !loadingRuns && runs.length === 0) && ( */}
                         <button
                             className={`pkg-run-btn${running ? " loading" : ""}`}
                             onClick={handleRun}
@@ -278,7 +278,7 @@ function CompliancePane({
                                 : <><FactCheckIcon fontSize="small" /> Run Check</>
                             }
                         </button>
-                    )}
+                    {/* )} */}
                     {onClose && (
                         <button className="pkg-pane-close" onClick={onClose} title="Close pane">
                             <CloseIcon fontSize="small" />
