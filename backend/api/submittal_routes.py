@@ -573,6 +573,7 @@ async def commit_section_packages_route():
         logger.error(f"Error in commit_section_packages_route: {e}")
         return jsonify({"error": str(e), "success": False}), 500
 
+# TODO: Add bulk delete for all packages in a section
 @submittal_routes_bp.route("/delete/package/<spec_id>/<item_id>", methods=["DELETE"])
 async def delete_submittal_package_route(spec_id: str, item_id: int):
     try:
@@ -583,4 +584,83 @@ async def delete_submittal_package_route(spec_id: str, item_id: int):
         return jsonify({"success": True}), 200
     except Exception as e:
         logger.error(f"Error in delete_submittal_package_route: {e}")
+        return jsonify({"error": str(e), "success": False}), 500
+
+# ---------------------------------------------------------------- Amendments ----------------------------------------------------------------
+
+@submittal_routes_bp.route("/create_amendment", methods=["POST"])
+async def create_amendment_route():
+    try:
+        data: dict = await request.get_json()
+
+        is_valid, missing_fields = required_fields(data, ["section_id", "ref", "type"])
+        if not is_valid:
+            return jsonify({"error": f"Missing required fields: {', '.join(missing_fields)}"}), 400
+
+        result = await db.create_amendment(
+            section_id=int(data.get("section_id")),
+            amendment={
+                "ref": data.get("ref"),
+                "type": data.get("type"),
+                "note": data.get("note")
+            }
+        )
+
+        if not result.get("success"):
+            return jsonify(result), 500
+
+        return jsonify(result), 200
+
+    except Exception as e:
+        logger.error(f"Error in create_amendment_route: {e}")
+        return jsonify({"error": str(e), "success": False}), 500
+
+
+@submittal_routes_bp.route("/delete/amendment/<int:amendment_id>", methods=["DELETE"])
+async def delete_amendment_route(amendment_id: int):
+    try:
+        result = await db.delete_amendment(amendment_id=amendment_id)
+
+        if not result.get("success"):
+            return jsonify(result), 500
+
+        return jsonify(result), 200
+
+    except Exception as e:
+        logger.error(f"Error in delete_amendment_route: {e}")
+        return jsonify({"error": str(e), "success": False}), 500
+
+
+@submittal_routes_bp.route("/update/amendment/<int:amendment_id>", methods=["PATCH"])
+async def update_amendment_route(amendment_id: int):
+    try:
+        data: dict = await request.get_json()
+
+        logger.info(f"Updating amendment: {amendment_id}")
+
+        result = await db.update_amendment(
+            amendment_id=amendment_id,
+            ref=data.get("ref"),
+            type=data.get("type"),
+            note=data.get("note")
+        )
+
+        if not result.get("success"):
+            return jsonify(result), 500
+
+        return jsonify(result), 200
+
+    except Exception as e:
+        logger.error(f"Error in update_amendment_route: {e}")
+        return jsonify({"error": str(e), "success": False}), 500
+
+
+@submittal_routes_bp.route("/get_amendments/<int:section_id>", methods=["GET"])
+async def get_amendments_route(section_id: int):
+    try:
+        result = await db.get_amendments_for_section(section_id=section_id)
+        return jsonify(result), 200
+
+    except Exception as e:
+        logger.error(f"Error in get_amendments_route: {e}")
         return jsonify({"error": str(e), "success": False}), 500

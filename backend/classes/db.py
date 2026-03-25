@@ -214,6 +214,18 @@ class ModuDB:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )""")
 
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS amendments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    section_id INTEGER NOT NULL,
+                    ref TEXT NOT NULL,
+                    type TEXT NOT NULL CHECK(type IN ('waived', 'alternate_accepted', 'not_applicable', 'deferred')),
+                    note TEXT DEFAULT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (section_id) REFERENCES sections(id) ON DELETE CASCADE
+                )""")
+
             await conn.commit()
 
     async def create_project(
@@ -945,17 +957,45 @@ class ModuDB:
             if not package:
                 return {"error": "Submittal package not found"}, 404
 
-            # delete submittal package from db
+            is_chosen = package.get("is_chosen") in (1, True)
+            spec_id = package.get("spec_id")
+
+            # Delete from S3 first
+            s3_key = f"{spec_id}/submittals/package_{submittal_package_id}"
+            async with s3.s3_client() as s3_client:
+                deleted_from_s3 = await s3.delete_object_with_client(s3_key, s3_client)
+                if deleted_from_s3.get("status_code") != 200:
+                    logger.error(
+                        f"Error deleting submittal package from s3: {s3_key}")
+                    return {"error": deleted_from_s3.get("message")}, deleted_from_s3.get("status_code")
+
+            # Delete from DB
             async with aiosqlite.connect(self.db_path) as conn:
                 await conn.execute("""
                     DELETE FROM submittal_packages WHERE id = ?
                 """, (submittal_package_id,))
+
+                await conn.execute("""
+                    DELETE FROM compliance_comparisons
+                    WHERE package_id_a = ? OR package_id_b = ?
+                """, (submittal_package_id, submittal_package_id))
+
+                if is_chosen:
+                    await self.compute_division_completion(
+                        spec_id=spec_id,
+                        division=package["division"],
+                    )
+                    await self.compute_project_completion(
+                        spec_id=spec_id,
+                    )
+
                 await conn.commit()
 
             return {
                 "message": "Submittal package deleted successfully",
                 "submittal_package_id": submittal_package_id
             }
+
         except Exception as e:
             logger.error(f"Error deleting submittal package: {e}")
             return {
@@ -1287,6 +1327,15 @@ class ModuDB:
             else:
                 return []
 
+    async def get_compliance_comparisons_for_a_package(self, package_id: int) -> List[Dict]:
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute("""
+                SELECT * FROM compliance_comparisons WHERE package_id_a = ? OR package_id_b = ?
+            """, (package_id, package_id))
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
     async def get_compliance_comparisons_list(self, section_id: int) -> list[int]:
         async with aiosqlite.connect(self.db_path) as conn:
             conn.row_factory = aiosqlite.Row
@@ -1351,7 +1400,6 @@ class ModuDB:
         except Exception as e:
             logger.error(f"Error updating section lifecycle: {e}")
             return {"error": str(e), "section_id": None}
-
 
     async def compute_division_completion(self, spec_id: str, division: str) -> float:
         """Compute and persist division completion score from section lifecycle statuses"""
@@ -1446,7 +1494,8 @@ class ModuDB:
 
             all_eligible = sum(v["total"] for v in division_scores.values())
             all_complete = sum(v["complete"] for v in division_scores.values())
-            overall = round(all_complete / all_eligible, 4) if all_eligible else 0.0
+            overall = round(all_complete / all_eligible,
+                            4) if all_eligible else 0.0
 
             return {
                 "spec_id": spec_id,
@@ -1466,7 +1515,8 @@ class ModuDB:
 
                 # Get section for rollup
                 cursor = await conn.execute(
-                    "SELECT spec_id, division FROM sections WHERE id = ?", (section_id,)
+                    "SELECT spec_id, division FROM sections WHERE id = ?", (
+                        section_id,)
                 )
                 section = await cursor.fetchone()
                 if not section:
@@ -1542,6 +1592,114 @@ class ModuDB:
                 "primary_pages": primary_pages,
                 "reference_pages": reference_pages,
                 "success": True
+            }
+
+    async def get_amendments_for_section(self, section_id: int) -> list[dict]:
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute("""
+                SELECT * FROM amendments WHERE section_id = ?
+            """, (section_id,))
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    async def get_amendment_by_id(self, amendment_id: int) -> dict:
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            cursor = await conn.execute("""
+                SELECT * FROM amendments WHERE id = ?
+            """, (amendment_id,))
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+    async def create_amendment(self, section_id: int, amendment: dict):
+        try:
+            async with aiosqlite.connect(self.db_path) as conn:
+                conn.row_factory = aiosqlite.Row
+
+                # Check if section exists
+                cursor = await conn.execute("""
+                    SELECT id FROM sections WHERE id = ?
+                """, (section_id,))
+                section = await cursor.fetchone()
+                if not section:
+                    return {"success": False, "error": "Section not found"}
+
+                cursor = await conn.execute("""
+                    INSERT INTO amendments (section_id, ref, type, note)
+                    VALUES (?, ?, ?, ?)
+                """, (section_id, amendment.get("ref"), amendment.get("type"), amendment.get("note")))
+                await conn.commit()
+
+            updated_amendments = await self.get_amendments_for_section(section_id)
+
+            return {
+                "success": True,
+                "section_id": section_id,
+                "amendment": amendment,
+                "updated_amendments": updated_amendments
+            }
+        except Exception as e:
+            logger.error(f"Error adding amendment: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+    async def delete_amendment(self, amendment_id: int):
+        try:
+            async with aiosqlite.connect(self.db_path) as conn:
+                conn.row_factory = aiosqlite.Row
+
+                # Check if amendment exists
+                amendment = await self.get_amendment_by_id(amendment_id)
+                if not amendment:
+                    return {"success": False, "error": "Amendment not found"}
+
+                await conn.execute("""
+                    DELETE FROM amendments WHERE id = ?
+                """, (amendment_id,))
+                await conn.commit()
+
+            return {
+                "success": True,
+                "amendment_id": amendment_id,
+                "section_id": amendment.get("section_id"),
+            }
+        except Exception as e:
+            logger.error(f"Error removing amendment: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+    async def update_amendment(self, amendment_id: int, ref: str = None, type: str = None, note: str = None):
+        try:
+            async with aiosqlite.connect(self.db_path) as conn:
+                conn.row_factory = aiosqlite.Row
+
+                # Check if amendment exists
+                amendment = await self.get_amendment_by_id(amendment_id)
+                if not amendment:
+                    return {"success": False, "error": "Amendment not found"}
+
+                await conn.execute("""
+                    UPDATE amendments SET ref = ?, type = ?, note = ? WHERE id = ?
+                """, (ref or amendment.get("ref"), type or amendment.get("type"), note or amendment.get("note"), amendment_id))
+                await conn.commit()
+
+                updated_amendment = await self.get_amendment_by_id(amendment_id)
+
+            return {
+                "success": True,
+                "amendment_id": amendment_id,
+                "amendment": updated_amendment
+            }
+        except Exception as e:
+            logger.error(f"Error updating amendment: {e}")
+            return {
+                "success": False,
+                "error": str(e)
             }
 
 db = ModuDB()

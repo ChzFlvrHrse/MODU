@@ -10,6 +10,7 @@ import SectionSummaryModal from "../../modals/SectionSummaryModal/SectionSummary
 import PackageModal from "../../modals/PackageModal/PackageModal";
 import LifecycleDonut from '../LifecycleDonut/LifecycleDonut';
 import PDFViewer from "../../modals/PDFViewer/PDFViewer";
+import AmendmentsModal from "../../modals/AmendmentsModal/AmendmentsModal";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -149,6 +150,11 @@ export default function Sections() {
     const [pdfViewerOpen, setPdfViewerOpen] = useState<boolean>(false);
     const [pdfViewerPages, setPdfViewerPages] = useState<{ bytes: string, media_type: string }[]>([]);
     const [pdfViewerLoading, setPdfViewerLoading] = useState<boolean>(false);
+
+    const [amendmentsModalOpen, setAmendmentsModalOpen] = useState<boolean>(false);
+    const [amendmentsModalSectionId, setAmendmentsModalSectionId] = useState<number>(0);
+    const [amendmentsModalSectionNumber, setAmendmentsModalSectionNumber] = useState<string>("");
+    const [amendmentsModalSectionTitle, setAmendmentsModalSectionTitle] = useState<string>("");
 
     const { spec_id } = useParams();
     const [searchParams] = useSearchParams();
@@ -397,6 +403,13 @@ export default function Sections() {
         }
     };
 
+    const handleOpenAmendmentsModal = (section_id: number, section_number: string, section_title: string) => {
+        setAmendmentsModalSectionId(section_id);
+        setAmendmentsModalSectionNumber(section_number);
+        setAmendmentsModalSectionTitle(section_title);
+        setAmendmentsModalOpen(true);
+    };
+
     // ── Effects ────────────────────────────────────────────────────────────────
 
     useEffect(() => {
@@ -419,6 +432,7 @@ export default function Sections() {
                     onClose={() => setSectionModalsOpen(false)}
                 />
             )}
+
             {/* Packages modal */}
             {packagesModalOpen && (
                 <PackageModal
@@ -429,6 +443,7 @@ export default function Sections() {
                     onClose={() => setPackagesModalOpen(false)}
                 />
             )}
+
             {/* PDF viewer modal */}
             {pdfViewerOpen && (
                 <PDFViewer
@@ -438,6 +453,16 @@ export default function Sections() {
                         setPdfViewerOpen(false);
                         setPdfViewerPages([]);
                     }}
+                />
+            )}
+
+            {/* Amendments modal */}
+            {amendmentsModalOpen && (
+                <AmendmentsModal
+                    section_id={amendmentsModalSectionId}
+                    section_number={amendmentsModalSectionNumber}
+                    section_title={amendmentsModalSectionTitle}
+                    onClose={() => setAmendmentsModalOpen(false)}
                 />
             )}
 
@@ -633,6 +658,12 @@ export default function Sections() {
                                                 onClick={() => openSectionModal(s.section_number, s.section_title)}
                                             >
                                                 Summary
+                                            </button>
+                                            <button
+                                                className="section-action-btn"
+                                                onClick={() => handleOpenAmendmentsModal(s.id, s.section_number, s.section_title)}
+                                            >
+                                                Amendments
                                             </button>
                                             {summary_status === "manual" ? (
                                                 <button
