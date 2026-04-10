@@ -1,0 +1,311 @@
+import os, logging, asyncio
+from openai import AsyncOpenAI
+from anthropic import AsyncAnthropic
+from dotenv import load_dotenv
+from typing import Optional, List
+from pydantic import BaseModel, Field
+from classes.s3_buckets import S3Bucket
+
+load_dotenv()
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+AI_MAX_IN_FLIGHT = 6
+S3_MAX_IN_FLIGHT = 25
+
+ai_sem = asyncio.Semaphore(AI_MAX_IN_FLIGHT)
+s3_sem = asyncio.Semaphore(S3_MAX_IN_FLIGHT)
+
+class GeneralRequirement(BaseModel):
+    title: str = Field(
+        description=(
+            "Heading or subsection title from General. "
+            "Examples: '1.1 REQUIREMENTS INCLUDED', '1.2 INFORMATION SIGNS', "
+            "'1.3 QUALITY ASSURANCE'."
+        )
+    )
+    requirements: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Bullet-point style requirements under this heading. "
+            "Each entry should be a single obligation, constraint, or condition, "
+            "not a paragraph with multiple unrelated ideas."
+        )
+    )
+    document_pages: List[int] = Field(
+        default_factory=list,
+        description="0-based page numbers where these general requirements appear."
+    )
+
+class ExecutionRequirement(BaseModel):
+    title: str = Field(
+        description=(
+            "Heading or subsection title from Execution. "
+            "Examples: '3.1 PROJECT IDENTIFICATION SIGN', '3.2 INFORMATIONAL SIGNS', "
+            "'3.3 MAINTENANCE', '3.4 REMOVAL'."
+        )
+    )
+    steps: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Actionable execution steps / instructions. "
+            "Examples: 'Paint exposed surfaces with one coat of primer and one coat of "
+            "exterior paint.', 'Install at a height for optimum visibility.'."
+        )
+    )
+    document_pages: List[int] = Field(
+        default_factory=list,
+        description="0-based page numbers where these execution requirements appear."
+    )
+
+class Property(BaseModel):
+    name: str = Field(
+        description=(
+            "The name of the technical property or requirement. "
+            "Examples: 'compressive_strength', 'U_value', 'R_value', 'wattage', "
+            "'voltage', 'fire_rating', 'sound_transmission_class', 'coating_type', "
+            "'finish', 'color'."
+        )
+    )
+    value: Optional[str] = Field(
+        default=None,
+        description=(
+            "The reported value of the property exactly as written in the source document. "
+            "Keep as a raw string. Example: '3000 psi', '0.32', '1-hour', '120V', "
+            "'exterior grade', 'Bulletin colors'."
+        )
+    )
+    units: Optional[str] = Field(
+        default=None,
+        description=(
+            "The units for the numeric value if separable. "
+            "Examples: 'psi', 'W/m²K', 'hr', 'V', 'BTU/hr', 'feet', 'inches', 'yards', "
+            "'mm', 'cm', 'm', 'pounds', 'kilograms', 'grams', 'milligrams', "
+            "'micrograms', 'nanograms', 'picograms', 'femtograms', 'attograms', "
+            "'zeptograms', 'yoctograms'. "
+            "If there are multiple units, separate them with a comma. "
+            "Example: 'inches, mm' or 'pounds, kilograms'. "
+            "Leave null if unclear or not present."
+        )
+    )
+    context: Optional[str] = Field(
+        default=None,
+        description=(
+            "Additional context, test conditions, or qualifiers. "
+            "Examples: 'at 28 days', 'minimum', 'average', 'UL listed', "
+            "'ASTM tested', 'sign materials – PART 2'."
+        )
+    )
+
+class ProductSpec(BaseModel):
+    product_name: str = Field(
+        description=(
+            "The name/model of the product, assembly, or material as written in the "
+            "specification or submittal. "
+            "Examples: 'SPEC MIX Core-Fill Grout', 'York CMU', "
+            "'Project Identification and Informational Signs', "
+            "'Lutron LED Driver'."
+        )
+    )
+    manufacturer: Optional[str] = Field(
+        default=None,
+        description=(
+            "The manufacturer name if present. Example: 'SPEC MIX', "
+            "'Owens Corning', 'Siemens'. Leave null if not specified."
+        )
+    )
+    material_category: Optional[str] = Field(
+        default=None,
+        description=(
+            "A broad classification of the product. Examples: "
+            "'masonry', 'grout', 'concrete', 'door', 'window', 'HVAC unit', "
+            "'air handler', 'lighting fixture', 'electrical cable', 'fire alarm device', "
+            "'signage'. AI should infer this if reasonably certain."
+        )
+    )
+    csi_division: Optional[str] = Field(
+        default=None,
+        description=(
+            "The CSI division the product belongs to, if known. "
+            "Example: '01', '04', '05', '08', '23', '26'. "
+            "Do NOT guess if not clearly stated."
+        )
+    )
+    spec_section: Optional[str] = Field(
+        default=None,
+        description=(
+            "The project specification section number this product falls under "
+            "(if mentioned or clearly inferable). "
+            "Examples: '015812', '042000', '260519', '233113'."
+        )
+    )
+    document_type: Optional[str] = Field(
+        default=None,
+        description=(
+            "The type of source document. For submittals: 'product_data', "
+            "'shop_drawing', 'test_report', 'mockup_photos', 'manufacturer_letter', "
+            "'UL listing', 'ICC report'. For spec extraction, you may leave this null."
+        )
+    )
+    standards: List[str] = Field(
+        default_factory=list,
+        description=(
+            "List of referenced standards the product or material must conform to "
+            "or claims conformance to. "
+            "Examples: ['ASTM C90', 'UL 10C', 'NFPA 72', 'ASTM E119', 'IES LM-79']."
+        )
+    )
+    properties: List[Property] = Field(
+        default_factory=list,
+        description=(
+            "All extracted technical or performance properties associated with this "
+            "product or material. This includes physical properties, mechanical "
+            "properties, electrical ratings, fire ratings, thermal values, "
+            "dimensions, tolerances, finishes, coatings, and similar requirements."
+        )
+    )
+    notes: str = Field(
+        default="",
+        description=(
+            "Any additional relevant notes or observations. "
+            "Should not repeat property names or standards — use only for "
+            "supplemental context."
+        )
+    )
+    document_pages: List[int] = Field(
+        default_factory=list,
+        description=(
+            "List of 0-based page numbers where this product appears in the "
+            "specification or submittal. This allows mapping back to the original PDF."
+        )
+    )
+
+class SpecReqs(BaseModel):
+    section_number: Optional[str] = Field(
+        default=None,
+        description=(
+            "The specification section number. Example: '015812', '042000a', '260519.12'."
+        ),
+    )
+    project_name: Optional[str] = Field(
+        default=None,
+        description="Name of the project if found within the document.",
+    )
+
+    # PART 1 – GENERAL
+    general_requirements: List[GeneralRequirement] = Field(
+        default_factory=list,
+        description=(
+            "Structured representation of General: scope, information signs, "
+            "quality assurance, submittals, etc."
+        ),
+    )
+
+    # PART 2 – PRODUCTS
+    products: List[ProductSpec] = Field(
+        default_factory=list,
+        description=(
+            "Products: all materials, systems, or assemblies with their "
+            "technical properties and standards."
+        ),
+    )
+
+    # PART 3 – EXECUTION
+    execution_requirements: List[ExecutionRequirement] = Field(
+        default_factory=list,
+        description=(
+            "Execution: installation, application, maintenance, removal, "
+            "and other field-execution steps."
+        ),
+    )
+
+    notes: str = Field(
+        default="",
+        description="General notes or uncertainties about the extraction.",
+    )
+
+async def extract_section_requirements_from_pages_ai(pages: list[dict], ai_max_in_flight: int = 3) -> dict:
+    # sem = asyncio.Semaphore(ai_max_in_flight)
+
+    content_blocks = []
+    for page in pages:
+        text = (page.get("text") or "").strip()
+        page_index = page["page_index"]
+        if not text:
+            continue
+        content_blocks.append(
+            {
+                "type": "text",
+                "text": (
+                    f"===== PAGE {page_index} START =====\n"
+                    f"{text}\n"
+                    f"===== PAGE {page_index} END =====\n"
+                ),
+            }
+        )
+
+    res = await client.beta.messages.parse(
+        model="claude-sonnet-4-5",
+        max_tokens=20000,  # MAX TOKENS - 64000
+        timeout=None,
+        betas=["structured-outputs-2025-11-13"],
+        output_format=SpecReqs,
+        system=(
+            "You are reading a construction SPECIFICATION SECTION that may be spread across multiple pages. "
+            "Treat ALL pages below as the section body (PRIMARY). "
+            "Extract all requirements/products and return a single JSON object in the given schema. "
+        ),
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Extract all requirements/products and return a single JSON object in the given schema. Merge duplicates across pages. Only return valid JSON."},
+                    *content_blocks
+                ]
+            }
+        ]
+    )
+
+    # specs = res.choices[0].message.parsed
+
+    # return specs.model_dump()
+    return res.parsed_output.model_dump()
+
+# TODO: Run by division section pages
+# TODO: Need to look into optimizing (batching, throttling, etc.)
+async def section_spec_requirements(
+    spec_id: str,
+    division_section_pages: dict,
+    s3: S3Bucket,
+    s3_client: any,
+    s3_max_in_flight: int = 25,
+    ai_max_in_flight: int = 3
+) -> dict:
+    sem = asyncio.Semaphore(s3_max_in_flight)
+
+    async def get_text(page_index: int) -> str:
+        async with sem:
+            return await s3.get_text_page_with_client(
+                spec_id=spec_id,
+                index=page_index,
+                s3_client=s3_client,
+            )
+
+    for key in division_section_pages.keys():
+        div_sec_pages = division_section_pages[key]
+        for section_number in div_sec_pages:
+            primary_pages = div_sec_pages[section_number].get("primary", [])
+            if not primary_pages:
+                continue
+
+            texts = await asyncio.gather(*[(get_text(page)) for page in primary_pages])
+            sorted_texts = sorted(texts, key=lambda x: x["page_index"])
+            specs = await extract_section_requirements_from_pages_ai(sorted_texts, ai_max_in_flight)
+
+            div_sec_pages[section_number]["spec_reqs"] = specs
+
+    return {"section_pages": division_section_pages}
